@@ -32,7 +32,7 @@ counter = 0
 def batch_get_action_items(emails, batch_size=8):  # Smaller default batch size
     global model, tokenizer
 
-    all_summaries = []
+    all_actions = []
     processed_count = 0
     
     # Process in batches
@@ -67,7 +67,7 @@ def batch_get_action_items(emails, batch_size=8):  # Smaller default batch size
             ]
             
             # Process the batch
-            batch_summaries = []
+            batch_actions = []
             
             for j, text in enumerate(batch_texts):
                 # Tokenize single input but keep in batch
@@ -89,17 +89,17 @@ def batch_get_action_items(emails, batch_size=8):  # Smaller default batch size
                 generated_ids = output_ids[0, input_length:]
                 
                 # Decode only the generated part
-                summary = tokenizer.decode(generated_ids, skip_special_tokens=True)
-                batch_summaries.append(summary)
+                action_item = tokenizer.decode(generated_ids, skip_special_tokens=True)
+                batch_actions.append(action_item)
                 
                 # Clean up individual tensors
                 del inputs, output_ids, generated_ids
             
-            # Add batch summaries to overall results
-            all_summaries.extend(batch_summaries)
+            # Add batch actions to overall results
+            all_actions.extend(batch_actions)
             
             # Clean up batch variables
-            del batch_messages, batch_texts, batch_summaries
+            del batch_messages, batch_texts, batch_actions
             torch.cuda.empty_cache()
             
         except RuntimeError as e:
@@ -111,7 +111,7 @@ def batch_get_action_items(emails, batch_size=8):  # Smaller default batch size
                 if 'output_ids' in locals(): del output_ids
                 if 'batch_messages' in locals(): del batch_messages
                 if 'batch_texts' in locals(): del batch_texts
-                if 'batch_summaries' in locals(): del batch_summaries
+                if 'batch_actions' in locals(): del batch_actions
                 
                 torch.cuda.empty_cache()
                 gc.collect()
@@ -141,8 +141,8 @@ def batch_get_action_items(emails, batch_size=8):  # Smaller default batch size
                         
                         input_length = inputs.input_ids.shape[1]
                         generated_ids = output_ids[0, input_length:]
-                        summary = tokenizer.decode(generated_ids, skip_special_tokens=True)
-                        all_summaries.append(summary)
+                        action  = tokenizer.decode(generated_ids, skip_special_tokens=True)
+                        all_actions.append(action)
                         
                         del inputs, output_ids, text, messages, generated_ids
                         torch.cuda.empty_cache()
@@ -150,10 +150,10 @@ def batch_get_action_items(emails, batch_size=8):  # Smaller default batch size
                         
                     except RuntimeError:
                         # If still OOM, add placeholder
-                        all_summaries.append("ERROR: Could not get action items due to memory limitations")
+                        all_actions.append("ERROR: Could not get action items due to memory limitations")
                         torch.cuda.empty_cache()
                         gc.collect()
             else:
                 raise e
     
-    return all_summaries
+    return all_actions
