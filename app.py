@@ -36,7 +36,7 @@ from functions.users import get_last_login, get_user, update_last_login, create_
 from functions.linkify import linkify_text
 from functions.reply import reply
 from functions.summary import get_final_summary
-from functions.get_email_summaries import batch_summarize
+from functions.get_action_items import batch_get_action_items
 import re
 import short_url
 import textwrap
