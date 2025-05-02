@@ -1,9 +1,20 @@
 SPRINTS:
 
+
+Implement Fine Tuned Models
+Remove summary 
+Refactor action items to use new model 
+Write paper on findings
+
 Tech
 Auto unsubscribe
 Add support for Outlook
 Implement cleaner improvements
+
+Outlook:
+Login
+Parameters to all my functions
+Different code for pulling
 
 Site
 Style website 
@@ -21,10 +32,6 @@ Disable buttons
 Better UI
 Progress Bar
 
-Outlook:
-Login
-Parameters to all my functions
-Different code for pulling
 
 
 Issue: Expired tokens
