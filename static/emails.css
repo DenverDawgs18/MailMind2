@@ -1,0 +1,102 @@
+.email{
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    background-color: #514b7a;
+    border: 3px solid black;
+    border-radius: 50px;
+    box-shadow: 5px 5px darkorange;
+    width: 100%;
+}
+body{
+    position: relative;
+    padding-bottom: 150px;
+}
+.emails{
+    padding: 50px;
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    gap: 30px;
+}
+body{
+    background-color: #171524;
+}
+.emailsub{
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.emailone{
+    flex-direction: row;
+    align-items: center;
+    gap: 20px;
+}
+.large{
+    font-size: 24px;
+}
+.header{
+    font-weight: normal;
+    text-decoration: underline;
+    color: white;
+}
+.wrapper{
+    padding: 20px;
+}
+.etext,.replylabel,.replyheader{
+    color: white;
+}
+.clabel{
+    color: black;
+}
+a{
+    color: white; 
+    text-decoration: underline;
+}
+.buttons{
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+}
+.action{
+    padding: 20px;
+    border-radius: 20px;
+}
+.replywrap{
+    display: none;
+}
+.emailform{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+.replycontain{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.replyin{
+    border-radius: 50px;
+    width: 75%;
+    border: 2px solid black;
+    padding: 15px;
+    
+}
+.send{
+    position: fixed;
+    bottom: 20px; 
+    right: 20px;
+    margin-right: 0;
+    border-radius: 50px;
+}
+.compose{
+    position: fixed;
+    bottom: 20px; 
+    right: 20px;
+    margin-right: 0;
+    background-color: orange;
+    color: white;
+    border: 3px solid black;
+}
+

@@ -1,0 +1,11 @@
+.venv
+secret.*
+.env
+config.py
+uploads
+enron_emails.csv
+test_enron.csv
+modified_enron_emails_cleaned.csv 
+labeled_enron.csv 
+Temp
+MailMindActionItems5

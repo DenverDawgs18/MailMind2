@@ -1,0 +1,31 @@
+.unsubs,.unsubwrapper{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.unsub{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.sender{
+    font-size: 20px;
+    font-weight: normal;
+}
+.unsubheader{
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+}
+.header{
+    font-weight: normal;
+}
+.analyze{
+    font-size: 16px;
+    padding: 20px;
+    border-radius: 50px;
+    border: 3px solid black;
+    box-shadow: 3px 3px black;
+    background-color: orange;
+    
+}

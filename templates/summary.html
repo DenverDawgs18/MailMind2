@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../static/universal.css">
+    <link rel="stylesheet" href="../static/summary.css">
+    <title>Document</title>
+</head>
+<body>
+    <div class="navbar">
+        <a href="{{url_for('index')}}">Home</a>
+        <a href="{{url_for('emails')}}">Emails</a>
+        <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
+        <a href="{{url_for('summary')}}">Summary</a>
+        <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
+    </div>
+    <div class="wrapper">
+        <div class="summary">
+            <h2 class="summaryheader summarytext">Summary of the last 24 hours of emails:</h2>
+            <p class="summarytext">{{summary | markdown | safe }}</p>
+        </div>
+    </div>
+</body>
+</html>

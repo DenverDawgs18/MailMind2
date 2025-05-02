@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../static/universal.css">
+    <link rel="stylesheet" href="../static/upload.css">
+    <title>Document</title>
+</head>
+<body>
+    <div class="navbar">
+        <a href="{{url_for('index')}}">Home</a>
+        <a href="{{url_for('emails')}}">Emails</a>
+        <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
+        <a href="{{url_for('summary')}}">Summary</a>
+        <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
+    </div>
+    
+    <div class="uploadwrapper">
+        <div class="requestedcontainer">
+            <h1 class="reqhead">Senders Requested to Delete</h1>
+            <div class="reqwrap">
+                {% if to_delete %}
+                    {% for sender in to_delete %}
+                        <div class="reqcont">
+                            <p class="req">{{sender}}</p>
+                            <button type="submit" class="restore" data-sender="{{sender}}">Restore</button>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <h2 class="reqhead">No Senders Requested to Delete</h2>
+                {% endif %}
+            </div>
+            <form action="/remove_all_senders" method="POST">
+                <button type="submit" class="remove">Remove Requested Senders</button>
+            </form>
+        </div>
+        <div class="senders">
+            <h1 class="reqhead">Senders to Keep</h1>
+            {% for email in text%}
+                <div class="senderwrapper">
+                    <p class="sender">{{email.sender}}</p>
+                    <p class="number">{{email.number}}</p>
+                    <button data-sender="{{email.sender}}" class="delete">Add to Delete Pile</button>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+    <script src="../static/clean.js"></script>
+</body>
+</html>

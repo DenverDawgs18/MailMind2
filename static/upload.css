@@ -1,0 +1,41 @@
+.uploadwrapper{
+    padding: 20px;
+    background-color: #171524;
+}
+
+
+
+.text,.uploadheader{
+    color: white;
+}
+.sender,.number{
+    color: white;
+    font-size: 16px;
+}
+.senderwrapper,.reqcont{
+    display: flex;
+    gap: 20px;
+    margin-bottom: 10px;
+}
+.reqhead{
+    color: white;
+}
+.req{
+    color: white;
+}
+.remove{
+    padding: 20px;
+    color: white;
+    background-color: #ff6000;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 3px 3px black;
+}
+.delete,.restore{
+    padding: 20px;
+    color: white;
+    background-color: #ff6000;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 3px 3px black;
+}

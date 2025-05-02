@@ -1,0 +1,65 @@
+{% for email in emails %}
+    <div class="email">
+        <div class="emailone emailsub">
+            <h2 class="header">From: </h2>
+            {% if email.from %}
+                <p class="large etext">{{email.from}}</p>
+            {% endif %}
+        </div>
+        <div class="emailone emailsub">
+            <h2 class="header">Subject: </h2>
+            {% if email.subject %}
+                <p class="large etext">{{email.subject | linkify_text | safe}}</p>
+            {% endif %}
+        </div>
+        <div class="emailsub">
+            <h2 class="header">Summary</h2>
+                {% if email.summary %}
+                    <p class="etext">{{email.summary | linkify_text | safe}}</p>
+                {% endif %}
+        </div>
+        <div class="emailsub">
+            <div class="action_items">
+                <h2 class="header">Action Items</h2>
+                {% if email.action_items %}
+                    <ul class="items">
+                        {% for item in email.action_items %}
+                            <li class="etext item">{{item | linkify_text | safe}}</li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            </div>
+        </div>
+        <div class="emailsub">
+            <h2 class="header">Body</h2>
+            {% if email.body %}
+                <p class="etext">{{email.body | linkify_text | safe}}</p>
+            {% endif %}
+        </div>
+        <div class="buttons">
+            <button class="action reply">
+                Reply
+            </button>
+            <button class="action mark" data-sender="{{email.from}}" add="true">
+                {% if email.from in current_user.high_priority %}
+                    Unmark Sender as High Priority
+                {% else %}
+                    Mark Sender as High Priority
+                {% endif %}
+            </button>
+        </div>
+        <div id="replydiv" class="replywrap">
+            <h1 class="replyheader">Reply</h1>
+                <form id="replyform" class="emailform">
+                    <label for="cc" class="replylabel">CC: (please enter as list of emails seperated by commas)</label>
+                    <input type="text" id="cc" name="cc" class="replyin">
+                    <label for="bcc" class="replylabel">BCC: (please enter as list of emails seperated by commas)</label>
+                    <input type="text" id="bcc" name="bcc" class="replyin">    
+                    <label for="body" class="replylabel">Body:</label> 
+                    <input type="text" id="body" name="body" class="replyin">          
+                    <button type="submit" class="action" id="replysubmit"
+                            from="{{email.from}}" subject="{{email.subject}}">Submit</button>
+                </form>
+        </div>
+    </div>
+{% endfor %}

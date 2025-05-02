@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../static/universal.css">
+    <link rel="stylesheet" href="../static/unsub.css">
+    <title>Document</title>
+</head>
+<body>
+    <div class="navbar">
+        <a href="{{url_for('index')}}">Home</a>
+        <a href="{{url_for('emails')}}">Emails</a>
+        <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
+        <a href="{{url_for('summary')}}">Summary</a>
+        <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
+    </div>
+    
+    <div class="unsubwrapper">
+        <button class="analyze">Analyze More</button>
+        <table>
+            <tr>
+                <th><h2 class="header">Sender</h2></th>
+                <th><h2 class="header">Link</h2></th>
+            </tr>
+            {% for unsub in unsubs %}
+                <tr>
+                    <td><p class="sender">{{unsub.sender}}</p></td>
+                    <td><a href="{{unsub.link}}"><p class="sender">Unsubscribe</p></a></td>
+                </tr>
+            {% endfor %}
+        </table>
+    </div>
+    <!--
+        <div class="unsubs">
+            <div class="unsubheader">
+                <h1 class="sender">Sender</h1>
+                <h1 class="sender">Email</h1>
+                <h1 class="sender">Link</h1>
+            </div>
+            {% for unsub in unsubs %}
+                <div class="unsub">
+                    <h1 class="sender">{{unsub.sender}}</h1>
+                    <a href="{{unsub.link}}">Unsubscribe</a>
+                </div>
+            {% endfor %}
+        </div>
+    -->
+    <script src="/static/unsub.js"></script>
+</body>
+</html>

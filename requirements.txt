@@ -1,0 +1,16 @@
+Flask
+Flask-SQLAlchemy
+Flask-Migrate
+Flask-Session
+redis
+google-auth-oauthlib
+google-auth
+google-auth-httplib2
+google-api-python-client
+requests
+markdown
+Flask-Login
+SQLAlchemy
+short_url
+sortedcontainers
+werkzeug

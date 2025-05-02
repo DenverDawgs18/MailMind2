@@ -1,0 +1,6 @@
+{% for unsub in unsubs %}
+    <div class="unsub">
+        <h1 class="sender">Sender {{unsub.sender}}</h1>
+        <a href="{{unsub.link}}">Unsubscribe</a>
+    </div>
+{% endfor %}
