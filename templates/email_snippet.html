@@ -13,20 +13,10 @@
             {% endif %}
         </div>
         <div class="emailsub">
-            <h2 class="header">Summary</h2>
-                {% if email.summary %}
-                    <p class="etext">{{email.summary | linkify_text | safe}}</p>
-                {% endif %}
-        </div>
-        <div class="emailsub">
             <div class="action_items">
                 <h2 class="header">Action Items</h2>
                 {% if email.action_items %}
-                    <ul class="items">
-                        {% for item in email.action_items %}
-                            <li class="etext item">{{item | linkify_text | safe}}</li>
-                        {% endfor %}
-                    </ul>
+                    <p class="etext">{{email.action_items | linkify_text | safe}}</p>
                 {% endif %}
             </div>
         </div>

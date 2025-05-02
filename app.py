@@ -35,7 +35,6 @@ from functions.refresh_token import refresh
 from functions.users import get_last_login, get_user, update_last_login, create_user
 from functions.linkify import linkify_text
 from functions.reply import reply
-from functions.summary import get_final_summary
 from functions.get_action_items import batch_get_action_items
 import re
 import short_url
@@ -164,17 +163,15 @@ def emails():
         for email in emails:
             final_emails.append(email)
             
-        # Use batch summarize for high priority emails
         high_priority_batch = [email for email in new_emails if email['from'] in current_user.high_priority]
         if high_priority_batch:
-            # Extract just the email content for summarization
+
             email_contents = [email['body'] for email in high_priority_batch]
-            # Get summaries in batch
-            summaries = batch_summarize(email_contents)
-            
-            # Add summaries back to email objects
+
+            action_items = batch_get_action_items(email_contents)
+
             for i, email in enumerate(high_priority_batch):
-                email['summary'] = summaries[i]
+                email['action_items'] = action_items[i]
                 final_emails.append(email)
         
         # Process regular emails in batches
@@ -188,12 +185,12 @@ def emails():
                 batch = regular_emails[i:i+4]
                 # Extract just the email content
                 email_contents = [email['body'] for email in batch]
-                # Get summaries in batch
-                summaries = batch_summarize(email_contents)
+
+                action_items = batch_get_action_items(email_contents)
                 
-                # Add summaries back to email objects
+                # Add action_items back to email objects
                 for j, email in enumerate(batch):
-                    email['summary'] = summaries[j]
+                    email['action_items'] = action_items[j]
                     final_emails.append(email)
                     
         session['final_emails'] = final_emails 
@@ -239,16 +236,15 @@ def emails():
     
     final_emails = []
     
-    # Process high priority emails using batch summarize
     if high_priority_batch:
-        # Extract just the email content for summarization
+
         email_contents = [email['body'] for email in high_priority_batch]
-        # Get summaries in batch
-        summaries = batch_summarize(email_contents)
+
+        action_items = batch_get_action_items(email_contents)
         
-        # Add summaries back to email objects
+
         for i, email in enumerate(high_priority_batch):
-            email['summary'] = summaries[i]
+            email['action_items'] = action_items[i]
             final_emails.append(email)
     
     print("high priority \n", high_priority_batch)
@@ -268,12 +264,11 @@ def emails():
             batch = regular_emails[i:i+32]
             # Extract just the email content
             email_contents = [email['body'] for email in batch]
-            # Get summaries in batch
-            summaries = batch_summarize(email_contents)
+
+            action_items = batch_get_action_items(email_contents)
             
-            # Add summaries back to email objects
             for j, email in enumerate(batch):
-                email['summary'] = summaries[j]
+                email['action_items'] = action_items[j]
                 final_emails.append(email)
     
     session['final_emails'] = final_emails
@@ -304,9 +299,9 @@ def load_more():
         if email not in final_emails:
             to_process.append(email)
     if to_process:
-        summaries = batch_summarize(to_process)
+        action_items = batch_get_action_items(to_process)
         for j, email in enumerate(to_process):
-            email['summary'] = summaries[j]
+            email["action_items"] = action_items[j]
             final_emails.append(email)
         
     session['final_emails'] = final_final
@@ -451,19 +446,14 @@ def summary():
         emails = session['final_emails']
         after_date = last_load.strftime("%m-%d-%y")  
         since_time = last_load.strftime("%H:%M:%S")  
-        summaries = []
         new_emails = get_emails("gmail", current_user.email, access_token, after_date=after_date, 
                 since_time=since_time)
         
-        # Get summaries for new emails
-        batch_summaries = batch_summarize(new_emails)
+        batch_action_items = batch_get_action_items(new_emails)
         
-        # Update new_emails with their summaries
         for i, email in enumerate(new_emails):
-            if i < len(batch_summaries):
-                email['summary'] = batch_summaries[i]
-                # No action_items from batch_summarize
-                email['action_items'] = []
+            if i < len(batch_action_items):
+                email['action_items'] = batch_action_items[i]
         
         # Filter emails from the last day
         one_day = datetime.now(timezone.utc) - timedelta(days=1)
@@ -480,19 +470,12 @@ def summary():
         session['final_emails'] = final_emails
         session['last_load'] = datetime.now(timezone.utc)
         
-        # Prepare summaries for final summary
-        summaries = []
+        all_items = []
+
         for email in final_emails:
-            try:
-                new_dict = {"summary": email["summary"], "action_items": email.get("action_items", [])}
-                summaries.append(new_dict)
-            except:
-                summaries.append(email)
+            all_items.append(email["action_items"])
         
-        print("Getting final")
-        temp = get_final_summary(summaries)
-        final = textwrap.dedent(temp)
-        return render_template('summary.html', summary = final)
+        return render_template('summary.html', summary = all_items)
     else:
         current_datetime = datetime.now()
         current_time_formatted = current_datetime.strftime("%H:%M:%S")
@@ -528,13 +511,11 @@ def summary():
         high_priority_batch = [email for email in emails if email['from'] in current_user.high_priority]
         regular_emails = [email for email in emails if email['from'] not in current_user.high_priority]
         
-        # Use batch_summarize for all emails
         if high_priority_batch:
-            high_priority_summaries = batch_summarize(high_priority_batch)
+            high_priority_action_items = batch_get_action_items(high_priority_batch)
             for i, email in enumerate(high_priority_batch):
-                if i < len(high_priority_summaries):
-                    email['summary'] = high_priority_summaries[i]
-                    email['action_items'] = []
+                if i < len(high_priority_action_items):
+                    email['action_items'] = high_priority_action_items[i]
         
         # Process regular emails in batches
         final_emails = high_priority_batch.copy()
@@ -542,28 +523,20 @@ def summary():
         if regular_emails:
             for i in range(0, len(regular_emails), 5):
                 batch = regular_emails[i:i+5]
-                batch_summaries = batch_summarize(batch)
+                batch_get_action_items = batch_get_action_items(batch)
                 for j, email in enumerate(batch):
-                    if j < len(batch_summaries):
-                        email['summary'] = batch_summaries[j]
-                        email['action_items'] = []
+                    if j < len(batch_get_action_items):
+                        email['action_items'] = batch_get_action_items[j]
                     final_emails.append(email)
         
         session['final_emails'] = final_emails
         session['last_load'] = datetime.now(timezone.utc)
         
-        # Prepare summaries for final summary
-        summaries = []
+        all_items = []
         for email in final_emails:
-            try:
-                new_dict = {"summary": email['summary']}
-                summaries.append(new_dict)
-            except:
-                summaries.append(email)
+            all_items.append(email["action_items"])
         
-        temp = get_final_summary(summaries)
-        final = textwrap.dedent(temp)
-        return render_template('summary.html', summary = final)
+        return render_template('summary.html', summary = all_items)
 
 @app.route('/email_cleaner', methods=["GET", "POST"])
 @login_required
