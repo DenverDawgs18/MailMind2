@@ -2,8 +2,9 @@ SPRINTS:
 
 
 Implement Fine Tuned Models
-Remove summary 
-Refactor action items to use new model 
+
+Stream 
+
 Write paper on findings
 
 Tech

@@ -106,8 +106,9 @@ from transformers.models.gemma3.modeling_gemma3 import (copy, Callable, List, Op
 
 @torch.compile(fullgraph = False, dynamic = True, options = torch_compile_options)
 def Gemma3MLP_forward(self, x):
+    x = x.to(torch.float16)
     down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
-    return down_proj
+    return down_proj.to(torch.float32)
 
 class Gemma3MLP(nn.Module):
     def __init__(self, config: Gemma3TextConfig):
@@ -121,16 +122,15 @@ class Gemma3MLP(nn.Module):
         self.act_fn = ACT2FN[config.hidden_activation]
 
     def forward(self, x):
-        return Gemma3MLP_forward(self, x)
+        down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+        return down_proj
 
 
 @torch.compile(fullgraph = True, dynamic = True, options = torch_compile_options)
 def Gemma3RMSNorm_forward(self, x):
-    output = self._norm(x.float())
-    # Llama does x.to(float16) * w whilst Gemma3 is (x * w).to(float16)
-    # See https://github.com/huggingface/transformers/pull/29402
-    output = output * (1.0 + self.weight.float())
-    return output.type_as(x)
+    x = x.to(torch.float32)
+    output = x * torch.rsqrt(x.square().mean(-1, keepdim = True) + self.eps)
+    return output * (1.0 + self.weight.float())
 
 class Gemma3RMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
@@ -142,7 +142,11 @@ class Gemma3RMSNorm(nn.Module):
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
     def forward(self, x):
-        return Gemma3RMSNorm_forward(self, x)
+        output = self._norm(x.float())
+        # Llama does x.to(float16) * w whilst Gemma3 is (x * w).to(float16)
+        # See https://github.com/huggingface/transformers/pull/29402
+        output = output * (1.0 + self.weight.float())
+        return output.type_as(x)
 
     def extra_repr(self):
         return f"{tuple(self.weight.shape)}, eps={self.eps}"

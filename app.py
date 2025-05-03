@@ -94,7 +94,7 @@ def google_callback():
     flow = Flow.from_client_secrets_file(
         GOOGLE_CLIENT_SECRETS, 
         scopes=GOOGLE_SCOPES,
-        redirect_uri = GOOGLE_REDIRECT_URI
+        redirect_uri = GOOGLE_REDIRECT_URI,
     )
     authorization_response = request.url.replace('http', 'https')
     flow.fetch_token(authorization_response = authorization_response)
@@ -130,6 +130,7 @@ app.jinja_env.filters['linkify_text'] = linkify_text
 @app.route('/emails')
 @login_required
 def emails():
+    print(current_user.oauth_token)
     access_token = refresh(current_user)
     if session.get('final_emails', False):
         print('refresh')
@@ -258,18 +259,13 @@ def emails():
     
     # Process regular emails in batches
     if regular_emails:
-        # Process in batches of 5 for better management
-        for i in range(0, len(regular_emails), 32):
-            print(i)
-            batch = regular_emails[i:i+32]
-            # Extract just the email content
-            email_contents = [email['body'] for email in batch]
+        email_contents = [email['body'] for email in regular_emails]
 
-            action_items = batch_get_action_items(email_contents)
+        action_items = batch_get_action_items(email_contents)
             
-            for j, email in enumerate(batch):
-                email['action_items'] = action_items[j]
-                final_emails.append(email)
+        for j, email in enumerate(action_items):
+            email['action_items'] = action_items[j]
+            final_emails.append(email)
     
     session['final_emails'] = final_emails
     for email in final_emails:

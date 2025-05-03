@@ -71,6 +71,7 @@ def batch_get_action_items(emails, batch_size=8):  # Smaller default batch size
             
             for j, text in enumerate(batch_texts):
                 # Tokenize single input but keep in batch
+                print(j)
                 inputs = tokenizer(text, return_tensors="pt").to("cuda")
                 
                 # Generate output with memory optimizations
