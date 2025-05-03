@@ -151,3 +151,39 @@ loadMoreButton.addEventListener("click", () => {
         })
         .catch(error => console.error("Error loading more emails:", error));
         });
+
+let emails = emailList.children;
+let j = 0;
+        
+for (const email of emails) {
+    let email_children = email.children;
+    let currentActionItemDiv = null;
+            
+    for (let i = 0; i < email_children.length; i++) {
+        if (i === 2) {
+            currentActionItemDiv = email_children[i].children[0];
+            console.log(currentActionItemDiv);
+        }
+                
+        if (i === 3) {
+            let body = email_children[i].children[1];
+                    
+            // Store the reference to the action item div in a closure
+            (function(actionDiv, emailIndex) {
+                fetch("/get_one_action", {
+                    method: "POST",
+                        headers: {
+                        "Content-Type": "application/json"
+                    },
+                            body: JSON.stringify({body: body.textContent, index: emailIndex})
+                })
+                .then(response => response.json())
+                .then(data => {
+                 // This will use the correct action item div for each email
+                    actionDiv.children[1].textContent = data.action_item;
+                });
+            })(currentActionItemDiv, j);
+        }
+    }
+    j++;
+}

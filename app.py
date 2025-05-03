@@ -36,6 +36,7 @@ from functions.users import get_last_login, get_user, update_last_login, create_
 from functions.linkify import linkify_text
 from functions.reply import reply
 from functions.get_action_items import batch_get_action_items
+from functions.get_one_action import get_an_action
 import re
 import short_url
 import textwrap
@@ -130,7 +131,6 @@ app.jinja_env.filters['linkify_text'] = linkify_text
 @app.route('/emails')
 @login_required
 def emails():
-    print(current_user.oauth_token)
     access_token = refresh(current_user)
     if session.get('final_emails', False):
         print('refresh')
@@ -163,36 +163,12 @@ def emails():
         final_emails = []
         for email in emails:
             final_emails.append(email)
-            
-        high_priority_batch = [email for email in new_emails if email['from'] in current_user.high_priority]
-        if high_priority_batch:
 
-            email_contents = [email['body'] for email in high_priority_batch]
-
-            action_items = batch_get_action_items(email_contents)
-
-            for i, email in enumerate(high_priority_batch):
-                email['action_items'] = action_items[i]
-                final_emails.append(email)
-        
-        # Process regular emails in batches
-        regular_emails = []
         for email in new_emails:
             if email not in final_emails:
-                regular_emails.append(email)
+                email["action_item"] = "Generating ..."
+                final_emails.append(email)
                 
-        if regular_emails:
-            for i in range(0, len(regular_emails), 4):
-                batch = regular_emails[i:i+4]
-                # Extract just the email content
-                email_contents = [email['body'] for email in batch]
-
-                action_items = batch_get_action_items(email_contents)
-                
-                # Add action_items back to email objects
-                for j, email in enumerate(batch):
-                    email['action_items'] = action_items[j]
-                    final_emails.append(email)
                     
         session['final_emails'] = final_emails 
         session['last_load'] = datetime.now(timezone.utc)
@@ -231,48 +207,33 @@ def emails():
                     db.session.commit()
             else:
                 continue
-            
-    # Extract high priority emails
-    high_priority_batch = [email for email in emails if email['from'] in current_user.high_priority]
-    
     final_emails = []
-    
-    if high_priority_batch:
-
-        email_contents = [email['body'] for email in high_priority_batch]
-
-        action_items = batch_get_action_items(email_contents)
-        
-
-        for i, email in enumerate(high_priority_batch):
-            email['action_items'] = action_items[i]
+    high_priority = [email for email in emails if email['from'] in current_user.high_priority] 
+    for email in high_priority:
+        email["action_items"] = "Generating ..."
+        final_emails.append(email)
+    for email in emails: 
+        if email not in final_emails: 
+            email["action_items"] = "Generating ..."
             final_emails.append(email)
-    
-    print("high priority \n", high_priority_batch)
-    print(len(emails))
-    
-    # Collect regular emails
-    regular_emails = []
-    for email in emails:
-        if email not in final_emails:
-            regular_emails.append(email)
-    
-    # Process regular emails in batches
-    if regular_emails:
-        email_contents = [email['body'] for email in regular_emails]
-
-        action_items = batch_get_action_items(email_contents)
+    session["final_emails"] = final_emails
             
-        for j, email in enumerate(action_items):
-            email['action_items'] = action_items[j]
-            final_emails.append(email)
+    return render_template('emails.html', emails=emails)
+
+@app.route("/get_one_action", methods=["POST"])
+@login_required 
+def get_one_action():
+    data = request.get_json()
+    body = data.get("body")
+    index = int(data.get("index"))
+    print(index)
+    action = get_an_action(body)
+    final_emails = session.get("final_emails")
+    final_emails[index]["action_items"] = action
+    return jsonify({"action_item": action})
+
+
     
-    session['final_emails'] = final_emails
-    for email in final_emails:
-        print(email)
-        
-    # Render template with processed emails
-    return render_template('emails.html', emails=final_emails)
 
 
 @app.route('/load_more', methods=["POST"])
