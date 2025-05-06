@@ -1,5 +1,5 @@
 # ml_models.py
-from unsloth import FastModel
+from unsloth import FastLanguageModel
 # Global variables to store model and tokenizer
 model = None
 tokenizer = None
@@ -16,12 +16,13 @@ def initialize_model():
     if model is None or tokenizer is None:
         print("Loading model and tokenizer...")
         torch._dynamo.config.disable = True
-        model, tokenizer = FastModel.from_pretrained(
+        model, tokenizer = FastLanguageModel.from_pretrained(
             model_name="MailMindActionItems5",
             max_seq_length=2048,
             load_in_4bit=True,
             device_map="cuda:0"
         )
+        FastLanguageModel.for_inference(model)
         print("Model loaded successfully")
     
     return model, tokenizer

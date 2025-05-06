@@ -42,7 +42,6 @@ import short_url
 import textwrap
 from werkzeug.utils import secure_filename
 import mailbox
-from functions.get_emails import safe_decode_header, extract_email_content
 import time
 import markdown    
 import copy
@@ -131,6 +130,7 @@ app.jinja_env.filters['linkify_text'] = linkify_text
 @app.route('/emails')
 @login_required
 def emails():
+    session.clear()
     access_token = refresh(current_user)
     if session.get('final_emails', False):
         print('refresh')
@@ -142,24 +142,35 @@ def emails():
         new_emails = get_emails("gmail", current_user.email, access_token, after_date=after_date, 
                             since_time=since_time)
         for email in new_emails:
-            pattern = r"(?i)Unsubscribe[^a-z0-9\s]?\s*\[LINK:\s*([^\]]+)\]"
-            match = re.search(pattern, email['body'])
+            unsubscribe_match = re.search(r"(?i)unsubscribe", email['body'])
+                
+            if unsubscribe_match:
+                unsubscribe_pos = unsubscribe_match.start()
             
-            if match:
-                code = match.group(1)
-                link_id = short_url.decode_url(code)
-                # Look up the corresponding Link object.
-                link_obj = Link.query.filter_by(id=link_id).first()
-                if link_obj:
-                    real_link = link_obj.link
-                    unsubj = Unsubscribe.query.filter_by(link=real_link).first()
-                    if not unsubj:
-                        new_unsub = Unsubscribe(sender=email['from'], user=current_user.id)
-                        db.session.add(new_unsub)
-                        print(new_unsub)
-                        db.session.commit()
-                else:
-                    break
+                remaining_text = email['body'][unsubscribe_pos:]
+                    
+                link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
+                    
+                if link_match:
+                    code = link_match.group(1)
+                    try:
+                        link_id = short_url.decode_url(code)
+                        link_obj = Link.query.filter_by(id=link_id).first()
+                            
+                        if link_obj and link_obj.link:
+                            real_link = link_obj.link
+                                
+                            unsubj = Unsubscribe.query.filter_by(sender=email["from"]).first()
+                                
+                            if not unsubj:
+
+                                new_unsub = Unsubscribe(sender=email['from'], link=real_link, user=current_user.id)
+                                db.session.add(new_unsub)
+                                print(f"Added unsubscribe link for {email['from']}: {real_link}")
+                                db.session.commit()
+                    except Exception as e:
+                        print(f"Error processing unsubscribe link: {str(e)}")
+                        continue
         final_emails = []
         for email in emails:
             final_emails.append(email)
@@ -174,7 +185,6 @@ def emails():
         session['last_load'] = datetime.now(timezone.utc)
         return render_template('emails.html', emails=final_emails)
 
-    # First-time loading emails
     current_datetime = datetime.now(timezone.utc)
     current_time_formatted = current_datetime.strftime("%H:%M:%S")
     today = datetime.now(timezone.utc).date()
@@ -182,31 +192,40 @@ def emails():
     session['since'] = yesterday
     yesterday = yesterday.strftime("%m-%d-%y")
     session['last_load'] = current_datetime
-        
-    # Fetch emails from Gmail
+
     emails = get_emails("gmail", current_user.email, access_token, after_date=yesterday, 
                         since_time=current_time_formatted, old=None)
     
     emails = list(reversed(emails))
     for email in emails:
-        pattern = r"(?i)Unsubscribe[^a-z0-9\s]?\s*\[LINK:\s*([^\]]+)\]"
-        match = re.search(pattern, email['body'])
+        unsubscribe_match = re.search(r"(?i)unsubscribe", email['body'])
         
-        if match:
-            code = match.group(1)
-            link_id = short_url.decode_url(code)
-            # Look up the corresponding Link object.
-            link_obj = Link.query.filter_by(id=link_id).first()
-            if link_obj:
-                real_link = link_obj.link
-                unsubj = Unsubscribe.query.filter_by(link=real_link).first()
-                if not unsubj:
-                    new_unsub = Unsubscribe(sender=email['from'], user=current_user.id)
-                    db.session.add(new_unsub)
-                    print(new_unsub)
-                    db.session.commit()
-            else:
-                continue
+        if unsubscribe_match:
+            unsubscribe_pos = unsubscribe_match.start()
+            
+            remaining_text = email['body'][unsubscribe_pos:]
+            
+            link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
+            
+            if link_match:
+                code = link_match.group(1)
+                try:
+                    link_id = short_url.decode_url(code)
+                    link_obj = Link.query.filter_by(id=link_id).first()
+                    
+                    if link_obj and link_obj.link:
+                        real_link = link_obj.link
+                        
+                        unsubj = Unsubscribe.query.filter_by(sender=email["from"]).first()
+                        
+                        if not unsubj:
+                            new_unsub = Unsubscribe(sender=email['from'], link=real_link, user=current_user.id)
+                            db.session.add(new_unsub)
+                            print(f"Added unsubscribe link for {email['from']}: {real_link}")
+                            db.session.commit()
+                except Exception as e:
+                    print(f"Error processing unsubscribe link: {str(e)}")
+                    continue
     final_emails = []
     high_priority = [email for email in emails if email['from'] in current_user.high_priority] 
     for email in high_priority:
@@ -218,7 +237,7 @@ def emails():
             final_emails.append(email)
     session["final_emails"] = final_emails
             
-    return render_template('emails.html', emails=emails)
+    return render_template('emails.html', emails=final_emails)
 
 @app.route("/get_one_action", methods=["POST"])
 @login_required 
@@ -230,6 +249,7 @@ def get_one_action():
     action = get_an_action(body)
     final_emails = session.get("final_emails")
     final_emails[index]["action_items"] = action
+    session["final_emails"] = final_emails
     return jsonify({"action_item": action})
 
 
@@ -242,7 +262,7 @@ def load_more():
     print('loading more')
     final_emails = session.get('final_emails', [])
  
-    final_final = final_emails.copy()  # Copy to avoid modifying session mid-loop
+    final_final = final_emails.copy()  
     access_token = refresh(current_user)
     prev = session['since']
     prev = prev.strftime("%m-%d-%y")
@@ -370,24 +390,34 @@ def analyze():
         for unsub in unsubs:
             all_unsubs.append(unsub)
     for email in emails:
-        pattern = r"(?i)Unsubscribe[^a-z0-9\s]?\s*\[LINK:\s*([^\]]+)\]"
-        match = re.search(pattern, email['body'])
-        
-        if match:
-            code = match.group(1)
-            link_id = short_url.decode_url(code)
-            link_obj = Link.query.filter_by(id=link_id).first()
-            if link_obj:
-                real_link = link_obj.link
-                unsubj = Unsubscribe.query.filter_by(sender=email['from']).first()
-                if not unsubj:
-                    new_unsub = Unsubscribe(sender=email['from'], user=current_user.id)
-                    db.session.add(new_unsub)
-                    print(new_unsub)
-                    db.session.commit()
-                    all_unsubs.append(new_unsub)
-            else:
-                continue
+        unsubscribe_match = re.search(r"(?i)unsubscribe", email['body'])
+                
+        if unsubscribe_match:
+            unsubscribe_pos = unsubscribe_match.start()
+            
+            remaining_text = email['body'][unsubscribe_pos:]
+                    
+            link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
+                    
+            if link_match:
+                code = link_match.group(1)
+                try:
+                    link_id = short_url.decode_url(code)
+                    link_obj = Link.query.filter_by(id=link_id).first()
+                            
+                    if link_obj and link_obj.link:
+                        real_link = link_obj.link
+                                
+                        unsubj = Unsubscribe.query.filter_by(sender=email["from"]).first()
+                                
+                        if not unsubj:
+                            new_unsub = Unsubscribe(sender=email['from'], link=real_link, user=current_user.id)
+                            db.session.add(new_unsub)
+                            print(f"Added unsubscribe link for {email['from']}: {real_link}")
+                            db.session.commit()
+                except Exception as e:
+                    print(f"Error processing unsubscribe link: {str(e)}")
+                    continue
     
 
 
@@ -412,7 +442,6 @@ def summary():
             if i < len(batch_action_items):
                 email['action_items'] = batch_action_items[i]
         
-        # Filter emails from the last day
         one_day = datetime.now(timezone.utc) - timedelta(days=1)
         recent_emails = []
         for email in emails:
@@ -422,7 +451,6 @@ def summary():
             if email_date >= one_day:
                 recent_emails.append(email)
         
-        # Combine recent emails with new emails
         final_emails = recent_emails + new_emails
         session['final_emails'] = final_emails
         session['last_load'] = datetime.now(timezone.utc)
@@ -443,28 +471,36 @@ def summary():
                             since_time=current_time_formatted, old=None)
         emails = list(reversed(emails))
         
-        # Process unsubscribe links
         for email in emails:
-            pattern = r"(?i)Unsubscribe[^a-z0-9\s]?\s*\[LINK:\s*([^\]]+)\]"
-            match = re.search(pattern, email['body'])
+            unsubscribe_match = re.search(r"(?i)unsubscribe", email['body'])
+                
+            if unsubscribe_match:
+                unsubscribe_pos = unsubscribe_match.start()
             
-            if match:
-                code = match.group(1)
-                link_id = short_url.decode_url(code)
-                # Look up the corresponding Link object.
-                link_obj = Link.query.filter_by(id=link_id).first()
-                if link_obj:
-                    real_link = link_obj.link
-                    unsubj = Unsubscribe.query.filter_by(link=real_link).first()
-                    if not unsubj:
-                        new_unsub = Unsubscribe(sender=email['from'], user=current_user.id)
-                        db.session.add(new_unsub)
-                        print(new_unsub)
-                        db.session.commit()
-                else:
-                    break
-        
-        # Separate high priority emails
+                remaining_text = email['body'][unsubscribe_pos:]
+                    
+                link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
+                    
+                if link_match:
+                    code = link_match.group(1)
+                    try:
+                        link_id = short_url.decode_url(code)
+                        link_obj = Link.query.filter_by(id=link_id).first()
+                            
+                        if link_obj and link_obj.link:
+                            real_link = link_obj.link
+                                
+                            unsubj = Unsubscribe.query.filter_by(sender=email["from"]).first()
+                                
+                            if not unsubj:
+                                new_unsub = Unsubscribe(sender=email['from'], link=real_link, user=current_user.id)
+                                db.session.add(new_unsub)
+                                print(f"Added unsubscribe link for {email['from']}: {real_link}")
+                                db.session.commit()
+                    except Exception as e:
+                        print(f"Error processing unsubscribe link: {str(e)}")
+                        continue
+
         high_priority_batch = [email for email in emails if email['from'] in current_user.high_priority]
         regular_emails = [email for email in emails if email['from'] not in current_user.high_priority]
         
@@ -474,7 +510,6 @@ def summary():
                 if i < len(high_priority_action_items):
                     email['action_items'] = high_priority_action_items[i]
         
-        # Process regular emails in batches
         final_emails = high_priority_batch.copy()
         
         if regular_emails:
@@ -500,7 +535,6 @@ def summary():
 def email_cleaner():
     """Process emails directly from Gmail"""
     if 'google_credentials' not in session:
-        # Redirect to Google OAuth flow
         return redirect(url_for('google_login'))
         
     senders = fetch_all_gmail_emails(0)
@@ -521,85 +555,155 @@ def fetch_all_gmail_emails(max_results=0, force_refresh=False):
     senders = {}
     processed_count = 0
     page_token = None
-    batch_size = 500  # Gmail API limit per request
+    batch_size = 500  
 
-    while True:
-        if max_results > 0 and processed_count >= max_results:
-            break
+    try:
+        while True:
+            if max_results > 0 and processed_count >= max_results:
+                break
 
-        results = service.users().messages().list(
-            userId='me',
-            maxResults=batch_size,
-            pageToken=page_token
-        ).execute()
+            results = service.users().messages().list(
+                userId='me',
+                maxResults=batch_size,
+                pageToken=page_token
+            ).execute()
 
-        messages = results.get('messages', [])
-        if not messages:
-            break
+            messages = results.get('messages', [])
+            if not messages:
+                break
 
-        for message in messages:
-            msg = service.users().messages().get(userId='me', id=message['id']).execute()
-            headers = {header['name'].lower(): header['value'] for header in msg['payload']['headers']}
-            sender = headers.get('from', '')
-            
-            if sender:
-                if sender not in senders:
-                    unsubscribe_link = headers.get('list-unsubscribe', '').strip('<>')
-                    if not unsubscribe_link:
-                        email_body = get_message_body(msg['payload'].get('parts', []))
-                        unsubscribe_link = find_unsubscribe_link(email_body)
+            for message in messages:
+                try:
+                    msg = service.users().messages().get(userId='me', id=message['id']).execute()
+                    headers = {header['name'].lower(): header['value'] for header in msg['payload']['headers']}
+                    sender = headers.get('from', '')
                     
-                    if unsubscribe_link:
-                        process_unsubscribe_link(unsubscribe_link, sender)
-                
-                senders[sender] = senders.get(sender, 0) + 1
+                    if sender:
+                        if sender not in senders:
+                            unsubscribe_link = headers.get('list-unsubscribe', '').strip('<>')
+                            
+                            if not unsubscribe_link:
+                                email_body = get_message_body(msg)
+                                unsubscribe_link = find_unsubscribe_link(email_body)
+                            
+                            if unsubscribe_link:
+                                process_unsubscribe_link(unsubscribe_link, sender)
+                        
+                        senders[sender] = senders.get(sender, 0) + 1
 
-            processed_count += 1
-            print(processed_count)
-            if processed_count % 100 == 0:
-                time.sleep(1)  # Rate limiting to avoid quota issues
+                    processed_count += 1
+                    if processed_count % 100 == 0:
+                        print(f"Processed {processed_count} emails")
+                        time.sleep(1) 
+                except Exception as e:
+                    print(f"Error processing message {message['id']}: {str(e)}")
+                    continue
 
-        page_token = results.get('nextPageToken')
-        if not page_token:
-            break
+            page_token = results.get('nextPageToken')
+            if not page_token:
+                break
+    except Exception as e:
+        print(f"Error fetching emails: {str(e)}")
 
     sorted_senders = sorted(senders.items(), key=lambda x: x[1], reverse=True)
     
-    # Cache result in session
     session["senders_cache"] = copy.deepcopy(sorted_senders)
     return sorted_senders
 
-def get_message_body(parts):
+
+def get_message_body(msg):
+    """Extract the email body from a Gmail message."""
+    if 'payload' not in msg:
+        return ""
+    
+    parts = msg['payload'].get('parts', [])
+    
+    if not parts and 'body' in msg['payload'] and 'data' in msg['payload']['body']:
+        data = msg['payload']['body']['data']
+        return base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
+
+    return extract_body_from_parts(parts)
+
+
+def extract_body_from_parts(parts):
     """Extract the email body from message parts recursively."""
     body = ""
+    html_content = ""
+    plain_content = ""
+    
     for part in parts:
-        if part.get('mimeType') in ['text/plain', 'text/html'] and 'data' in part.get('body', {}):
+        mime_type = part.get('mimeType', '')
+        
+        if mime_type == 'text/plain' and 'data' in part.get('body', {}):
             data = part['body']['data']
-            text = base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
-            body += text
+            plain_content += base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
+        
+        elif mime_type == 'text/html' and 'data' in part.get('body', {}):
+            data = part['body']['data']
+            html_content += base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
+        
         elif 'parts' in part:
-            body += get_message_body(part['parts'])
+            part_content = extract_body_from_parts(part['parts'])
+            body += part_content
+
+    if html_content:
+        return html_content
+    elif plain_content:
+        return plain_content
+    
     return body
 
+
 def find_unsubscribe_link(email_body):
-    """Find an unsubscribe link in the email body using regex pattern."""
-    pattern = r"(?i)Unsubscribe[^a-z0-9\s]?\s*\[LINK:\s*([^\]]+)\]"
-    match = re.search(pattern, email_body)
-    return match.group(1) if match else ''
+    """Find an unsubscribe link in the email body."""
+    if not email_body:
+        return ''
+    
+    unsubscribe_match = re.search(r"(?i)unsubscribe", email_body)
+    
+    if unsubscribe_match:
+        unsubscribe_pos = unsubscribe_match.start()
+        
+        remaining_text = email_body[unsubscribe_pos:]
+        
+        link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
+        
+        if link_match:
+            return link_match.group(1)
+            
+        html_link_match = re.search(r'href=["\'](https?://[^"\'>]+)["\']', remaining_text)
+        if html_link_match:
+            return html_link_match.group(1)
+    
+    return ''
+
 
 def process_unsubscribe_link(link, sender):
     """Process and store the unsubscribe link in the database."""
     if not link:
         return
     
-    link_obj = Link.query.filter_by(link=link).first()
-    if link_obj:
-        unsubj = Unsubscribe.query.filter_by(link=link_obj.link).first()
+    try:
+        if link.startswith('[LINK:') and link.endswith(']'):
+            code = link.strip('[LINK:').strip(']').strip()
+            try:
+                link_id = short_url.decode_url(code)
+                link_obj = Link.query.filter_by(id=link_id).first()
+                if link_obj:
+                    link = link_obj.link
+            except Exception as e:
+                print(f"Error decoding short URL: {str(e)}")
+                return
+
+        unsubj = Unsubscribe.query.filter_by(sender=sender).first()
         if not unsubj:
-            new_unsub = Unsubscribe(sender=sender, user=current_user.id, link=link_obj.link)
+
+            new_unsub = Unsubscribe(sender=sender, link=link, user=current_user.id)
             db.session.add(new_unsub)
-            print(new_unsub)
+            print(f"Added unsubscribe link for {sender}: {link}")
             db.session.commit()
+    except Exception as e:
+        print(f"Error processing unsubscribe link: {str(e)}")
 
 
 @app.route('/delete_sender', methods=["POST"])
@@ -610,14 +714,12 @@ def delete_sender():
     if not sender_name:
         return jsonify({"error": "No sender specified"}), 400
 
-    # Store the deleted sender in session
     deleted_senders = session.get("deleted", [])
 
     if sender_name not in deleted_senders:
         deleted_senders.append(sender_name)
         session["deleted"] = deleted_senders
 
-    # Filter the cached senders list instead of re-fetching
     if "senders_cache" in session:
         session["senders_cache"] = [
             (sender, count) for sender, count in session["senders_cache"] if sender != sender_name
@@ -638,33 +740,28 @@ def restore_sender():
     if not sender_name:
         return jsonify({"error": "No sender specified"}), 400
     
-    # Retrieve deleted senders
+
     deleted_senders = session.get("deleted", [])
     
     if sender_name not in deleted_senders:
         return jsonify({"error": f"{sender_name} was not previously deleted"}), 400
-    
-    # Remove sender from deleted list
+
     deleted_senders.remove(sender_name)
     session["deleted"] = deleted_senders
     
-    # Restore the sender to the cached senders list if available
+
     if "senders_cache" in session and session.get("final_inbox", False):
         print(session["final_inbox"])
         
-        # For reverse sorting, we need to negate the key value
         if not isinstance(session["senders_cache"], SortedList):
-            # Create a new SortedList with a custom key function to sort by number in descending order
             session["senders_cache"] = SortedList(session["senders_cache"], key=lambda x: -x[1])
         
-        # Process the inbox as before
+
         for sender in session["final_inbox"]:
             print(sender["sender"], sender["number"], sender["sender"] == sender_name)
             if sender["sender"] == sender_name:
-                # This will automatically insert at the correct position (reverse sorted)
                 session["senders_cache"].add((sender["sender"], sender["number"]))
-        
-        # Convert SortedList back to a regular list for JSON serialization
+
         session["senders_cache"] = list(session["senders_cache"])
     
     return jsonify({
@@ -712,7 +809,7 @@ def remove_all_senders():
                     service.users().messages().trash(userId="me", id=msg["id"]).execute()
                     deleted_count += 1
                     
-                    # Rate limiting
+
                     if deleted_count % 50 == 0:
                         time.sleep(1)
                 
@@ -723,7 +820,6 @@ def remove_all_senders():
         except Exception as e:
             return jsonify({"error": f"Failed while processing {sender}: {str(e)}"}), 500
     
-    # Clear the deleted senders list
     session["deleted"] = []
     
     return jsonify({

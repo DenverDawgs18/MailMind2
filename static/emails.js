@@ -152,6 +152,7 @@ loadMoreButton.addEventListener("click", () => {
         .catch(error => console.error("Error loading more emails:", error));
         });
 
+ /*
 let emails = emailList.children;
 let j = 0;
         
@@ -187,3 +188,4 @@ for (const email of emails) {
     }
     j++;
 }
+*/
