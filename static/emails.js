@@ -152,40 +152,43 @@ loadMoreButton.addEventListener("click", () => {
         .catch(error => console.error("Error loading more emails:", error));
         });
 
- /*
+
 let emails = emailList.children;
-let j = 0;
-        
-for (const email of emails) {
-    let email_children = email.children;
-    let currentActionItemDiv = null;
-            
-    for (let i = 0; i < email_children.length; i++) {
-        if (i === 2) {
-            currentActionItemDiv = email_children[i].children[0];
-            console.log(currentActionItemDiv);
+async function processEmailsSequentially(emails) {
+    for (let j = 0; j < emails.length; j++) {
+        const email = emails[j];
+        const email_children = email.children;
+        let currentActionItemDiv = null;
+        let body = null;
+
+        for (let i = 0; i < email_children.length; i++) {
+            if (i === 2) {
+                currentActionItemDiv = email_children[i].children[0];
+            }
+            if (i === 3) {
+                body = email_children[i].children[1];
+            }
         }
-                
-        if (i === 3) {
-            let body = email_children[i].children[1];
-                    
-            // Store the reference to the action item div in a closure
-            (function(actionDiv, emailIndex) {
-                fetch("/get_one_action", {
+
+        if (currentActionItemDiv && body) {
+            console.log(body.textContent);
+            try {
+                const response = await fetch("/get_one_action", {
                     method: "POST",
-                        headers: {
+                    headers: {
                         "Content-Type": "application/json"
                     },
-                            body: JSON.stringify({body: body.textContent, index: emailIndex})
-                })
-                .then(response => response.json())
-                .then(data => {
-                 // This will use the correct action item div for each email
-                    actionDiv.children[1].textContent = data.action_item;
+                    body: JSON.stringify({ body: body.textContent, index: j })
                 });
-            })(currentActionItemDiv, j);
+
+                const data = await response.json();
+                currentActionItemDiv.children[1].textContent = data.action_item;
+            } catch (err) {
+                console.error("Error fetching action item:", err);
+            }
         }
     }
-    j++;
 }
-*/
+
+processEmailsSequentially(emails);
+

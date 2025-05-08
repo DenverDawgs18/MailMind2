@@ -130,7 +130,6 @@ app.jinja_env.filters['linkify_text'] = linkify_text
 @app.route('/emails')
 @login_required
 def emails():
-    session.clear()
     access_token = refresh(current_user)
     if session.get('final_emails', False):
         print('refresh')
