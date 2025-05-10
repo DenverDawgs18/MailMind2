@@ -251,10 +251,6 @@ def get_one_action():
     session["final_emails"] = final_emails
     return jsonify({"action_item": action})
 
-
-    
-
-
 @app.route('/load_more', methods=["POST"])
 @login_required
 def load_more():
@@ -425,109 +421,20 @@ def analyze():
 @app.route('/summary') 
 @login_required     
 def summary():
-    access_token = refresh(current_user)
-    if session.get('final_emails', False):
-        print("using cached emails")
-        last_load = session.get('last_load', datetime.now(timezone.utc))
-        emails = session['final_emails']
-        after_date = last_load.strftime("%m-%d-%y")  
-        since_time = last_load.strftime("%H:%M:%S")  
-        new_emails = get_emails("gmail", current_user.email, access_token, after_date=after_date, 
-                since_time=since_time)
-        
-        batch_action_items = batch_get_action_items(new_emails)
-        
-        for i, email in enumerate(new_emails):
-            if i < len(batch_action_items):
-                email['action_items'] = batch_action_items[i]
-        
-        one_day = datetime.now(timezone.utc) - timedelta(days=1)
-        recent_emails = []
-        for email in emails:
-            email_date = datetime.fromisoformat(email['utc'])
-            if email_date.tzinfo is None:
-                email_date = email_date.replace(tzinfo=timezone.utc)
-            if email_date >= one_day:
-                recent_emails.append(email)
-        
-        final_emails = recent_emails + new_emails
-        session['final_emails'] = final_emails
-        session['last_load'] = datetime.now(timezone.utc)
-        
-        all_items = []
-
-        for email in final_emails:
-            all_items.append(email["action_items"])
-        
-        return render_template('summary.html', summary = all_items)
-    else:
-        current_datetime = datetime.now()
-        current_time_formatted = current_datetime.strftime("%H:%M:%S")
-        today = date.today()
-        yesterday = today - timedelta(days=1)
-        yesterday = yesterday.strftime("%m-%d-%y")
-        emails = get_emails("gmail", current_user.email, access_token, after_date=yesterday, 
-                            since_time=current_time_formatted, old=None)
-        emails = list(reversed(emails))
-        
-        for email in emails:
-            unsubscribe_match = re.search(r"(?i)unsubscribe", email['body'])
-                
-            if unsubscribe_match:
-                unsubscribe_pos = unsubscribe_match.start()
-            
-                remaining_text = email['body'][unsubscribe_pos:]
-                    
-                link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
-                    
-                if link_match:
-                    code = link_match.group(1)
-                    try:
-                        link_id = short_url.decode_url(code)
-                        link_obj = Link.query.filter_by(id=link_id).first()
-                            
-                        if link_obj and link_obj.link:
-                            real_link = link_obj.link
-                                
-                            unsubj = Unsubscribe.query.filter_by(sender=email["from"]).first()
-                                
-                            if not unsubj:
-                                new_unsub = Unsubscribe(sender=email['from'], link=real_link, user=current_user.id)
-                                db.session.add(new_unsub)
-                                print(f"Added unsubscribe link for {email['from']}: {real_link}")
-                                db.session.commit()
-                    except Exception as e:
-                        print(f"Error processing unsubscribe link: {str(e)}")
-                        continue
-
-        high_priority_batch = [email for email in emails if email['from'] in current_user.high_priority]
-        regular_emails = [email for email in emails if email['from'] not in current_user.high_priority]
-        
-        if high_priority_batch:
-            high_priority_action_items = batch_get_action_items(high_priority_batch)
-            for i, email in enumerate(high_priority_batch):
-                if i < len(high_priority_action_items):
-                    email['action_items'] = high_priority_action_items[i]
-        
-        final_emails = high_priority_batch.copy()
-        
-        if regular_emails:
-            for i in range(0, len(regular_emails), 5):
-                batch = regular_emails[i:i+5]
-                batch_get_action_items = batch_get_action_items(batch)
-                for j, email in enumerate(batch):
-                    if j < len(batch_get_action_items):
-                        email['action_items'] = batch_get_action_items[j]
-                    final_emails.append(email)
-        
-        session['final_emails'] = final_emails
-        session['last_load'] = datetime.now(timezone.utc)
-        
-        all_items = []
-        for email in final_emails:
-            all_items.append(email["action_items"])
-        
-        return render_template('summary.html', summary = all_items)
+    all_items = []
+    text = ""
+    final_emails = session.get("final_emails", False)
+    if final_emails:
+        for email in final_emails: 
+            no_action = email["action_items"] != "No action" and email["action_items"] != "No action."
+            print(no_action)
+            if email["action_items"] != "Generating ..." and no_action:
+                print("appending")
+                all_items.append(email["action_items"])
+            elif email["action_items"] == "Generating ...":
+                print('text change')
+                text = "More action items to generate on emails page"
+    return render_template('summary.html', items = all_items, text=text)
 
 @app.route('/email_cleaner', methods=["GET", "POST"])
 @login_required

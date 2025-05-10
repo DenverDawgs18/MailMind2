@@ -16,10 +16,16 @@
         <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
     </div>
     <div class="wrapper">
-        <div class="summary">
-            <h2 class="summaryheader summarytext">Summary of the last 24 hours of emails:</h2>
-            <p class="summarytext">{{summary | markdown | safe }}</p>
-        </div>
+        {% if text %}
+            <h2 class="summaryheader summarytext">All generated action items of the last 24 hours of emails ({{text}}):</h2>
+        {% else %}
+            <h2 class="summaryheader summarytext">All generated action items of the last 24 hours of emails ({{text}}):</h2>
+        {% endif %}
+        <ul class="items">
+            {% for item in items %}
+                <li class="item">{{item}}</li>
+            {% endfor %}
+        </ul>
     </div>
 </body>
 </html>

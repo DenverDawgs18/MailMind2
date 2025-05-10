@@ -171,20 +171,22 @@ async function processEmailsSequentially(emails) {
         }
 
         if (currentActionItemDiv && body) {
-            console.log(body.textContent);
-            try {
-                const response = await fetch("/get_one_action", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ body: body.textContent, index: j })
-                });
+            if (currentActionItemDiv.children[1].textContent === "Generating ..."){
+                try {
+                    const response = await fetch("/get_one_action", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({ body: body.textContent, index: j })
+                    }); 
 
-                const data = await response.json();
-                currentActionItemDiv.children[1].textContent = data.action_item;
-            } catch (err) {
-                console.error("Error fetching action item:", err);
+                    const data = await response.json();
+                    currentActionItemDiv.children[1].textContent = data.action_item;
+                } 
+                catch (err) {
+                    console.error("Error fetching action item:", err);
+                }
             }
         }
     }

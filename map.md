@@ -1,16 +1,13 @@
 SPRINTS:
 
 
-Implement Fine Tuned Models
-
-Stream 
-
+Get these 4 + super basic site + business setup and it'll be ready
+JUNE 1 GOAL
 Write paper on findings
-
-Tech
 Auto unsubscribe
+Refresh tokens
 Add support for Outlook
-Implement cleaner improvements
+
 
 Outlook:
 Login
@@ -27,6 +24,7 @@ Security sprint (oauth tokens especially )
 Launch (get everything set up to run not locally, host it (probably fly))
 
 
+Later 
 MBOX:
 Select multiple
 Disable buttons
@@ -34,5 +32,3 @@ Better UI
 Progress Bar
 
 
-
-Issue: Expired tokens
