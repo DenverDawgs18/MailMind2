@@ -63,9 +63,7 @@ def load_user(id):
     return User.query.get(int(id))
 
 
-@app.template_filter("markdown")
-def markdown_filter(text):
-    return markdown.markdown(text, output_format="html", extensions=["extra"])
+
 
 
 @app.route('/logout')
@@ -121,11 +119,18 @@ def google_callback():
         user.last_login = datetime.now(timezone.utc)
     login_user(user, remember = True)
     return redirect(url_for("index"))
+
 @app.template_filter('markdown')
 def markdown_filter(text):
     return markdown.markdown(text)
+
+@app.template_filter("remove_asterisks")
+def remove_asterisks(text):
+    return text.replace("*", "")
+
 app.jinja_env.filters['markdown'] = markdown_filter
 app.jinja_env.filters['linkify_text'] = linkify_text
+app.jinja_env.filters["remove_asterisks"] = remove_asterisks
 
 @app.route('/emails')
 @login_required
