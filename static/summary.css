@@ -12,6 +12,7 @@ body{
     box-shadow: 3px 3px black;
 }
 
+
 .summarytext{
     color: white;
     max-width: 100%;
@@ -26,6 +27,20 @@ body{
 
 .summary *{
     color: white;
+}
+.itemwrapper{
+    display: flex;
+    gap: 20px;
+}
+.expand{
+    background-color: orange;
+    color: white;
+    border: 1px solid black;
+    font-size: 18px; 
+    border-radius: 50px;
+    padding: 10px;
+
+
 }
 
 .item{

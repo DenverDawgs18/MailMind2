@@ -7,6 +7,7 @@ Write paper on findings
 Auto unsubscribe
 Refresh tokens
 Add support for Outlook
+Responsiveness
 
 
 Outlook:

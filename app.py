@@ -426,7 +426,7 @@ def analyze():
 @app.route('/summary') 
 @login_required     
 def summary():
-    all_items = []
+    emails = []
     text = ""
     final_emails = session.get("final_emails", False)
     if final_emails:
@@ -435,11 +435,11 @@ def summary():
             print(no_action)
             if email["action_items"] != "Generating ..." and no_action:
                 print("appending")
-                all_items.append(email["action_items"])
+                emails.append(email)
             elif email["action_items"] == "Generating ...":
                 print('text change')
                 text = "More action items to generate on emails page"
-    return render_template('summary.html', items = all_items, text=text)
+    return render_template('summary.html', emails=emails, text = text)
 
 @app.route('/email_cleaner', methods=["GET", "POST"])
 @login_required
