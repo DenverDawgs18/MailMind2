@@ -43,31 +43,37 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     })
 })
-let check = true
-let reply_btn = document.querySelector('.reply')
-reply_btn.addEventListener('click', () => {
-    if (check){
-        document.querySelector('#replydiv').classList.add('replycontain');
-        document.querySelector('#replydiv').classList.remove('replywrap');
-        reply_btn.textContent = "Hide Reply"
-        check = false
+let reply_btns = document.querySelectorAll('.reply')
+let reply_divs = document.querySelectorAll('.replydiv')
+for (let i = 0; i < reply_btns.length; i++){
+    reply_btns[i].textContent = "Reply"
+    reply_btns[i].addEventListener('click', () => {
+    if (reply_btns[i].textContent == "Reply"){
+        reply_divs[i].classList.add('replycontain');
+        reply_divs[i].classList.remove('replywrap');
+        reply_btns[i].textContent = "Hide Reply"
     }
     else{
-        document.querySelector('#replydiv').classList.remove('replycontain');
-        document.querySelector('#replydiv').classList.add('replywrap');
-        reply_btn.textContent = "Reply"
-        check = true
+        reply_divs[i].classList.remove('replycontain');
+        reply_divs[i].classList.add('replywrap');
+        reply_btns[i].textContent = "Reply"
     }
-
 })
-let reply_smt = document.querySelector('#replysubmit');
-reply_smt.addEventListener('click', (e) => {
+}
+
+let reply_smts = document.querySelectorAll('.replysubmit');
+let bodys = document.querySelectorAll(".body");
+let ccs = document.querySelectorAll(".cc");
+let bccs = document.querySelectorAll('.bcc');
+for (let i = 0; i < reply_smts.length; i++){
+    reply_smts[i].addEventListener('click', (e) => {
     e.preventDefault()
-    let body = document.querySelector('#body').value;
-    let cc = document.querySelector('#cc').value;
-    let bcc = document.querySelector('#bcc').value;
-    let subject = reply_smt.getAttribute('subject')
-    let from = reply_smt.getAttribute('from')
+    let body = bodys[i].value
+    let cc = ccs[i].value
+    let bcc = bccs[i].value
+    let subject = reply_smts[i].dataset.subject
+    let from = reply_smts[i].dataset.from
+    console.log(body, cc, bcc, subject, from)
     fetch("/reply", {
         method: "POST", 
         headers:{
@@ -79,12 +85,16 @@ reply_smt.addEventListener('click', (e) => {
     .then(response => response.json())
     .then(data => {
         if (data.success === true) {
-            document.querySelector('#body').value = ""
+            bodys[i].value = ""
+            ccs[i].value = ""
+            bccs[i].value = ""
             alert("reply sent successfully")
         }
     }
         
     )})
+}
+
 let compose = document.querySelector('.compose');
 let dialog = document.querySelector('dialog');
 let second_check = true;

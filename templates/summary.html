@@ -58,18 +58,18 @@
                             {% endif %}
                         </button>
                     </div>
-                    <div id="replydiv" class="replywrap">
+                    <div id="replydiv" class="replywrap replydiv">
                         <h1 class="replyheader">Reply</h1>
-                            <form id="replyform" class="emailform">
-                                <label for="cc" class="replylabel">CC: (please enter as list of emails seperated by commas)</label>
-                                <input type="text" id="cc" name="cc" class="replyin">
-                                <label for="bcc" class="replylabel">BCC: (please enter as list of emails seperated by commas)</label>
-                                <input type="text" id="bcc" name="bcc" class="replyin">    
-                                <label for="body" class="replylabel">Body:</label> 
-                                <input type="text" id="body" name="body" class="replyin">          
-                                <button type="submit" class="action" id="replysubmit"
-                                        from="{{email.from}}" subject="{{email.subject}}">Submit</button>
-                            </form>
+                        <form id="replyform" class="emailform">
+                            <label for="cc" class="replylabel">CC: (please enter as list of emails seperated by commas)</label>
+                            <input type="text" id="cc" name="cc" class="cc replyin">
+                            <label for="bcc" class="replylabel">BCC: (please enter as list of emails seperated by commas)</label>
+                            <input type="text" id="bcc" name="bcc" class="bcc replyin">    
+                            <label for="body" class="replylabel">Body:</label> 
+                            <input type="text" id="body" name="body" class="body replyin">          
+                            <button type="submit" class="action replysubmit" id="replysubmit"
+                            data-from="{{email.from}}" data-subject="{{email.subject}}">Submit</button>
+                        </form>
                     </div>
                 </div>
             {% endfor %}

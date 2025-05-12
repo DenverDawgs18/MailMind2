@@ -8,7 +8,7 @@ Auto unsubscribe
 Refresh tokens
 Add support for Outlook
 Responsiveness
-
+Getting new emails
 
 Outlook:
 Login
