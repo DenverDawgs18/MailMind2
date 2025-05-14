@@ -9,6 +9,7 @@ Refresh tokens
 Add support for Outlook
 Responsiveness
 Getting new emails
+Fix inbox cleaner
 
 Outlook:
 Login

@@ -6,6 +6,7 @@ from email import message_from_bytes
 from email.header import decode_header
 import html2text
 import short_url
+from datetime import timezone, timedelta
 
 from app import db
 from models import Link
@@ -128,19 +129,19 @@ def extract_content(msg) -> str:
     return text
 
 
-def get_emails(host: str,
-               user_email: str,
+def get_emails(host: str, 
+               user_email: str, 
                token: str,
-               after_date: str,
-               since_time: str = None,
-               before_date: str = None,
-               old: list = None) -> list:
+               after_date: str = None,
+               since_time: str = None) -> list:
     """
     Fetch and process emails via IMAP, returning list of dicts with keys:
     'from', 'subject', 'body', 'utc'.
-
+    
     - Batches DB commits for link shortening.
     - Deduplicates based on existing 'old' list of dicts.
+    - If after_date and since_time are provided, uses them as filter
+    - Otherwise defaults to exactly 24 hours ago from now
     """
     msgs = []
     try:
@@ -150,65 +151,68 @@ def get_emails(host: str,
             folder = 'INBOX'
         else:
             raise ValueError(f'Unsupported host: {host}')
-
-        # Parse date filters
-        parsed_after = datetime.strptime(after_date, "%m-%d-%y")
-        since_date_str = parsed_after.strftime("%d-%b-%Y")
-        parsed_after_dt = datetime.strptime(f"{after_date} {since_time}", "%m-%d-%y %H:%M:%S") if since_time else None
-
-        before_date_str = None
-        parsed_before_dt = None
-        if before_date:
-            parsed_before = datetime.strptime(before_date, "%m-%d-%y")
-            before_date_str = parsed_before.strftime("%d-%b-%Y")
-            parsed_before_dt = parsed_before
-
-        # Prepare dedupe set
-        existing = set()
-        if old:
-            for e in old:
-                existing.add(f"{e['from']}|{e['subject']}")
-
+        
+        # Set the time window for email fetching
+        now = datetime.now(timezone.utc)
+        
+        # Target cutoff time - either from parameters or default to 24 hours ago
+        cutoff_datetime = None
+        
+        if after_date and since_time:
+            # Use provided date/time
+            try:
+                cutoff_datetime = datetime.strptime(f"{after_date} {since_time}", "%m-%d-%y %H:%M:%S")
+                if cutoff_datetime.tzinfo is None:
+                    cutoff_datetime = cutoff_datetime.replace(tzinfo=timezone.utc)
+            except Exception as e:
+                logger.warning(f"Error parsing datetime: {e}, will default to 24 hours ago")
+                cutoff_datetime = now - timedelta(hours=24)
+        else:
+            # Default to 24 hours ago
+            cutoff_datetime = now - timedelta(hours=24)
+        
+        logger.info(f"Getting emails since: {cutoff_datetime}")
+        
+        # For IMAP SINCE query, we need to go back 2 days to ensure we don't miss any emails
+        # because SINCE only works with dates, not times
+        imap_since_date = (cutoff_datetime - timedelta(days=1)).strftime("%d-%b-%Y")
+        
         # Connect and fetch
         with IMAPClient(imap_host) as client:
             client.oauth2_login(user_email, token)
             client.select_folder(folder)
-
-            criteria = ['SINCE', since_date_str]
-            if before_date_str:
-                criteria.extend(['BEFORE', before_date_str])
-
+            
+            logger.info(f"Searching for emails since {imap_since_date} (IMAP date filter)")
+            criteria = ['SINCE', imap_since_date]
+            
             uids = client.search(criteria)
-            logger.info(f"Found {len(uids)} messages SINCE {since_date_str} TO {before_date_str or 'now'}")
-
+            logger.info(f"Found {len(uids)} messages matching date filter")
+            
             # Fetch in batches
             for i in range(0, len(uids), 50):
                 batch = uids[i:i+50]
                 resp = client.fetch(batch, ['RFC822', 'INTERNALDATE'])
                 for uid, data in resp.items():
-                    internal = data[b'INTERNALDATE']
-                    if parsed_after_dt and internal < parsed_after_dt:
+                    internal_date = data[b'INTERNALDATE'].astimezone(timezone.utc)
+                    
+                    # Filter emails based on our precise cutoff time
+                    if internal_date < cutoff_datetime:
                         continue
-                    if parsed_before_dt and internal >= parsed_before_dt:
-                        continue
-
+                    
                     raw = data[b'RFC822']
                     msg = message_from_bytes(raw)
                     frm = safe_decode_header(msg['From'])
                     subj = safe_decode_header(msg['Subject'])
-                    key = f"{frm}|{subj}"
-                    if key in existing:
-                        continue
-
                     body = extract_content(msg)
-                    msgs.append({'from': frm, 'subject': subj, 'body': body, 'utc': internal})
-                    existing.add(key)
-
+                    msgs.append({'from': frm, 'subject': subj, 'body': body, 'utc': internal_date})
+                    
+        logger.info(f"After time filtering, returning {len(msgs)} messages")
+        
         # Commit all new links at once
         db.session.commit()
         _link_cache.clear()
         return msgs
-
+    
     except Exception as e:
         logger.error(f"Failed to fetch emails: {e}")
         raise

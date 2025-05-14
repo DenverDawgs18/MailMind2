@@ -22,7 +22,6 @@ app.config["SESSION_USE_SIGNER"] = True
 app.config["SESSION_REDIS"] = Redis(host="localhost", port=6379)
 Session(app)
 from functions.get_emails import get_emails
-from functions.old.process_emails import process_email_batch
 import requests
 import os
 import json
@@ -35,7 +34,7 @@ from functions.refresh_token import refresh
 from functions.users import get_last_login, get_user, update_last_login, create_user
 from functions.linkify import linkify_text
 from functions.reply import reply
-from functions.get_action_items import batch_get_action_items
+from functions.old.get_action_items import batch_get_action_items
 from functions.get_one_action import get_an_action
 import re
 import short_url
@@ -132,83 +131,115 @@ app.jinja_env.filters['markdown'] = markdown_filter
 app.jinja_env.filters['linkify_text'] = linkify_text
 app.jinja_env.filters["remove_asterisks"] = remove_asterisks
 
+@app.route("/sessionclear")
+def session_clear():
+    session.clear()
+    return render_template("index.html")
+
+from dateutil import parser
 @app.route('/emails')
 @login_required
 def emails():
     access_token = refresh(current_user)
+    
+    # Handle refresh case - where we're adding new emails to existing ones
     if session.get('final_emails', False):
         print('refresh')
-        today = date.today()
-        last_load = session.get('last_load', datetime.now(timezone.utc))
-        emails = session['final_emails']
-        after_date = last_load.strftime("%m-%d-%y")  
-        since_time = last_load.strftime("%H:%M:%S")  
-        new_emails = get_emails("gmail", current_user.email, access_token, after_date=after_date, 
-                            since_time=since_time)
-        for email in new_emails:
-            unsubscribe_match = re.search(r"(?i)unsubscribe", email['body'])
-                
-            if unsubscribe_match:
-                unsubscribe_pos = unsubscribe_match.start()
+        
+        # Get the last load time from session
+        if 'last_load' in session:
+            last_load_val = session.get('last_load')
+            print(f"Raw last_load from session: {last_load_val}")
             
-                remaining_text = email['body'][unsubscribe_pos:]
-                    
-                link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
-                    
-                if link_match:
-                    code = link_match.group(1)
-                    try:
-                        link_id = short_url.decode_url(code)
-                        link_obj = Link.query.filter_by(id=link_id).first()
-                            
-                        if link_obj and link_obj.link:
-                            real_link = link_obj.link
-                                
-                            unsubj = Unsubscribe.query.filter_by(sender=email["from"]).first()
-                                
-                            if not unsubj:
-
-                                new_unsub = Unsubscribe(sender=email['from'], link=real_link, user=current_user.id)
-                                db.session.add(new_unsub)
-                                print(f"Added unsubscribe link for {email['from']}: {real_link}")
-                                db.session.commit()
-                    except Exception as e:
-                        print(f"Error processing unsubscribe link: {str(e)}")
-                        continue
+            # Parse the last_load value
+            if isinstance(last_load_val, str):
+                try:
+                    last_load = parser.parse(last_load_val)
+                    # Ensure it has timezone info
+                    if last_load.tzinfo is None:
+                        last_load = last_load.replace(tzinfo=timezone.utc)
+                except Exception as e:
+                    print(f"Error parsing date: {str(e)}")
+                    last_load = datetime.now(timezone.utc)
+            elif isinstance(last_load_val, datetime):
+                last_load = last_load_val
+                # Ensure it has timezone info
+                if last_load.tzinfo is None:
+                    last_load = last_load.replace(tzinfo=timezone.utc)
+            else:
+                print(f"Unexpected type for last_load: {type(last_load_val)}")
+                last_load = datetime.now(timezone.utc)
+        else:
+            last_load = datetime.now(timezone.utc)
+            print(f"No last_load in session, using current time: {last_load}")
+        
+        # Format date and time for get_emails
+        after_date = last_load.strftime("%m-%d-%y")
+        since_time = last_load.strftime("%H:%M:%S")
+        
+        # Get new emails since last load
+        print("Calling get_emails for refresh...")
+        new_emails = get_emails("gmail", current_user.email, access_token, 
+                             after_date=after_date, since_time=since_time)
+        
+        print(f"Found {len(new_emails)} new emails in refresh")
+        
+        # Process unsubscribe links for new emails
+        process_unsubscribe_links(new_emails, current_user)
+        
+        # Add action items placeholder and merge with existing emails
         final_emails = []
+        for email in new_emails:
+            email["action_items"] = "Generating ..."
+            final_emails.append(email)
+            
+        emails = session.get("final_emails")
         for email in emails:
             final_emails.append(email)
-
-        for email in new_emails:
-            if email not in final_emails:
-                email["action_item"] = "Generating ..."
-                final_emails.append(email)
-                
-                    
-        session['final_emails'] = final_emails 
-        session['last_load'] = datetime.now(timezone.utc)
+            
+        session['final_emails'] = final_emails
         return render_template('emails.html', emails=final_emails)
 
+    # Initial load - get emails from the last 24 hours
     current_datetime = datetime.now(timezone.utc)
-    current_time_formatted = current_datetime.strftime("%H:%M:%S")
-    today = datetime.now(timezone.utc).date()
-    yesterday = today - timedelta(days=1)
-    session['since'] = yesterday
-    yesterday = yesterday.strftime("%m-%d-%y")
-    session['last_load'] = current_datetime
+    session['last_load'] = current_datetime.isoformat()
 
-    emails = get_emails("gmail", current_user.email, access_token, after_date=yesterday, 
-                        since_time=current_time_formatted, old=None)
+    # Get emails from exactly 24 hours ago (no parameters = use default 24h window)
+    # This will fetch using an IMAP date filter 2 days back, then filter precisely in Python
+    emails = get_emails("gmail", current_user.email, access_token)
     
+    # Reverse order for newest first
     emails = list(reversed(emails))
+    
+    # Process unsubscribe links
+    process_unsubscribe_links(emails, current_user)
+    
+    # Sort by priority and add action items placeholder
+    final_emails = []
+    high_priority = [email for email in emails if email['from'] in current_user.high_priority] 
+    
+    for email in high_priority:
+        email["action_items"] = "Generating ..."
+        final_emails.append(email)
+        
+    for email in emails: 
+        if email not in final_emails: 
+            email["action_items"] = "Generating ..."
+            final_emails.append(email)
+            
+    session["final_emails"] = final_emails
+            
+    return render_template('emails.html', emails=final_emails)
+
+
+def process_unsubscribe_links(emails, current_user):
+    """Helper function to process unsubscribe links in emails"""
     for email in emails:
         unsubscribe_match = re.search(r"(?i)unsubscribe", email['body'])
         
         if unsubscribe_match:
             unsubscribe_pos = unsubscribe_match.start()
-            
             remaining_text = email['body'][unsubscribe_pos:]
-            
             link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
             
             if link_match:
@@ -219,7 +250,6 @@ def emails():
                     
                     if link_obj and link_obj.link:
                         real_link = link_obj.link
-                        
                         unsubj = Unsubscribe.query.filter_by(sender=email["from"]).first()
                         
                         if not unsubj:
@@ -230,18 +260,6 @@ def emails():
                 except Exception as e:
                     print(f"Error processing unsubscribe link: {str(e)}")
                     continue
-    final_emails = []
-    high_priority = [email for email in emails if email['from'] in current_user.high_priority] 
-    for email in high_priority:
-        email["action_items"] = "Generating ..."
-        final_emails.append(email)
-    for email in emails: 
-        if email not in final_emails: 
-            email["action_items"] = "Generating ..."
-            final_emails.append(email)
-    session["final_emails"] = final_emails
-            
-    return render_template('emails.html', emails=final_emails)
 
 @app.route("/get_one_action", methods=["POST"])
 @login_required 
@@ -269,7 +287,7 @@ def load_more():
     day = session['since'] - timedelta(days=1)
     session['since'] = day
     day = day.strftime("%m-%d-%y")
-    new_emails = get_emails("gmail", current_user.email, access_token, after_date=day, since_time=session['time'], before_date=prev, old=final_emails)
+    new_emails = get_emails("gmail", current_user.email, access_token, after_date=day, since_time=session['time'], old=final_emails)
     new_emails.reverse()
     to_process = []
     for email in new_emails:
