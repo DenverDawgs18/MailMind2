@@ -37,7 +37,7 @@ document.addEventListener("DOMContentLoaded", function () {
             .then(data => {
                 // Update processed count in stats element
                 if (statsElement) {
-                    statsElement.textContent = data.processed_count;
+                    statsElement.textContent = `Loaded: ${data.processed_count} emails`;
                 }
                 
                 // Update button state based on whether there are more emails to load
