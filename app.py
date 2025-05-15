@@ -773,6 +773,7 @@ def restore_sender():
     session["removed_senders_cache"] = updated_removed_cache
     session.modified = True
 
+    print(deleted_senders)
     return jsonify({
         "message": f"Restored {sender_name} to the list.",
         "text": session["senders_cache"],

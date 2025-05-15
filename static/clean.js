@@ -23,6 +23,10 @@ document.addEventListener("DOMContentLoaded", function () {
         loadMoreBtn.addEventListener("click", function() {
             // Disable button while loading
             loadMoreBtn.disabled = true;
+            document.querySelectorAll(".restore").forEach(button => {
+                const sender = button.dataset.sender;
+                restoreSender(sender);
+            });
             
             // Make AJAX request to load more emails
             fetch("/email_cleaner", {

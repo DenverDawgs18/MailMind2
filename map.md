@@ -7,7 +7,6 @@ JUNE 1 GOAL
 3. Refresh tokens
 4. Add support for Outlook
 5. Responsiveness
-6. Fix inbox cleaner
 7. Basic pre site / some styling for main site
 8. Set up business side of it
 9. Launch
