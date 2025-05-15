@@ -1,15 +1,16 @@
 SPRINTS:
 
 
-Get these 4 + super basic site + business setup and it'll be ready
 JUNE 1 GOAL
-Write paper on findings
-Auto unsubscribe
-Refresh tokens
-Add support for Outlook
-Responsiveness
-Getting new emails
-Fix inbox cleaner
+1. Write paper on findings
+2. Removing unsubs
+3. Refresh tokens
+4. Add support for Outlook
+5. Responsiveness
+6. Fix inbox cleaner
+7. Basic pre site / some styling for main site
+8. Set up business side of it
+9. Launch
 
 Outlook:
 Login
@@ -27,10 +28,9 @@ Launch (get everything set up to run not locally, host it (probably fly))
 
 
 Later 
-MBOX:
-Select multiple
-Disable buttons
-Better UI
-Progress Bar
+Auto unsub
+A/B tests
+1000 flat on button or allow user to pick?
+Getting unsub links in cleaner at the cost of speed?
 
 
