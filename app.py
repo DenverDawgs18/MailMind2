@@ -465,42 +465,98 @@ def email_cleaner():
     """Process emails directly from Gmail"""
     if 'google_credentials' not in session:
         return redirect(url_for('google_login'))
+    
+    # Initialize session variables if they don't exist
+    if "senders_cache" not in session:
+        session["senders_cache"] = []
+    
+    if "next_page_token" not in session:
+        session["next_page_token"] = None
+    
+    if "processed_count" not in session:
+        session["processed_count"] = 0
+    
+    # Handle AJAX request to load more emails
+    if request.method == "POST" and request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        batch_size = 1000
+        senders, next_page_token, processed_count = fetch_gmail_emails_batch(
+            batch_size=batch_size,
+            page_token=session.get("next_page_token"),
+            current_count=session.get("processed_count", 0)
+        )
         
-    senders = fetch_all_gmail_emails(0)
-    final = [{"sender": sender, "number": count} for sender, count in senders]
-    session["final_inbox"] = copy.deepcopy(final)
+        # Update session data
+        session["next_page_token"] = next_page_token
+        session["processed_count"] = processed_count
         
-    return render_template('upload.html', text=final, to_delete=session.get("deleted", False))
+        current_senders = {s["sender"]: s["number"] for s in session.get("senders_cache", [])}
+        
+        # Merge new senders with existing ones
+        for sender, count in senders:
+            if sender in current_senders:
+                current_senders[sender] += count
+            else:
+                current_senders[sender] = count
+        
+        final = [{"sender": sender, "number": count} for sender, count in 
+                sorted(current_senders.items(), key=lambda x: x[1], reverse=True)]
+        
+        session["senders_cache"] = copy.deepcopy(final)
+        
+        return jsonify({
+            "text": final,
+            "processed_count": processed_count,
+            "has_more": next_page_token is not None,
+            "deleted": session.get("deleted", [])
+        })
+    
+    # Initial page load
+    return render_template(
+        'upload.html', 
+        text=session.get("senders_cache", []), 
+        processed_count=session.get("processed_count", 0),
+        has_more=session.get("next_page_token") is not None,
+        to_delete=session.get("deleted", [])
+    )
 
-
-def fetch_all_gmail_emails(max_results=0, force_refresh=False):
-    """Fetch all Gmail emails with caching and search for unsubscribe links if sender is new."""
-    if not force_refresh and "senders_cache" in session:
-        return session["senders_cache"]
-
+def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
+    """Fetch a batch of Gmail emails and process senders
+    
+    Gmail API has a limit of 500 emails per request, so we'll process
+    two batches of 500 to achieve the requested batch_size of 1000.
+    """
+    
     creds = Credentials.from_authorized_user_info(session["google_credentials"])
     service = build("gmail", "v1", credentials=creds)
-
+    
     senders = {}
-    processed_count = 0
-    page_token = None
-    batch_size = 500  
-
+    processed_count = current_count
+    next_page_token = page_token
+    emails_to_process = batch_size
+    gmail_api_limit = 500  # Gmail API's actual maximum per request
+    
     try:
-        while True:
-            if max_results > 0 and processed_count >= max_results:
+        # Process up to two batches to reach the requested batch_size
+        for _ in range(2):  # Do at most 2 iterations to get ~1000 emails
+            if emails_to_process <= 0:
                 break
-
+                
+            # Request up to Gmail's API limit or remaining emails needed
+            current_batch = min(gmail_api_limit, emails_to_process)
+            
             results = service.users().messages().list(
                 userId='me',
-                maxResults=batch_size,
-                pageToken=page_token
+                maxResults=current_batch,
+                pageToken=next_page_token
             ).execute()
-
+            
             messages = results.get('messages', [])
             if not messages:
+                next_page_token = None
                 break
-
+                
+            next_page_token = results.get('nextPageToken')
+            
             for message in messages:
                 try:
                     msg = service.users().messages().get(userId='me', id=message['id']).execute()
@@ -519,25 +575,29 @@ def fetch_all_gmail_emails(max_results=0, force_refresh=False):
                                 process_unsubscribe_link(unsubscribe_link, sender)
                         
                         senders[sender] = senders.get(sender, 0) + 1
-
+                    
                     processed_count += 1
+                    emails_to_process -= 1
+                    
                     if processed_count % 100 == 0:
                         print(f"Processed {processed_count} emails")
-                        time.sleep(1) 
+                        time.sleep(0.1)  # Reduced sleep time for better UX
+                
                 except Exception as e:
                     print(f"Error processing message {message['id']}: {str(e)}")
                     continue
-
-            page_token = results.get('nextPageToken')
-            if not page_token:
+            
+            # If there's no next page token or we've processed enough emails, break
+            if not next_page_token or emails_to_process <= 0:
                 break
+    
     except Exception as e:
         print(f"Error fetching emails: {str(e)}")
-
-    sorted_senders = sorted(senders.items(), key=lambda x: x[1], reverse=True)
     
-    session["senders_cache"] = copy.deepcopy(sorted_senders)
-    return sorted_senders
+    sorted_senders = sorted(senders.items(), key=lambda x: x[1], reverse=True)
+    return sorted_senders, next_page_token, processed_count
+
+
 
 
 def get_message_body(msg):
@@ -639,65 +699,86 @@ def process_unsubscribe_link(link, sender):
 def delete_sender():
     """Remove a sender from the tracked list without re-fetching emails from Gmail."""
     sender_name = request.json.get("sender_name")
-
     if not sender_name:
         return jsonify({"error": "No sender specified"}), 400
 
     deleted_senders = session.get("deleted", [])
+    removed_senders_cache = session.get("removed_senders_cache", [])
 
     if sender_name not in deleted_senders:
         deleted_senders.append(sender_name)
         session["deleted"] = deleted_senders
 
     if "senders_cache" in session:
-        session["senders_cache"] = [
-            (sender, count) for sender, count in session["senders_cache"] if sender != sender_name
-        ]
-    session.modified = True
+        updated_cache = []
+        for entry in session["senders_cache"]:
+            if entry.get("sender") == sender_name:
+                # Save removed sender to removed_senders_cache if not already there
+                if not any(d.get("sender") == sender_name for d in removed_senders_cache):
+                    removed_senders_cache.append(entry)
+            else:
+                updated_cache.append(entry)
 
+        session["senders_cache"] = updated_cache
+        session["removed_senders_cache"] = removed_senders_cache
+    print("Length:", len(session["senders_cache"]))
+
+    session.modified = True
     return jsonify({
         "message": f"Removed {sender_name} from the list.",
-        "senders": session["senders_cache"],
+        "text": session.get("senders_cache", []),
         "deleted": deleted_senders,
     })
+
+
 
 @app.route('/restore_sender', methods=["POST"])
 def restore_sender():
     """Restore a sender back to the tracked list if it was previously removed."""
     sender_name = request.json.get("sender_name")
-    
     if not sender_name:
         return jsonify({"error": "No sender specified"}), 400
-    
 
     deleted_senders = session.get("deleted", [])
-    
+    removed_senders_cache = session.get("removed_senders_cache", [])
+    senders_cache = session.get("senders_cache", [])
+
     if sender_name not in deleted_senders:
         return jsonify({"error": f"{sender_name} was not previously deleted"}), 400
 
+    # Remove from deleted list
     deleted_senders.remove(sender_name)
     session["deleted"] = deleted_senders
-    
 
-    if "senders_cache" in session and session.get("final_inbox", False):
-        print(session["final_inbox"])
-        
-        if not isinstance(session["senders_cache"], SortedList):
-            session["senders_cache"] = SortedList(session["senders_cache"], key=lambda x: -x[1])
-        
+    # Find the removed sender entry
+    restored_entry = None
+    updated_removed_cache = []
+    for entry in removed_senders_cache:
+        if entry.get("sender") == sender_name and not restored_entry:
+            restored_entry = entry
+        else:
+            updated_removed_cache.append(entry)
 
-        for sender in session["final_inbox"]:
-            print(sender["sender"], sender["number"], sender["sender"] == sender_name)
-            if sender["sender"] == sender_name:
-                session["senders_cache"].add((sender["sender"], sender["number"]))
 
-        session["senders_cache"] = list(session["senders_cache"])
-    
+
+    # Restore the sender in the original position to preserve order
+    if restored_entry:
+        # Insert sender back where it was originally:
+        # If you want strict original index, you'd need to store it in removed_senders_cache.
+        # Here, we'll append and then sort by count descending to mimic original order
+        senders_cache.append(restored_entry)
+        senders_cache.sort(key=lambda x: x.get("count", 0), reverse=True)
+
+    session["senders_cache"] = senders_cache
+    session["removed_senders_cache"] = updated_removed_cache
+    session.modified = True
+
     return jsonify({
         "message": f"Restored {sender_name} to the list.",
-        "senders": session["senders_cache"],
+        "text": session["senders_cache"],
         "deleted": deleted_senders,
     })
+
 
 
 @app.route('/remove_all_senders', methods=["POST"])
