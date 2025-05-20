@@ -3,7 +3,6 @@ SPRINTS:
 
 JUNE 1 GOAL
 1. Write paper on findings
-2. Removing unsubs
 3. Refresh tokens
 4. Add support for Outlook
 5. Responsiveness
@@ -28,6 +27,8 @@ Launch (get everything set up to run not locally, host it (probably fly))
 
 Later 
 Auto unsub
+General idiot-proofing
+No action items on mailing lists
 A/B tests
 1000 flat on button or allow user to pick?
 Getting unsub links in cleaner at the cost of speed?

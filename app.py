@@ -837,3 +837,17 @@ def remove_all_senders():
         "message": f"Successfully moved {deleted_count} emails from {len(senders_to_delete)} senders to trash"
     })
 
+@app.route("/remove_unsubscribe", methods=["POST"])
+def remove_unsubscribe():
+    sender = request.json.get("sender")
+    print(sender)
+    unsubscribe = Unsubscribe.query.filter_by(sender=sender, user=current_user.id).first()
+    if unsubscribe:
+        db.session.delete(unsubscribe)
+        db.session.commit()
+        return jsonify({
+            "status": "success",
+            "message": f"Removed {sender}"
+        }), 200
+    else:
+        return jsonify({"message": "No unsubscribe entry found."}), 404

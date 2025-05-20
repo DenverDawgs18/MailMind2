@@ -17,7 +17,6 @@
     </div>
     
     <div class="unsubwrapper">
-        <button class="analyze">Analyze More</button>
         <table>
             <tr>
                 <th><h2 class="header">Sender</h2></th>
@@ -26,7 +25,7 @@
             {% for unsub in unsubs %}
                 <tr>
                     <td><p class="sender">{{unsub.sender}}</p></td>
-                    <td><a href="{{unsub.link}}" target="_blank"><p class="sender">Unsubscribe</p></a></td>
+                    <td><a href="{{unsub.link}}" target="_blank"><button data-sender="{{unsub.sender}}" class="unsub">Unsubscribe</button></a></td>
                 </tr>
             {% endfor %}
         </table>

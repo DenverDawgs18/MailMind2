@@ -4,9 +4,12 @@
     align-items: center;
 }
 .unsub{
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    padding: 20px;
+    color: white;
+    background-color: #ff6000;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 3px 3px black;
 }
 .sender{
     font-size: 20px;
