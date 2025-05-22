@@ -3,12 +3,11 @@ SPRINTS:
 
 JUNE 1 GOAL
 1. Write paper on findings
-3. Refresh tokens
-4. Add support for Outlook
-5. Responsiveness
-7. Basic pre site / some styling for main site
-8. Set up business side of it
-9. Launch
+2. Add support for Outlook
+3. Responsiveness
+4. Basic pre site / some styling for main site
+5. Set up business side of it
+6. Launch
 
 Outlook:
 Login

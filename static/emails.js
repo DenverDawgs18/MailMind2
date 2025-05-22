@@ -179,8 +179,13 @@ async function processEmailsSequentially(emails) {
                 body = email_children[i].children[1];
             }
         }
-
+        console.log(currentActionItemDiv.children)
         if (currentActionItemDiv && body) {
+            if (currentActionItemDiv.children.length === 1) {
+                let p = document.createElement("p")
+                p.textContent = "No action."
+                currentActionItemDiv.appendChild(p)
+            }
             if (currentActionItemDiv.children[1].textContent === "Generating ..."){
                 try {
                     const response = await fetch("/get_one_action", {

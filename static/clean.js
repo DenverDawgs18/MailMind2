@@ -18,11 +18,13 @@ document.addEventListener("DOMContentLoaded", function () {
     // Set up load more button event listener
     const loadMoreBtn = document.querySelector(".loadmore");
     const statsElement = document.querySelector('.stats');
+    const loadAllBtn = document.querySelector(".loadall");
     
     if (loadMoreBtn) {
         loadMoreBtn.addEventListener("click", function() {
             // Disable button while loading
             loadMoreBtn.disabled = true;
+            loadAllBtn.disabled = true;
             document.querySelectorAll(".restore").forEach(button => {
                 const sender = button.dataset.sender;
                 restoreSender(sender);
@@ -35,7 +37,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     'Content-Type': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: JSON.stringify({})
+                body: JSON.stringify({all: "no"})
             })
             .then(response => response.json())
             .then(data => {
@@ -46,6 +48,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 
                 // Update button state based on whether there are more emails to load
                 loadMoreBtn.disabled = !data.has_more;
+                loadAllBtn.disabled = !data.has_more
                 
                 // Update senders list with new data
                 updateSendersList(data.text);
@@ -64,6 +67,65 @@ document.addEventListener("DOMContentLoaded", function () {
             });
         });
     }
+    
+    if (loadAllBtn) {
+        loadAllBtn.addEventListener("click", function() {
+            // Disable button while loading
+            loadMoreBtn.disabled = true;
+            loadAllBtn.disabled = true;
+            document.querySelectorAll(".restore").forEach(button => {
+                const sender = button.dataset.sender;
+                restoreSender(sender);
+            });
+            
+            // Make AJAX request to load more emails
+            fetch("/email_cleaner", {
+                method: "POST",
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({all: "yes"})
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Update processed count in stats element
+                if (statsElement) {
+                    statsElement.textContent = `Loaded: ${data.processed_count} emails`;
+                }
+                
+                // Update button state based on whether there are more emails to load
+                
+                // Update senders list with new data
+                updateSendersList(data.text);
+                
+                // Check if there are any deleted senders to update
+                if (data.deleted) {
+                    updateRequestedList(data.deleted);
+                }
+            })
+            .catch(error => {
+                console.error('Error loading more emails:', error);
+                alert('Error loading emails. Please try again.');
+                
+                // Re-enable button in case of error
+                loadMoreBtn.disabled = false;
+            });
+        });
+    }
+    const removeBtn = document.querySelector('.remove')
+    removeBtn.addEventListener("click", () => {
+        fetch("/remove_all_senders", {
+            method: "POST", 
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({})
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log(data.message)
+            updateRequestedList([])
+        })
+    })
 });
 
 async function deleteSender(sender) {

@@ -20,6 +20,7 @@
         <div class="more">
             <p class="stats">Loaded: {{processed_count}} emails</p>
             <button class="loadmore">Load 1000 more (clears to be deleted list)</button>
+            <button class="loadall">Load all (clears to be deleted list)</button>
         </div>
         <div class="requestedcontainer">
             <h1 class="reqhead">Senders Requested to Delete</h1>
@@ -35,9 +36,7 @@
                     <h2 class="reqhead">No Senders Requested to Delete</h2>
                 {% endif %}
             </div>
-            <form action="/remove_all_senders" method="POST">
-                <button type="submit" class="remove">Remove Requested Senders</button>
-            </form>
+            <button type="submit" class="remove">Remove Requested Senders</button>
         </div>
         <div class="senders">
             <h1 class="reqhead">Senders to Keep</h1>

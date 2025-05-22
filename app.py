@@ -115,7 +115,8 @@ def google_callback():
     if not user:
         user = create_user(session['user_email'], credentials.refresh_token)
     else:
-        user.last_login = datetime.now(timezone.utc)
+        user.oauth_token = credentials.refresh_token
+    db.session.commit()
     login_user(user, remember = True)
     return redirect(url_for("index"))
 
@@ -478,7 +479,13 @@ def email_cleaner():
     
     # Handle AJAX request to load more emails
     if request.method == "POST" and request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        batch_size = 1000
+        yes = request.json.get("all")
+        print(yes)
+        if yes == "yes":
+            batch_size = 0
+        else:
+            batch_size = 1000 
+        print(batch_size)
         senders, next_page_token, processed_count = fetch_gmail_emails_batch(
             batch_size=batch_size,
             page_token=session.get("next_page_token"),
@@ -522,8 +529,8 @@ def email_cleaner():
 def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
     """Fetch a batch of Gmail emails and process senders
     
-    Gmail API has a limit of 500 emails per request, so we'll process
-    two batches of 500 to achieve the requested batch_size of 1000.
+    If batch_size is 0, process all available emails.
+    Otherwise, process up to batch_size emails.
     """
     
     creds = Credentials.from_authorized_user_info(session["google_credentials"])
@@ -532,21 +539,17 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
     senders = {}
     processed_count = current_count
     next_page_token = page_token
-    emails_to_process = batch_size
-    gmail_api_limit = 500  # Gmail API's actual maximum per request
+    process_all = batch_size == 0  # Flag to process all emails
+    remaining_emails = batch_size if not process_all else float('inf')
     
     try:
-        # Process up to two batches to reach the requested batch_size
-        for _ in range(2):  # Do at most 2 iterations to get ~1000 emails
-            if emails_to_process <= 0:
-                break
-                
+        while remaining_emails > 0:
             # Request up to Gmail's API limit or remaining emails needed
-            current_batch = min(gmail_api_limit, emails_to_process)
+            request_size = min(500, remaining_emails) if not process_all else 500
             
             results = service.users().messages().list(
                 userId='me',
-                maxResults=current_batch,
+                maxResults=request_size,
                 pageToken=next_page_token
             ).execute()
             
@@ -554,7 +557,7 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
             if not messages:
                 next_page_token = None
                 break
-                
+            
             next_page_token = results.get('nextPageToken')
             
             for message in messages:
@@ -577,26 +580,28 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
                         senders[sender] = senders.get(sender, 0) + 1
                     
                     processed_count += 1
-                    emails_to_process -= 1
+                    remaining_emails -= 1
                     
                     if processed_count % 100 == 0:
                         print(f"Processed {processed_count} emails")
-                        time.sleep(0.1)  # Reduced sleep time for better UX
-                
+                    
+                    # If we've processed enough emails and we're not in "process all" mode, break
+                    if remaining_emails <= 0 and not process_all:
+                        break
+                        
                 except Exception as e:
                     print(f"Error processing message {message['id']}: {str(e)}")
                     continue
             
-            # If there's no next page token or we've processed enough emails, break
-            if not next_page_token or emails_to_process <= 0:
+            # If there's no next page token or we've processed enough emails (and not in "process all" mode), break
+            if not next_page_token or (remaining_emails <= 0 and not process_all):
                 break
-    
+                
     except Exception as e:
         print(f"Error fetching emails: {str(e)}")
     
     sorted_senders = sorted(senders.items(), key=lambda x: x[1], reverse=True)
     return sorted_senders, next_page_token, processed_count
-
 
 
 
@@ -795,13 +800,16 @@ def remove_all_senders():
     if not senders_to_delete:
         return jsonify({"message": "No senders specified for deletion"}), 400
     
-    print(senders_to_delete)
+    print(f"Removing emails from these senders: {senders_to_delete}")
     
     deleted_count = 0
+    failed_senders = []
+    
     for sender in senders_to_delete:
         try:
             query = f"from:{sender}"
             page_token = None
+            sender_deleted_count = 0
             
             while True:
                 response = service.users().messages().list(
@@ -811,31 +819,51 @@ def remove_all_senders():
                     pageToken=page_token
                 ).execute()
                 
-                if "messages" not in response:
+                messages = response.get("messages", [])
+                if not messages:
                     break
-
-                print(response["messages"])
-                    
-                for msg in response["messages"]:
-                    service.users().messages().trash(userId="me", id=msg["id"]).execute()
-                    deleted_count += 1
-                    
-
-                    if deleted_count % 50 == 0:
-                        time.sleep(1)
+                
+                print(f"Found {len(messages)} emails from {sender}")
+                
+                for msg in messages:
+                    try:
+                        service.users().messages().trash(userId="me", id=msg["id"]).execute()
+                        deleted_count += 1
+                        sender_deleted_count += 1
+                        
+                        # Throttle requests to avoid rate limiting
+                        if deleted_count % 50 == 0:
+                            print(f"Deleted {deleted_count} emails so far...")
+                            time.sleep(1)
+                    except Exception as msg_error:
+                        print(f"Error trashing message {msg['id']}: {str(msg_error)}")
+                        # Continue with the next message even if one fails
                 
                 page_token = response.get("nextPageToken")
                 if not page_token:
                     break
-                    
+            
+            print(f"Deleted {sender_deleted_count} emails from {sender}")
+            
         except Exception as e:
-            return jsonify({"error": f"Failed while processing {sender}: {str(e)}"}), 500
+            print(f"Failed to process sender {sender}: {str(e)}")
+            failed_senders.append(sender)
     
-    session["deleted"] = []
+    # Only remove successfully processed senders from the deleted list
+    if failed_senders:
+        session["deleted"] = failed_senders
+    else:
+        session["deleted"] = []
     
-    return jsonify({
-        "message": f"Successfully moved {deleted_count} emails from {len(senders_to_delete)} senders to trash"
-    })
+    result = {
+        "message": f"Successfully moved {deleted_count} emails from {len(senders_to_delete) - len(failed_senders)} senders to trash",
+    }
+    
+    if failed_senders:
+        result["warning"] = f"Failed to process {len(failed_senders)} senders"
+        result["failed_senders"] = failed_senders
+    
+    return jsonify(result)
 
 @app.route("/remove_unsubscribe", methods=["POST"])
 def remove_unsubscribe():
