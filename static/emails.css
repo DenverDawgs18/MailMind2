@@ -112,7 +112,12 @@ a{
     .send{
         margin-left: 10px;
         bottom: 0; 
-        
-    }
 
+    }
+    .emails{
+        padding: 20px;
+    }
+    .wrapper{
+        padding: 20px;
+    }
 }

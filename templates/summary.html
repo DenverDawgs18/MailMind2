@@ -25,9 +25,9 @@
             {% for email in emails %}
                 <div class="itemwrap">
                     <p class="item">• {{email.action_items | remove_asterisks | safe}}</p>
-                    <button class="expand" data-id="{{ [loop.index0] }}">Expand</button>
+                    <button class="expand" data-id="{{ loop.index0 }}">Expand</button>
                 </div>
-                <div class="email" style="display:none" data-id="{{ [loop.index0] }}">
+                <div class="email" style="display:none" data-id="{{ loop.index0 }}">
                     <div class="emailone emailsub">
                         <h2 class="header">From: </h2>
                         {% if email.from %}
@@ -73,7 +73,6 @@
                     </div>
                 </div>
             {% endfor %}
-        </ul>
     </div>
     <script src="../static/summary.js"></script>
 </body>

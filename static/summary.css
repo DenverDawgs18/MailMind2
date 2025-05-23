@@ -125,4 +125,11 @@ a{
     .itemwrap{
         flex-direction: column;
     }
+    .large{
+        font-size: 18px;
+    }
+    .emailone{
+        flex-direction: column;
+    }
+
 }

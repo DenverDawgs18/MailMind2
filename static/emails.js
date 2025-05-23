@@ -1,8 +1,9 @@
-let mark_btn = document.querySelector('.mark')
+let mark_btns = document.querySelectorAll('.mark')
 document.addEventListener("DOMContentLoaded", () => {
-   mark_btn.addEventListener('click', () => {
-        let sender = mark_btn.getAttribute('data-sender')
-        let add = mark_btn.getAttribute('add');
+   for (let i = 0; i < mark_btns.length; i++){
+       mark_btns[i].addEventListener('click', () => {
+        let sender = mark_btns[i].getAttribute('data-sender')
+        let add = mark_btns[i].getAttribute('add');
         if (add === "true"){
             fetch("/mark_high_priority", {
                 method: "POST", 
@@ -14,8 +15,8 @@ document.addEventListener("DOMContentLoaded", () => {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    mark_btn.textContent = "Unmark Sender as High Priority"
-                    mark_btn.setAttribute('add', "false")
+                    mark_btns[i].textContent = "Unmark Sender as High Priority"
+                    mark_btns[i].setAttribute('add', "false")
                 }
                 else{
                     alert('Error marking')
@@ -24,7 +25,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         else if (add === "false"){
             fetch("/unmark_high_priority", {
-                method: "POS", 
+                method: "POST", 
                 headers:{
                     "Content-Type": "application/json"
                 },
@@ -33,8 +34,8 @@ document.addEventListener("DOMContentLoaded", () => {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    mark_btn.textContent = "Mark Sender as High Priority";
-                    mark_btn.setAttribute('add', "true");
+                    mark_btns[i].textContent = "Mark Sender as High Priority";
+                    mark_btns[i].setAttribute('add', "true");
                 }
                 else{
                     alert('Error marking');
@@ -42,6 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
             })
         }
     })
+   }
 })
 let reply_btns = document.querySelectorAll('.reply')
 let reply_divs = document.querySelectorAll('.replydiv')

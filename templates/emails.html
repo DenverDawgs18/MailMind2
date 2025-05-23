@@ -49,13 +49,11 @@
                         <button class="action reply">
                             Reply
                         </button>
-                        <button class="action mark" data-sender="{{email.from}}" add="true">
                             {% if email.from in current_user.high_priority %}
-                                Unmark Sender as High Priority
+                                <button class="action mark" data-sender="{{email.from}}" add="false">Unmark Sender as High Priority </button>
                             {% else %}
-                                Mark Sender as High Priority
+                                <button class="action mark" data-sender="{{email.from}}" add="true">Mark Sender as High Priority </button>
                             {% endif %}
-                        </button>
                     </div>
                     <div id="replydiv" class="replywrap replydiv">
                         <h1 class="replyheader">Reply</h1>
