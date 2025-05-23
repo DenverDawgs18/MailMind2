@@ -5,6 +5,15 @@
     flex-direction: column;
     align-items: center;
 }
+.sendercontainer{
+    display: flex;
+    gap: 10px;
+}
+.requestedcontainer{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
 .stats{
     font-size: 34px;
 }
@@ -38,4 +47,25 @@
 }
 body{
     min-height: 100%;
+}
+@media (max-width: 400px) {
+    .senderwrapper{
+        flex-direction: column;
+        align-items: center;
+        align-self: center;
+    }
+    .sendercontainer{
+        align-items: center;
+        flex-direction: column;
+    }
+    .sender,.number{
+        font-size: 14px;
+    }
+    .sender{
+        white-space: normal;
+        overflow-wrap: break-word;
+        text-align: center;
+        max-width: 100%;
+        overflow: hidden;
+    }
 }

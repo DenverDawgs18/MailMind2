@@ -1,4 +1,11 @@
 document.addEventListener("DOMContentLoaded", function () {
+    if (window.innerWidth < 600) {
+        document.querySelectorAll('.sender').forEach(el => {
+        el.innerHTML = el.innerHTML.replace(/&lt;/, '<br><br>&lt;');
+        });
+    }
+
+
     // Set up delete button event listeners
     document.querySelectorAll(".delete").forEach(button => {
         button.addEventListener("click", function () {

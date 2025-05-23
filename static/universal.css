@@ -22,3 +22,12 @@ body{
     color: black;
     font-size: 18px;
 }
+@media (max-width: 500px) {
+    .navbar{
+        gap: 20px; 
+        padding: 10px;
+    }
+    .navbar > a {
+        font-size: 14px;
+    }
+}

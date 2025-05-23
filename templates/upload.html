@@ -42,8 +42,10 @@
             <h1 class="reqhead">Senders to Keep</h1>
             {% for email in text%}
                 <div class="senderwrapper">
-                    <p class="sender">{{email.sender}}</p>
-                    <p class="number">{{email.number}}</p>
+                    <div class="sendercontainer">
+                        <p class="sender">{{email.sender}}</p>
+                        <p class="number">{{email.number}}</p>
+                    </div>
                     <button data-sender="{{email.sender}}" class="delete">Add to Delete Pile</button>
                 </div>
             {% endfor %}

@@ -1,7 +1,7 @@
 .unsubs,.unsubwrapper{
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: start;
 }
 .unsub{
     padding: 20px;
@@ -31,4 +31,17 @@
     box-shadow: 3px 3px black;
     background-color: orange;
     
+}
+.overflow{
+    overflow-x: auto;
+    padding-right: 50px;
+    padding-left: 10px;
+}
+@media (max-width: 800px) {
+    .sender{
+        font-size: 14px;
+    }
+    .unsub{
+        padding: 10px;
+    }
 }
