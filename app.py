@@ -199,6 +199,8 @@ def emails():
             final_emails.append(email)
             
         session['final_emails'] = final_emails
+        current_datetime = datetime.now(timezone.utc)
+        session['last_load'] = current_datetime.isoformat()
         return render_template('emails.html', emails=final_emails)
 
     # Initial load - get emails from the last 24 hours

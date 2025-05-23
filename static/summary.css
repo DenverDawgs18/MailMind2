@@ -118,4 +118,11 @@ a{
     padding: 15px;
     
 }
-
+.etext{
+    word-wrap: break-word;
+}
+@media (max-width: 600px) {
+    .itemwrap{
+        flex-direction: column;
+    }
+}

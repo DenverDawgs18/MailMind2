@@ -99,4 +99,20 @@ a{
     color: white;
     border: 3px solid black;
 }
+.etext{
+    word-wrap: break-word;
+}
+@media (max-width: 600px) {
+    .large{
+        font-size: 18px;
+    }
+    .emailone{
+        flex-direction: column;
+    }
+    .send{
+        margin-left: 10px;
+        bottom: 0; 
+        
+    }
 
+}

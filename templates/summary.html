@@ -24,7 +24,7 @@
         <div class="items">
             {% for email in emails %}
                 <div class="itemwrap">
-                    <p class="item">• {{email.action_items | remove_asterisks | safe}}</li>
+                    <p class="item">• {{email.action_items | remove_asterisks | safe}}</p>
                     <button class="expand" data-id="{{ [loop.index0] }}">Expand</button>
                 </div>
                 <div class="email" style="display:none" data-id="{{ [loop.index0] }}">
