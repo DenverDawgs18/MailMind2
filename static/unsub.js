@@ -12,14 +12,23 @@ for (let i = 0; i < unsubs.length; i++){
         .then(response => response.json())
         .then(data => {
             if (data.status === "success") {
-                const row = unsubs[i].closest("tr");
+                const row = unsubs[i].closest("div");
                 if (row) row.remove();
-                                const remainingRows = document.querySelectorAll("table tr").length;
+                                const remainingRows = document.querySelectorAll(".unsubwrapper").length;
                 if (remainingRows <= 1) {
-                    document.querySelector(".unsubwrapper").innerHTML = "<p>No unsubscribes left.</p>";
+                    document.querySelector(".unsubmsg").innerHTML = "<p>No unsubscribes left.</p>";
                 }
             }
 
         })
     })
 }
+document.addEventListener("DOMContentLoaded", function () {
+    if (this.documentElement.clientWidth < 600) {
+    
+        document.querySelectorAll('.sender').forEach(el => {
+        el.innerHTML = el.innerHTML.replace(/&lt;/, '<br><br>&lt;');
+        });
+}
+})
+

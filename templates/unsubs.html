@@ -15,7 +15,7 @@
         <a href="{{url_for('summary')}}">Summary</a>
         <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
     </div>
-    
+    <!--
     <div class="unsubwrapper">
         <div class="overflow">
             <table>
@@ -25,28 +25,29 @@
             </tr>
             {% for unsub in unsubs %}
                 <tr>
-                    <td><p class="sender">{{unsub.sender}}</p></td>
+                    <td><p class="sender">{{unsub.sender}}</p>
                     <td><a href="{{unsub.link}}" target="_blank"><button data-sender="{{unsub.sender}}" class="unsub">Unsubscribe</button></a></td>
                 </tr>
             {% endfor %}
         </table>
         </div>
     </div>
-    <!--
-        <div class="unsubs">
-            <div class="unsubheader">
-                <h1 class="sender">Sender</h1>
-                <h1 class="sender">Email</h1>
-                <h1 class="sender">Link</h1>
-            </div>
-            {% for unsub in unsubs %}
-                <div class="unsub">
-                    <h1 class="sender">{{unsub.sender}}</h1>
-                    <a href="{{unsub.link}}">Unsubscribe</a>
-                </div>
-            {% endfor %}
+-->
+
+    <div class="unsubs">
+        <div class="unsubheader">
+            <h2 class="header">Sender</h1>
+            <h2 class="header">Link</h1>
         </div>
-    -->
+        {% for unsub in unsubs %}
+            <div class="unsubwrapper">
+                <p class="sender">{{unsub.sender}}</p>
+                <a href="{{unsub.link}}" target="_blank"><button data-sender="{{unsub.sender}}" class="unsub">Unsubscribe</button></a>
+            </div>
+        {% endfor %}
+        <div class="unsubmsg"></div>
+    </div>
+
     <script src="/static/unsub.js"></script>
 </body>
 </html>

@@ -1,5 +1,6 @@
 document.addEventListener("DOMContentLoaded", function () {
-    if (window.innerWidth < 600) {
+
+    if (this.documentElement.clientWidth < 600) {
         document.querySelectorAll('.sender').forEach(el => {
         el.innerHTML = el.innerHTML.replace(/&lt;/, '<br><br>&lt;');
         });

@@ -1,7 +1,7 @@
-.unsubs,.unsubwrapper{
+.unsubs{
     display: flex;
     flex-direction: column;
-    align-items: start;
+    padding: 20px;
 }
 .unsub{
     padding: 20px;
@@ -11,8 +11,8 @@
     border-radius: 50px;
     box-shadow: 3px 3px black;
 }
-.sender{
-    font-size: 20px;
+.header{
+    font-size: 32px;
     font-weight: normal;
 }
 .unsubheader{
@@ -20,28 +20,26 @@
     width: 100%;
     justify-content: space-between;
 }
-.header{
-    font-weight: normal;
-}
-.analyze{
-    font-size: 16px;
-    padding: 20px;
-    border-radius: 50px;
-    border: 3px solid black;
-    box-shadow: 3px 3px black;
-    background-color: orange;
-    
-}
 .overflow{
     overflow-x: auto;
     padding-right: 50px;
     padding-left: 10px;
 }
-@media (max-width: 800px) {
+.sender{
+    font-size: 18px;
+}
+.unsubwrapper{
+    display: flex;
+    justify-content: space-between;
+}
+@media (max-width: 600px) {
     .sender{
         font-size: 14px;
     }
     .unsub{
         padding: 10px;
+    }
+    .header{
+        font-size: 18px;
     }
 }
