@@ -4,7 +4,7 @@ const emails = document.querySelectorAll('.email');
 for (let i = 0; i < expands.length; i++){
     expands[i].addEventListener("click", () => {
         if (emails[i].style.display == "none") {
-            emails[i].style.display = "block";
+            emails[i].style.display = "flex";
             expands[i].textContent = "Collapse"
         }
         else {

@@ -108,6 +108,7 @@ a{
     }
     .emailone{
         flex-direction: column;
+        align-items: center;
     }
     .send{
         margin-left: 10px;
