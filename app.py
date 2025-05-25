@@ -884,7 +884,7 @@ def remove_unsubscribe():
     
 import stripe 
 
-stripe.api_key = 'sk_test_51RS5xIFZzGS2kZIICxWSQ3hgSvU4vn0zKQkDTESU80WycwcBttAxclLo1wSoFcMgHy0lNDnpmawqtxRNOv0CE3nx00UrrRB2JR'
+stripe.api_key = ''
 YOUR_DOMAIN = "http://localhost:5000"
 
 @app.route('/create-checkout-session', methods=['POST'])
