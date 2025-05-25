@@ -1,36 +1,25 @@
-SPRINTS:
-
 
 JUNE 1 GOAL
-1. Write paper on findings
-3. Responsiveness
-4. Basic pre site / some styling for main site
-5. Set up business side of it
-6. Launch
-
-Outlook:
-Login
-Parameters to all my functions
-Different code for pulling
-
-Site
-Style website 
-Pre sign-up facing website design and implementation 
-
-Business
-Set up business and set up ?Stripe? or something similar to handle payment 
-Security sprint (oauth tokens especially )
-Launch (get everything set up to run not locally, host it (probably fly))
 
 
-Later 
-Outlook support
-Auto unsub
-General idiot-proofing
-No action items on mailing lists
-Front-end work on load all
+Roadmap:
+1. Set up Stripe and pre-signup site (simple to start)
+2. Security sprint with oauth tokens
+3. Styling throughout
+4. Setup LLC (and turn Stripe from sandbox to )
+5. Fine-tune GPT model 
+6. Implement fine-tuned model into site (replacing local model)
+7. Launch day (deploy to fly.io, setup postgres on fly)
+8. Write paper on findings (running benchmarks)
+9. Figure out function to go through all the form bullshit companies make you do when unsubbing 
+10. Add Outlook support (currently just gmail)
+11. General idiot-proofing (based on feedback from inital launch)
+12. Front-end work on load all on inbox cleaner
+
+
+
+
 A/B tests
 1000 flat on button or allow user to pick?
-Getting unsub links in cleaner at the cost of speed?
 
 

@@ -10,3 +10,5 @@ labeled_enron.csv
 Temp
 MailMindActionItems4
 MailMindActionItems5
+train.jsonl
+test.jsonl

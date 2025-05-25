@@ -10,6 +10,7 @@ class User(db.Model, UserMixin):
     oauth_token = db.Column(db.String(255), nullable=True)
     last_login = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
     high_priority = db.Column(JSON, default = list)
+    subscribed = db.Column(db.Boolean)
     def __repr__(self):
         return f"<User {self.email}>"
     
