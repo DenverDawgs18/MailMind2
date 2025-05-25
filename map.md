@@ -23,4 +23,7 @@ A/B tests
 1000 flat on button or allow user to pick?
 
 
-First 5:
+First 3:
+1. Setup user updates on subscribe
+2. Ban users who aren't subbed from accessing pages
+3. Get dummy Stripe implementation working

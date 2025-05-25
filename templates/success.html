@@ -2,10 +2,23 @@
 <html>
 <head>
   <title>Thanks for your order!</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="../static/universal.css">
   <script src="client.js" defer></script>
 </head>
 <body>
+    {% if current_user.subscribed %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+            <a href="{{url_for('emails')}}">Emails</a>
+            <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
+            <a href="{{url_for('summary')}}">Summary</a>
+            <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
+        </div>
+    {% else %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+        </div>
+    {% endif %}
   <section>
     <div class="product Box-root">
       <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="14px" height="16px" viewBox="0 0 14 16" version="1.1">

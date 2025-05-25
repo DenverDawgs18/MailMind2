@@ -7,13 +7,19 @@
     <title>Document</title>
 </head>
 <body>
-    <div class="navbar">
-        <a href="{{url_for('index')}}">Home</a>
-        <a href="{{url_for('emails')}}">Emails</a>
-        <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
-        <a href="{{url_for('summary')}}">Summary</a>
-        <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
-    </div>
+    {% if current_user.subscribed %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+            <a href="{{url_for('emails')}}">Emails</a>
+            <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
+            <a href="{{url_for('summary')}}">Summary</a>
+            <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
+        </div>
+    {% else %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+        </div>
+    {% endif %}
     <div class="product">
         <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="14px" height="16px" viewBox="0 0 14 16" version="1.1">
             <defs/>

@@ -113,7 +113,7 @@ def google_callback():
     session['user_email'] = user_info.get('email')
     user = User.query.filter_by(email=session['user_email']).first()
     if not user:
-        user = create_user(session['user_email'], credentials.refresh_token)
+        user = create_user(session['user_email'], credentials.refresh_token, subscribed = False)
     else:
         user.oauth_token = credentials.refresh_token
     db.session.commit()
@@ -884,7 +884,7 @@ def remove_unsubscribe():
     
 import stripe 
 
-stripe.api_key = ''
+stripe.api_key = 'sk_test_51RS5xIFZzGS2kZIICxWSQ3hgSvU4vn0zKQkDTESU80WycwcBttAxclLo1wSoFcMgHy0lNDnpmawqtxRNOv0CE3nx00UrrRB2JR'
 YOUR_DOMAIN = "http://localhost:5000"
 
 @app.route('/create-checkout-session', methods=['POST'])
@@ -962,12 +962,14 @@ def webhook_received():
         print('Subscription trial will end')
     elif event_type == 'customer.subscription.created':
         print('Subscription created %s', event.id)
+        current_user.subscribed = True
     elif event_type == 'customer.subscription.updated':
         print('Subscription created %s', event.id)
     elif event_type == 'customer.subscription.deleted':
         # handle subscription canceled automatically based
         # upon your subscription settings. Or if the user cancels it.
         print('Subscription canceled: %s', event.id)
+        current_user.subscribed = False
     elif event_type == 'entitlements.active_entitlement_summary.updated':
         # handle active entitlement summary updated
         print('Active entitlement summary updated: %s', event.id)
