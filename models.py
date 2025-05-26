@@ -11,6 +11,7 @@ class User(db.Model, UserMixin):
     last_login = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
     high_priority = db.Column(JSON, default = list)
     subscribed = db.Column(db.Boolean)
+    stripe_customer_id = db.Column(db.String(), unique=True)
     def __repr__(self):
         return f"<User {self.email}>"
     

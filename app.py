@@ -310,7 +310,17 @@ def load_more():
     return jsonify({"html": rendered_emails})
 
             
+@app.route("/special")
+def special():
 
+    with db.engine.connect() as conn:
+        result = conn.execute(db.text("PRAGMA table_info(user);"))
+        for row in result:
+            print(row)
+
+    current_user.subscribed = False
+    db.session.commit()
+    return render_template("index.html")
 
 @app.route('/mark_high_priority', methods=["POST"])
 @login_required
@@ -882,10 +892,15 @@ def remove_unsubscribe():
     else:
         return jsonify({"message": "No unsubscribe entry found."}), 404
     
+@app.route("/success")
+def success():
+    return render_template("success.html")
+
 import stripe 
 
 stripe.api_key = 'sk_test_51RS5xIFZzGS2kZIICxWSQ3hgSvU4vn0zKQkDTESU80WycwcBttAxclLo1wSoFcMgHy0lNDnpmawqtxRNOv0CE3nx00UrrRB2JR'
 YOUR_DOMAIN = "http://localhost:5000"
+
 
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
@@ -904,8 +919,8 @@ def create_checkout_session():
             ],
             mode='subscription',
             success_url=YOUR_DOMAIN +
-            '/success.html?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url=YOUR_DOMAIN + '/index.html',
+            '/success?session_id={CHECKOUT_SESSION_ID}',
+            cancel_url=YOUR_DOMAIN,
         )
         return redirect(checkout_session.url, code=303)
     except Exception as e:
@@ -935,9 +950,9 @@ def webhook_received():
     # If you are testing with the CLI, find the secret by running 'stripe listen'
     # If you are using an endpoint defined with the API or dashboard, look in your webhook settings
     # at https://dashboard.stripe.com/webhooks
-    webhook_secret = 'whsec_df79cd3660c102dbbef55c98b5df3ad722d3a088c1c685e45f02be24032bf2cd '
+    webhook_secret = 'whsec_df79cd3660c102dbbef55c98b5df3ad722d3a088c1c685e45f02be24032bf2cd'
     request_data = json.loads(request.data)
-
+    
     if webhook_secret:
         # Retrieve the event by verifying the signature using the raw body and secret if webhook signing is configured.
         signature = request.headers.get('stripe-signature')
@@ -954,6 +969,7 @@ def webhook_received():
         event_type = request_data['type']
     data_object = data['object']
 
+    print("EVENT: ")
     print('event ' + event_type)
 
     if event_type == 'checkout.session.completed':
@@ -963,6 +979,7 @@ def webhook_received():
     elif event_type == 'customer.subscription.created':
         print('Subscription created %s', event.id)
         current_user.subscribed = True
+        db.session.commit()
     elif event_type == 'customer.subscription.updated':
         print('Subscription created %s', event.id)
     elif event_type == 'customer.subscription.deleted':
@@ -970,8 +987,8 @@ def webhook_received():
         # upon your subscription settings. Or if the user cancels it.
         print('Subscription canceled: %s', event.id)
         current_user.subscribed = False
+        db.session.commit()
     elif event_type == 'entitlements.active_entitlement_summary.updated':
-        # handle active entitlement summary updated
         print('Active entitlement summary updated: %s', event.id)
 
     return jsonify({'status': 'success'})
