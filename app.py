@@ -312,7 +312,7 @@ def load_more():
             
 @app.route("/special")
 def special():
-
+    print(current_user.stripe_customer_id)
     with db.engine.connect() as conn:
         result = conn.execute(db.text("PRAGMA table_info(user);"))
         for row in result:
@@ -896,6 +896,10 @@ def remove_unsubscribe():
 def success():
     return render_template("success.html")
 
+@app.route("/manage_subscription")
+def manage_subscription():
+    return render_template("manage.html")
+
 import stripe 
 
 stripe.api_key = 'sk_test_51RS5xIFZzGS2kZIICxWSQ3hgSvU4vn0zKQkDTESU80WycwcBttAxclLo1wSoFcMgHy0lNDnpmawqtxRNOv0CE3nx00UrrRB2JR'
@@ -903,6 +907,7 @@ YOUR_DOMAIN = "http://localhost:5000"
 
 
 @app.route('/create-checkout-session', methods=['POST'])
+@login_required
 def create_checkout_session():
     try:
         prices = stripe.Price.list(
@@ -910,7 +915,19 @@ def create_checkout_session():
             expand=['data.product']
         )
 
+        # Create or get Stripe customer for current user
+        if not current_user.stripe_customer_id:
+            # Create new Stripe customer
+            customer = stripe.Customer.create(
+                email=current_user.email,
+                name=current_user.name if hasattr(current_user, 'name') else None,
+            )
+            # Save customer ID to user
+            current_user.stripe_customer_id = customer.id
+            db.session.commit()
+
         checkout_session = stripe.checkout.Session.create(
+            customer=current_user.stripe_customer_id,  # Link to existing customer
             line_items=[
                 {
                     'price': prices.data[0].id,
@@ -918,77 +935,122 @@ def create_checkout_session():
                 },
             ],
             mode='subscription',
-            success_url=YOUR_DOMAIN +
-            '/success?session_id={CHECKOUT_SESSION_ID}',
+            success_url=YOUR_DOMAIN + '/success?session_id={CHECKOUT_SESSION_ID}',
             cancel_url=YOUR_DOMAIN,
         )
         return redirect(checkout_session.url, code=303)
     except Exception as e:
         print(e)
         return "Server error", 500
-    
+
 @app.route('/create-portal-session', methods=['POST'])
+@login_required
 def customer_portal():
-    # For demonstration purposes, we're using the Checkout session to retrieve the customer ID.
-    # Typically this is stored alongside the authenticated user in your database.
-    checkout_session_id = request.form.get('session_id')
-    checkout_session = stripe.checkout.Session.retrieve(checkout_session_id)
+    try:
+        # Use the customer ID from the current user's database record
+        if not current_user.stripe_customer_id:
+            return "No subscription found", 400
+            
+        return_url = YOUR_DOMAIN
 
-    # This is the URL to which the customer will be redirected after they're
-    # done managing their billing with the portal.
-    return_url = YOUR_DOMAIN
-
-    portalSession = stripe.billing_portal.Session.create(
-        customer=checkout_session.customer,
-        return_url=return_url,
-    )
-    return redirect(portalSession.url, code=303)
+        portalSession = stripe.billing_portal.Session.create(
+            customer=current_user.stripe_customer_id,
+            return_url=return_url,
+        )
+        return redirect(portalSession.url, code=303)
+    except Exception as e:
+        print(f"Portal session error: {e}")
+        return "Server error", 500
 
 @app.route('/webhook', methods=['POST'])
 def webhook_received():
-    # Replace this endpoint secret with your endpoint's unique secret
-    # If you are testing with the CLI, find the secret by running 'stripe listen'
-    # If you are using an endpoint defined with the API or dashboard, look in your webhook settings
-    # at https://dashboard.stripe.com/webhooks
     webhook_secret = 'whsec_df79cd3660c102dbbef55c98b5df3ad722d3a088c1c685e45f02be24032bf2cd'
-    request_data = json.loads(request.data)
     
     if webhook_secret:
-        # Retrieve the event by verifying the signature using the raw body and secret if webhook signing is configured.
         signature = request.headers.get('stripe-signature')
         try:
             event = stripe.Webhook.construct_event(
-                payload=request.data, sig_header=signature, secret=webhook_secret)
-            data = event['data']
+                payload=request.data, 
+                sig_header=signature, 
+                secret=webhook_secret
+            )
         except Exception as e:
-            return e
-        # Get the type of webhook event sent - used to check the status of PaymentIntents.
-        event_type = event['type']
+            print(f"Webhook signature verification failed: {e}")
+            return "Bad signature", 400
     else:
-        data = request_data['data']
-        event_type = request_data['type']
+        event = json.loads(request.data)
+
+    data = event['data']
+    event_type = event['type']
     data_object = data['object']
 
-    print("EVENT: ")
-    print('event ' + event_type)
+    print(f"EVENT: {event_type}")
+
+    # Helper function to find user by Stripe customer ID
+    def find_user_by_customer_id(customer_id):
+        print(customer_id)
+        return User.query.filter_by(stripe_customer_id=customer_id).first()
 
     if event_type == 'checkout.session.completed':
         print('🔔 Payment succeeded!')
+        customer_id = data_object.get('customer')
+        user = find_user_by_customer_id(customer_id)
+        if user:
+            user.subscribed = True
+            db.session.commit()
+            print(f"User {user.email} subscription activated")
+
     elif event_type == 'customer.subscription.trial_will_end':
         print('Subscription trial will end')
+        customer_id = data_object.get('customer')
+        user = find_user_by_customer_id(customer_id)
+        if user:
+            print(f"Trial ending for user {user.email}")
+
     elif event_type == 'customer.subscription.created':
-        print('Subscription created %s', event.id)
-        current_user.subscribed = True
-        db.session.commit()
+        print(f'Subscription created {event["id"]}')
+        customer_id = data_object.get('customer')
+        user = find_user_by_customer_id(customer_id)
+        if user:
+            user.subscribed = True
+            db.session.commit()
+            print(f"Subscription created for user {user.email}")
+
     elif event_type == 'customer.subscription.updated':
-        print('Subscription created %s', event.id)
+        print(f'Subscription updated {event["id"]}')
+        customer_id = data_object.get('customer')
+        user = find_user_by_customer_id(customer_id)
+        if user:
+            # Check subscription status
+            subscription_status = data_object.get('status')
+            user.subscribed = subscription_status in ['active', 'trialing']
+            db.session.commit()
+            print(f"Subscription updated for user {user.email}, status: {subscription_status}")
+
     elif event_type == 'customer.subscription.deleted':
-        # handle subscription canceled automatically based
-        # upon your subscription settings. Or if the user cancels it.
-        print('Subscription canceled: %s', event.id)
-        current_user.subscribed = False
-        db.session.commit()
+        print(f'Subscription canceled {event["id"]}')
+        customer_id = data_object.get('customer')
+        user = find_user_by_customer_id(customer_id)
+        if user:
+            user.subscribed = False
+            db.session.commit()
+            print(f"Subscription canceled for user {user.email}")
+    '''
     elif event_type == 'entitlements.active_entitlement_summary.updated':
-        print('Active entitlement summary updated: %s', event.id)
+        print(f'Active entitlement summary updated {event["id"]}')
+        # This event might not have a customer field, check the structure
+        customer_id = data_object.get('customer')
+        if customer_id:
+            user = find_user_by_customer_id(customer_id)
+            print(user.subscribed)
+            if user.subscribed:
+                user.subscribed = False
+                db.session.commit()
+                print(f"Entitlements updated for user {user.email}")
+            else:
+                user.subscribed = True
+                db.session.commit()
+                print(f"Entitlements updated for user {user.email}")
+    '''
 
     return jsonify({'status': 'success'})
