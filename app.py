@@ -141,6 +141,8 @@ from dateutil import parser
 @app.route('/emails')
 @login_required
 def emails():
+    if not current_user.subscribed:
+        return render_template("subscribe.html")
     access_token = refresh(current_user)
     
     # Handle refresh case - where we're adding new emails to existing ones
@@ -400,63 +402,19 @@ def send():
 @app.route('/unsubs')
 @login_required
 def all_unsubs():
+    if not current_user.subscribed:
+        return render_template("subscribe.html")
     unsubs = Unsubscribe.query.filter_by(user=current_user.id).all()
     if not unsubs:
         return render_template('index.html')
     else:
         return render_template('unsubs.html', unsubs=unsubs)
-    
-@app.route('/analyze', methods=["POST"])
-@login_required
-def analyze():
-    print('analyzing')
-    access_token = refresh(current_user)
-    emails = get_emails("gmail", current_user.email, access_token, after_date='2-3-25', 
-                        since_time="00:00:00", old=None)
-    
-    emails = list(reversed(emails))
-    unsubs = Unsubscribe.query.filter_by(user=current_user.id).all()
-    all_unsubs = []
-    if unsubs:
-        for unsub in unsubs:
-            all_unsubs.append(unsub)
-    for email in emails:
-        unsubscribe_match = re.search(r"(?i)unsubscribe", email['body'])
-                
-        if unsubscribe_match:
-            unsubscribe_pos = unsubscribe_match.start()
-            
-            remaining_text = email['body'][unsubscribe_pos:]
-                    
-            link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
-                    
-            if link_match:
-                code = link_match.group(1)
-                try:
-                    link_id = short_url.decode_url(code)
-                    link_obj = Link.query.filter_by(id=link_id).first()
-                            
-                    if link_obj and link_obj.link:
-                        real_link = link_obj.link
-                                
-                        unsubj = Unsubscribe.query.filter_by(sender=email["from"]).first()
-                                
-                        if not unsubj:
-                            new_unsub = Unsubscribe(sender=email['from'], link=real_link, user=current_user.id)
-                            db.session.add(new_unsub)
-                            print(f"Added unsubscribe link for {email['from']}: {real_link}")
-                            db.session.commit()
-                except Exception as e:
-                    print(f"Error processing unsubscribe link: {str(e)}")
-                    continue
-    
-
-
-    return render_template('unsubs.html', unsubs=unsubs)
 
 @app.route('/summary') 
 @login_required     
 def summary():
+    if not current_user.subscribed:
+        return render_template("subscribe.html")
     emails = []
     text = ""
     final_emails = session.get("final_emails", False)
@@ -475,6 +433,8 @@ def summary():
 @app.route('/email_cleaner', methods=["GET", "POST"])
 @login_required
 def email_cleaner():
+    if not current_user.subscribed:
+        return render_template("subscribe.html")
     """Process emails directly from Gmail"""
     if 'google_credentials' not in session:
         return redirect(url_for('google_login'))
@@ -891,13 +851,21 @@ def remove_unsubscribe():
         }), 200
     else:
         return jsonify({"message": "No unsubscribe entry found."}), 404
-    
+
+@app.route("/subscribe")
+def subscribe():
+    return render_template("subscribe.html")
+ 
 @app.route("/success")
 def success():
+    if not current_user.subscribed:
+        return render_template("subscribe.html")
     return render_template("success.html")
 
 @app.route("/manage_subscription")
 def manage_subscription():
+    if not current_user.subscribed:
+        return render_template("subscribe.html")
     return render_template("manage.html")
 
 import stripe 

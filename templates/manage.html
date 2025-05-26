@@ -3,9 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../static/universal.css">
     <title>Document</title>
 </head>
 <body>
+    {% if current_user.subscribed %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+            <a href="{{url_for('emails')}}">Emails</a>
+            <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
+            <a href="{{url_for('summary')}}">Summary</a>
+            <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
+            <a href="{{url_for('manage_subscription')}}">Manage Subscription</a>
+        </div>
+    {% else %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+            <a href="{{url_for('subscribe')}}">Subscribe</a>
+        </div>
+    {% endif %}
     <h1><a target="_blank" href="https://billing.stripe.com/p/login/test_6oUaEXaa2f44d4n4cr93y00">Manage Subscription</a></h1>
 </body>
 </html>
