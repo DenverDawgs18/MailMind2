@@ -7,6 +7,21 @@
     <title>Document</title>
 </head>
 <body>
+    {% if current_user.subscribed %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+            <a href="{{url_for('emails')}}">Emails</a>
+            <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
+            <a href="{{url_for('summary')}}">Summary</a>
+            <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
+            <a href="{{url_for('manage_subscription')}}">Manage Subscription</a>
+        </div>
+    {% else %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+            <a href="{{url_for('subscribe')}}">Subscribe</a>
+        </div>
+    {% endif %}
     <div class="product">
         <div class="description">
             <h3>One Month of MailMind</h3>
@@ -18,5 +33,5 @@
         <input type="hidden" name="lookup_key" value="One_Month_of_MailMind-ae39e51" />
         <button id="checkout-and-portal-button" type="submit">Checkout</button>
     </form>
-</body>
+</body> 
 </html>

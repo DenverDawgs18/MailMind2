@@ -3,7 +3,6 @@ JUNE 1 GOAL
 
 
 Roadmap:
-1. Set up Stripe and pre-signup site (simple to start)
 2. Security sprint with oauth tokens
 3. Styling throughout
 4. Setup LLC (and turn Stripe from sandbox to )
@@ -25,6 +24,7 @@ A/B tests
 
 
 First 3:
-1. Setup user updates on subscribe
-2. Ban users who aren't subbed from accessing pages
-3. Get dummy Stripe implementation working
+1. Style manage
+2. Add some info to home and style it
+3. Style subscribe page
+4. 

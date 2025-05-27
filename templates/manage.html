@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../static/universal.css">
+    <link rel="stylesheet" href="../static/manage.css">
     <title>Document</title>
 </head>
 <body>
@@ -22,6 +23,9 @@
             <a href="{{url_for('subscribe')}}">Subscribe</a>
         </div>
     {% endif %}
-    <h1><a target="_blank" href="https://billing.stripe.com/p/login/test_6oUaEXaa2f44d4n4cr93y00">Manage Subscription</a></h1>
+    <div class="container">
+        <h2 class="manageheader">The link below will take you to our payment partner's page to manage your subscription.</h2>
+        <h1 class="manage"><a class="managelink" target="_blank" href="https://billing.stripe.com/p/login/test_6oUaEXaa2f44d4n4cr93y00">Manage Subscription</a></h1>
+    </div>
 </body>
 </html>

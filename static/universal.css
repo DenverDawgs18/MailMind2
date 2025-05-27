@@ -16,6 +16,7 @@ body{
     gap: 50px;
     padding: 20px;
     background-color: white;
+    flex-wrap: wrap;
 }
 .navbar > a{
     text-decoration: none;

@@ -854,6 +854,8 @@ def remove_unsubscribe():
 
 @app.route("/subscribe")
 def subscribe():
+    if current_user == None:
+        return redirect(url_for('google_login'))
     return render_template("subscribe.html")
  
 @app.route("/success")

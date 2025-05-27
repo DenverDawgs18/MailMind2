@@ -1,0 +1,35 @@
+body{
+    height: 100vh;
+}
+.container{
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 50px;
+    background-color: #171524;
+    padding: 20px;
+}
+.manageheader{
+    font-size: 24px;
+    color: white;
+}
+.managelink{
+    padding: 20px;
+    color: white;
+    background-color: #ff6000;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 3px 3px black;
+    text-decoration: none;
+}
+@media (max-width: 600px){
+    .managelink{
+        padding: 10px;
+        width: 100%
+    }
+    .manage{
+        font-size: 24px;
+    }
+}
