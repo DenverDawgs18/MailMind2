@@ -12,11 +12,11 @@ body{
     background-color: #171524;
     padding: 20px;
 }
-.manageheader{
+.loginheader{
     font-size: 24px;
     color: white;
 }
-.managelink{
+.loginlink{
     padding: 20px;
     color: white;
     background-color: #ff6000;
@@ -26,11 +26,11 @@ body{
     text-decoration: none;
 }
 @media (max-width: 600px){
-    .managelink{
+    .loginlink{
         padding: 10px;
         width: 100%
     }
-    .manage{
-        font-size: 24px;
+    .login{
+        font-size: 18px;
     }
 }

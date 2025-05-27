@@ -47,7 +47,7 @@ import copy
 from sortedcontainers import SortedList
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = "google_login"
+login_manager.login_view = "login"
 with app.app_context():
     db.create_all()
 
@@ -63,7 +63,9 @@ def load_user(id):
 
 
 
-
+@app.route("/login")
+def login():
+    return render_template("login.html")
 
 @app.route('/logout')
 @login_required
@@ -437,7 +439,7 @@ def email_cleaner():
         return render_template("subscribe.html")
     """Process emails directly from Gmail"""
     if 'google_credentials' not in session:
-        return redirect(url_for('google_login'))
+        return redirect(url_for('login'))
     
     # Initialize session variables if they don't exist
     if "senders_cache" not in session:
@@ -852,10 +854,16 @@ def remove_unsubscribe():
     else:
         return jsonify({"message": "No unsubscribe entry found."}), 404
 
+from flask_login import AnonymousUserMixin
+
 @app.route("/subscribe")
+@login_required
 def subscribe():
-    if current_user == None:
-        return redirect(url_for('google_login'))
+    if type(current_user) == AnonymousUserMixin:
+        print("redirecting")
+        return redirect(url_for('login'))
+    if current_user.subscribed:
+        return redirect(url_for('index'))
     return render_template("subscribe.html")
  
 @app.route("/success")
@@ -912,9 +920,9 @@ def create_checkout_session():
     except Exception as e:
         print(e)
         return "Server error", 500
-
-@app.route('/create-portal-session', methods=['POST'])
+    
 @login_required
+@app.route('/create-portal-session', methods=['POST'])
 def customer_portal():
     try:
         # Use the customer ID from the current user's database record
