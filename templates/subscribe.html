@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../static/universal.css">
+    <link rel="stylesheet" href="../static/subscribe.css">
     <title>Document</title>
 </head>
 <body>
@@ -23,16 +24,19 @@
             <a href="{{url_for('login')}}">Log In</a>
         </div>
     {% endif %}
-    <div class="product">
-        <div class="description">
-            <h3>One Month of MailMind</h3>
-            <h5>$25.00 / month</h5>
+    <div class="container">
+        <div class="product">
+            <div class="description">
+                <h1 class="click">Click the checkout button below to be taken to our payment partner's page to subscribe</h1>
+                <h3 class="one">One Month of MailMind</h3>
+                <h3 class="price">$25.00 / month</h3>
+            </div>
         </div>
+        <form action="/create-checkout-session" method="POST">
+            <!-- Add a hidden field with the lookup_key of your Price -->
+            <input type="hidden" name="lookup_key" value="One_Month_of_MailMind-ae39e51" />
+            <button class="checkout" id="checkout-and-portal-button" type="submit">Checkout</button>
+        </form>
     </div>
-    <form action="/create-checkout-session" method="POST">
-        <!-- Add a hidden field with the lookup_key of your Price -->
-        <input type="hidden" name="lookup_key" value="One_Month_of_MailMind-ae39e51" />
-        <button id="checkout-and-portal-button" type="submit">Checkout</button>
-    </form>
 </body> 
 </html>

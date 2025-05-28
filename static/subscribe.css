@@ -1,0 +1,27 @@
+body{
+    height: 100vh;
+    overflow-y: hidden;
+}
+.container,.product,.description{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.container{
+    height: 100%;
+    background-color: #171524;
+    padding: 20px;
+}
+.click,.one,.price{
+    color: white;
+}
+.checkout{
+    padding: 20px;
+    color: white;
+    background-color: #ff6000;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 3px 3px black;
+    text-decoration: none;
+    font-size: 24px;
+}

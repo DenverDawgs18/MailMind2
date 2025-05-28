@@ -866,11 +866,6 @@ def subscribe():
         return redirect(url_for('index'))
     return render_template("subscribe.html")
  
-@app.route("/success")
-def success():
-    if not current_user.subscribed:
-        return render_template("subscribe.html")
-    return render_template("success.html")
 
 @app.route("/manage_subscription")
 def manage_subscription():
@@ -913,7 +908,7 @@ def create_checkout_session():
                 },
             ],
             mode='subscription',
-            success_url=YOUR_DOMAIN + '/success?session_id={CHECKOUT_SESSION_ID}',
+            success_url=YOUR_DOMAIN + '/emails',
             cancel_url=YOUR_DOMAIN,
         )
         return redirect(checkout_session.url, code=303)
