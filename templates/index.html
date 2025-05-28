@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../static/universal.css">
+    <link rel="stylesheet" href="../static/index.css">
     <title>Document</title>
 </head>
 <body>
@@ -23,6 +24,21 @@
             <a href="{{url_for('login')}}">Log In</a>
         </div>
     {% endif %}
-    
+    <div class="wrapper">
+        <div class="hero">
+            <div class="herocontainer">
+                <h1 class="smarter">The Smarter Way to Email</h1>
+                <h1 class="turn">Turn you inbox into a <span class="todo">to-do list</span>, powered by custom AI</h1>
+                <h3 class="try"><a class="trylink" href="{{url_for('subscribe')}}">Try it free →</a></h3>
+            </div>
+            <img src="../static/imgs/landscape-placeholder-svgrepo-com.svg" class="heroimg" alt="">
+        </div>
+        <div class="cards">
+            <div class="card">
+
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

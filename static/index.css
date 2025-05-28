@@ -1,0 +1,33 @@
+body{
+    height: 100vh;
+}
+.heroimg{
+    width: 300px;
+}
+.hero{
+    display: flex;
+    gap: 20px;
+}
+.smarter,.turn{
+    color: white;
+}
+.trylink{
+    padding: 20px;
+    color: white;
+    background-color: #ff6000;
+    border: none;
+    border-radius: 20px;
+    box-shadow: 3px 3px black;
+    text-decoration: none;
+}
+.herocontainer{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+.wrapper{
+    padding: 20px;
+    height: 100%;
+    background-color: #171524;
+}
