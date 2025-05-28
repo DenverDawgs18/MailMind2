@@ -2,6 +2,7 @@
     display: flex;
     flex-direction: column;
     padding: 20px;
+    background-color: #171524;
 }
 .unsub{
     padding: 20px;
@@ -14,6 +15,9 @@
 .header{
     font-size: 32px;
     font-weight: normal;
+}
+.header,.sender{
+    color: white;
 }
 .unsubheader{
     display: flex;
