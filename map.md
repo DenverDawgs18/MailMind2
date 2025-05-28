@@ -4,11 +4,10 @@ JUNE 1 GOAL
 
 Roadmap:
 2. Security sprint with oauth tokens
-3. Styling throughout
-4. Setup LLC (and turn Stripe from sandbox to )
+4. Setup EIN (and turn Stripe from sandbox to real)
 5. Fine-tune GPT model 
 6. Implement fine-tuned model into site (replacing local model)
-6.5. Cap max number of deletes when loading 1000 at a time
+6.5. Write privacy policy and TOS
 7. Launch day (deploy to fly.io, setup postgres on fly)
 8. Write paper on findings (running benchmarks)
 9. Figure out function to go through all the form bullshit companies make you do when unsubbing 

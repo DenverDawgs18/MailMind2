@@ -2,7 +2,7 @@ body{
     height: 100vh;
     overflow-y: hidden;
 }
-.container,.product,.description{
+.container,.product,.description,.form{
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -14,6 +14,7 @@ body{
 }
 .click,.one,.price{
     color: white;
+    font-weight: normal;
 }
 .checkout{
     padding: 20px;
@@ -25,3 +26,50 @@ body{
     text-decoration: none;
     font-size: 24px;
 }
+ .modal {
+      display: none; /* Hidden by default */
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0,0,0,0.5);
+    }
+
+    .modal-content {
+      background-color: #fefefe;
+      margin: 5% auto;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 700px;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+      position: relative;
+    }
+
+    .modal-close {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      font-size: 24px;
+      font-weight: bold;
+      color: #aaa;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .modal-close:hover {
+      color: #000;
+    }
+
+    .modal h2 {
+      margin-top: 0;
+    }
+
+    .modal p {
+      white-space: pre-line;
+      line-height: 1.5;
+    }

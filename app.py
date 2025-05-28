@@ -1027,3 +1027,14 @@ def webhook_received():
     '''
 
     return jsonify({'status': 'success'})
+
+
+@app.route('/update_user_acceptance', methods=['POST'])
+@login_required
+def update_user_acceptance():
+    data = request.get_json()
+    if data and data.get('accepted') is True:
+        current_user.accepted_TOS = True
+        db.session.commit()
+        return jsonify({"success": True}), 200
+    return jsonify({"error": "Invalid request"}), 400
