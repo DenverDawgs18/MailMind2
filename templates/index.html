@@ -28,7 +28,7 @@
         <div class="hero">
             <div class="herocontainer">
                 <h1 class="smarter">The Smarter Way to Email</h1>
-                <h1 class="turn">Turn you inbox into a <span class="todo">to-do list</span>, 
+                <h1 class="turn">Turn your inbox into a <span class="todo">to-do list</span>, 
                     powered by custom-built AI</h1>
                 {% if current_user.subscribed %}
                     <h3 class="try"><a class="trylink" href="{{url_for('emails')}}">Load your list →</a></h3>
@@ -36,7 +36,19 @@
                     <h3 class="try"><a class="trylink" href="{{url_for('subscribe')}}">Try it free →</a></h3>
                 {% endif %}
             </div>
-            <img src="../static/imgs/landscape-placeholder-svgrepo-com.svg" class="heroimg" alt="">
+            <div class="email-ui">
+                <div class="action-item">
+                    🔔 Follow up with Sarah about the proposal
+                </div>
+                <div class="email-preview">
+                    <div class="sender">From: sarah@client.com</div>
+                    <div class="subject">Subject: Proposal Feedback</div>
+                    <p class="email">
+                    Hey! Just wanted to follow up on the proposal I sent last week. Let
+                    me know if you have any questions or if you'd like to jump on a call. -Sarah
+                    </p>
+                </div>
+            </div>
         </div>
         <div class="cards">
             <div class="card">
@@ -66,8 +78,19 @@
                         </p>
                     </div>
                 </div>
-                <div class="imgcontainer">
-                    <img src="../static/imgs/unsubdash.PNG" class="unsubimg" alt="">
+                <div class="newsletter-preview">
+                    <div class="newsletter-row">
+                    <p class="newsletter">Unwanted Newsletter #1</p>
+                    <button class="unsub-button">Unsubscribe</button>
+                    </div>
+                    <div class="newsletter-row">
+                    <p class="newsletter">Unwanted Newsletter #2</p>
+                    <button class="unsub-button">Unsubscribe</button>
+                    </div>
+                    <div class="newsletter-row">
+                    <p class="newsletter">Unwanted Newsletter #3</p>
+                    <button class="unsub-button">Unsubscribe</button>
+                </div>
                 </div>
             </div>
         </div>

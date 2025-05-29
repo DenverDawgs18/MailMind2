@@ -20,9 +20,6 @@ Roadmap:
 A/B tests
 1000 flat on button or allow user to pick?
 
-
-First 3:
-1. Style manage
-2. Add some info to home and style it
-3. Style subscribe page
-4. 
+Features:
+Snooze email
+Get AI to assess how important the email is 

@@ -1,3 +1,4 @@
+
 .heroimg{
     width: 300px;
 }
@@ -17,6 +18,11 @@
     box-shadow: 3px 3px black;
     text-decoration: none;
 }
+.hero{
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    margin-bottom: 50px;
+}
 .herocontainer{
     display: flex;
     flex-direction: column;
@@ -25,7 +31,7 @@
 }
 .wrapper{
     padding: 20px;
-    height: 100%;
+    min-height: 100vh;
     background-color: #171524;
     display: flex;
     flex-direction: column;
@@ -62,4 +68,93 @@
     display: flex;
     justify-content: center;
     height: 40%;
+}
+@media (max-width: 800px) {
+    .imgcontainer{
+        height: 50%;
+    }
+}
+.unsubimg{
+    max-width: 100%;
+}
+
+.email-ui {
+  background-color: #514b7a;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(255, 140, 0, 0.3);
+  padding: 30px;
+  max-width: 600px;
+}
+
+.action-item {
+  background-color: darkorange;
+  color: white;
+  padding: 12px 16px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.email-preview {
+  background-color: #171524;
+  padding: 20px;
+  border-radius: 8px;
+  margin-top: 20px;
+  font-size: 14px;
+}
+
+.email-preview .sender,
+.email-preview .subject {
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+.email,.subject,.sender{
+    color: white;
+}
+.email{
+    font-size: 16px;
+}
+.sender,.subject{
+    font-size: 22px;
+}
+.newsletter-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.newsletter-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #171524;
+  border-radius: 12px;
+  padding: 10px 16px;
+}
+
+.unsub-button {
+    padding: 20px;
+    color: white;
+    background-color: #ff6000;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 3px 3px black;
+    cursor: pointer;
+}
+.newsletter{
+    color: white;
+}
+
+.unsub-button:hover {
+  background-color: #ff9933;
+}
+@media (max-width: 600px) {
+    .hero,.cards {
+        display: flex;
+        flex-direction: column;
+    }
+    .imgcontainer{
+        height: 70%;
+    }
 }
