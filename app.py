@@ -36,6 +36,7 @@ from functions.linkify import linkify_text
 from functions.reply import reply
 from functions.old.get_action_items import batch_get_action_items
 from functions.get_one_action import get_an_action
+from functions.encryption import encrypt_token, decrypt_token
 import re
 import short_url
 import textwrap
@@ -115,9 +116,9 @@ def google_callback():
     session['user_email'] = user_info.get('email')
     user = User.query.filter_by(email=session['user_email']).first()
     if not user:
-        user = create_user(session['user_email'], credentials.refresh_token, subscribed = False)
+        user = create_user(session['user_email'], encrypt_token(credentials.refresh_token), subscribed = False)
     else:
-        user.oauth_token = credentials.refresh_token
+        user.oauth_token = encrypt_token(credentials.refresh_token)
     db.session.commit()
     login_user(user, remember = True)
     return redirect(url_for("index"))
