@@ -25,6 +25,9 @@ body{
     box-shadow: 3px 3px black;
     text-decoration: none;
 }
+.if{
+    color: white;
+}
 @media (max-width: 600px){
     .loginlink{
         padding: 10px;

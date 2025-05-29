@@ -26,6 +26,10 @@
     {% endif %}
     <div class="container">
         <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Log In With Google</a></h1>
+        {% if current_user.subscribed %}
+            <h3 class="if">Inbox Cleaner requires you to re-log in (because of Google's requirements for developers)
+                every time you re-visit the site.  </h3>
+        {% endif %}
     </div>
 </body>
 </html>
