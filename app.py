@@ -317,12 +317,6 @@ def load_more():
             
 @app.route("/special")
 def special():
-    print(current_user.stripe_customer_id)
-    with db.engine.connect() as conn:
-        result = conn.execute(db.text("PRAGMA table_info(user);"))
-        for row in result:
-            print(row)
-
     current_user.subscribed = False
     db.session.commit()
     return render_template("index.html")
@@ -911,6 +905,9 @@ def create_checkout_session():
             mode='subscription',
             success_url=YOUR_DOMAIN + '/emails',
             cancel_url=YOUR_DOMAIN,
+            subscription_data={
+                'trial_period_days': 7
+            },
         )
         return redirect(checkout_session.url, code=303)
     except Exception as e:
@@ -1009,23 +1006,6 @@ def webhook_received():
             user.subscribed = False
             db.session.commit()
             print(f"Subscription canceled for user {user.email}")
-    '''
-    elif event_type == 'entitlements.active_entitlement_summary.updated':
-        print(f'Active entitlement summary updated {event["id"]}')
-        # This event might not have a customer field, check the structure
-        customer_id = data_object.get('customer')
-        if customer_id:
-            user = find_user_by_customer_id(customer_id)
-            print(user.subscribed)
-            if user.subscribed:
-                user.subscribed = False
-                db.session.commit()
-                print(f"Entitlements updated for user {user.email}")
-            else:
-                user.subscribed = True
-                db.session.commit()
-                print(f"Entitlements updated for user {user.email}")
-    '''
 
     return jsonify({'status': 'success'})
 
