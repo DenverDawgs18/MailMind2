@@ -1,56 +1,61 @@
 # ml_models.py
-from unsloth import FastLanguageModel
-# Global variables to store model and tokenizer
-model = None
-tokenizer = None
-import torch
-import gc
-    
+from openai import OpenAI
+from dotenv import load_dotenv
+import os
 
-def initialize_model():
-    torch.cuda.empty_cache()
-    """Initialize the model and tokenizer once"""
-    global model, tokenizer
-    
-    # Only load if not already loaded
-    if model is None or tokenizer is None:
-        print("Loading model and tokenizer...")
-        torch._dynamo.config.disable = True
-        model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name="MailMindActionItems5",
-            max_seq_length=2048,
-            load_in_4bit=True,
-            device_map="cuda:0"
-        )
-        FastLanguageModel.for_inference(model)
-        print("Model loaded successfully")
-    
-    return model, tokenizer
+load_dotenv()
+
+FINE_TUNED_MODEL = "ft:gpt-4o-mini-2024-07-18:mailmind:mailmind:BdKM4ji1"
+
+client = client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+)
 
 
-model, tokenizer = initialize_model()
-def format_prompt(body):
-    return (
-        "<|system|>Provide the action item(s) for this email. Action items are defined as things the sender of the email expects the receiver to complete, such as questions and requests. You should try to keep the language the same (for example if it says Tuesday don't return Tues.). Many emails do not have action items, in this case, return No action. Huge mailing lists should never have action items. You need to keep in mind that emails being forwarded or replies to emails that had action items doesn't necessarily mean that the receiver needs to do what the original email says. You should use context to figure that out.<|user|>\n" + body + "\n<|assistant|>"
+system_prompt = """
+You are an expert email assistant specializing in action item extraction. 
+Your task is to identify specific, actionable tasks that the email sender expects the receiver to complete.
+
+**Action Item Definition:**
+- Direct requests for tasks, responses, or deliverables
+- Questions that require answers or follow-up
+- Explicit deadlines or time-sensitive requests
+- Meeting requests or scheduling needs
+
+**NOT Action Items:**
+- General information sharing or updates
+- Mass/marketing emails from large lists
+- Pure notifications without required response
+- Forwarded content where context shows no action needed for current receiver
+
+**Output Format:**
+- If action items exist: List each as a separate bullet point, preserving original language
+- If no action items: Return exactly "No action"
+- Keep wording as close to original as possible (e.g., "Tuesday" not "Tues.")
+
+**Examples:**
+
+EMAIL: Aimee, Please check meter #1591 Lamay gas lift. It doesn't appear to have very much flow and the BAV is showing the nom volume. This could be adversely affecting the risk numbers. Pat
+RESPONSE: Check meter #1591 (Lamay gas lift)
+
+EMAIL: Save big with our new sale. Come visit the website and enjoy free shipping + 20 percent off select styles and buy one get one for half off on select items.
+RESPONSE: No action
+
+**Context Awareness:**
+- Consider email thread context and forwarding chains
+- Distinguish between original requests and informational forwards
+- Account for whether the current receiver is the intended action-taker
+"""
+
+def get_an_action(email_body):
+    response = client.chat.completions.create(
+        model=FINE_TUNED_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"EMAIL CONTENT:\n{email_body}"}
+        ],
+        temperature=0.9,
+        max_tokens=140,
+        top_p=0.9
     )
-
-def get_an_action(email):  
-    global model, tokenizer
-    
-    gen_kwargs = {
-        "max_new_tokens": 140,
-        "do_sample": False,
-        "temperature": 1,
-        "top_p": 0.9,
-    }
-
-    prompt = format_prompt(email)
-    inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
-
-    with torch.no_grad():
-        outputs = model.generate(**inputs, **gen_kwargs)
-
-    decoded = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    prediction = decoded.split("<|assistant|>")[-1].strip()
-    return prediction
-
+    return response.choices[0].message.content.strip()

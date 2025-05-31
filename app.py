@@ -34,7 +34,6 @@ from functions.refresh_token import refresh
 from functions.users import get_last_login, get_user, update_last_login, create_user
 from functions.linkify import linkify_text
 from functions.reply import reply
-from functions.old.get_action_items import batch_get_action_items
 from functions.get_one_action import get_an_action
 from functions.encryption import encrypt_token, decrypt_token
 import re
@@ -282,6 +281,7 @@ def get_one_action():
     session["final_emails"] = final_emails
     return jsonify({"action_item": action})
 
+'''
 @app.route('/load_more', methods=["POST"])
 @login_required
 def load_more():
@@ -313,7 +313,7 @@ def load_more():
     rendered_emails = render_template("email_snippet.html", emails=new_emails)
 
     return jsonify({"html": rendered_emails})
-
+'''
             
 @app.route("/special")
 def special():

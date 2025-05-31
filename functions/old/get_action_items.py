@@ -1,4 +1,5 @@
 # ml_models.py
+'''
 from unsloth import FastModel
 # Global variables to store model and tokenizer
 model = None
@@ -158,3 +159,4 @@ def batch_get_action_items(emails, batch_size=8):  # Smaller default batch size
                 raise e
     
     return all_actions
+'''

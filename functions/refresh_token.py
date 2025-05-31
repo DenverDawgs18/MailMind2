@@ -6,6 +6,7 @@ from functions.encryption import decrypt_token, encrypt_token
 load_dotenv()
 
 def refresh(user):
+    print(user.oauth_token)
     refresh_token = decrypt_token(user.oauth_token)
     data = {
         "client_id": os.getenv('CLIENT_ID'),

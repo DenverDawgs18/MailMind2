@@ -139,8 +139,11 @@ c_smt.addEventListener('click', (e) => {
         }
     })});
 
+
+
+
+/*
 let loadMoreButton = document.querySelector('.loadmore');
-let emailList = document.querySelector('.emails')
 
 loadMoreButton.addEventListener("click", () => {
         fetch("/load_more", {
@@ -163,7 +166,9 @@ loadMoreButton.addEventListener("click", () => {
         })
         .catch(error => console.error("Error loading more emails:", error));
         });
+*/
 
+let emailList = document.querySelector('.emails')
 
 let emails = emailList.children;
 async function processEmailsSequentially(emails) {
