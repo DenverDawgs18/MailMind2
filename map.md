@@ -3,8 +3,6 @@ JUNE 1 GOAL
 
 
 Roadmap:
-1. Setup EIN
-2. Fine-tune GPT model and implement it in site
 3. Launch day (deploy to fly.io, setup postgres on fly)
 3b) turn Stripe real
 4. Write paper on findings (running benchmarks)
