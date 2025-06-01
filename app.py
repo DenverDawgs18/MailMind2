@@ -6,6 +6,10 @@ from sqlalchemy.orm import DeclarativeBase
 from datetime import datetime, timedelta, timezone, date
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
+from dotenv import load_dotenv
+import os
+load_dotenv()
+DOMAIN = os.getenv("DOMAIN")
 app = Flask(__name__, static_url_path='/static')
 app.config.from_pyfile('config.py')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
@@ -19,11 +23,11 @@ from redis import Redis
 app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_USE_SIGNER"] = True
-app.config["SESSION_REDIS"] = Redis(host="localhost", port=6379)
+redis_host = DOMAIN.removeprefix("http:")
+app.config["SESSION_REDIS"] = Redis(host=DOMAIN, port=6379)
 Session(app)
 from functions.get_emails import get_emails
 import requests
-import os
 import json
 import base64
 from google_auth_oauthlib.flow import Flow
@@ -55,7 +59,7 @@ GOOGLE_CLIENT_SECRETS = 'secret.json'
 GOOGLE_SCOPES = ['https://mail.google.com/', 
                  'https://www.googleapis.com/auth/userinfo.email', 
                  'openid']
-GOOGLE_REDIRECT_URI = "http://localhost:5000/google/callback"
+GOOGLE_REDIRECT_URI = f"{DOMAIN}/google/callback"
 
 @login_manager.user_loader 
 def load_user(id):
@@ -95,7 +99,10 @@ def google_callback():
         scopes=GOOGLE_SCOPES,
         redirect_uri = GOOGLE_REDIRECT_URI,
     )
-    authorization_response = request.url.replace('http', 'https')
+    if "localhost" in DOMAIN:
+        authorization_response = request.url.replace('http', 'https')
+    else:
+        authorization_response = request.url
     flow.fetch_token(authorization_response = authorization_response)
     credentials = flow.credentials
     session["google_credentials"] = {
@@ -871,7 +878,6 @@ def manage_subscription():
 import stripe 
 
 stripe.api_key = 'sk_test_51RS5xIFZzGS2kZIICxWSQ3hgSvU4vn0zKQkDTESU80WycwcBttAxclLo1wSoFcMgHy0lNDnpmawqtxRNOv0CE3nx00UrrRB2JR'
-YOUR_DOMAIN = "http://localhost:5000"
 
 
 @app.route('/create-checkout-session', methods=['POST'])
@@ -903,8 +909,8 @@ def create_checkout_session():
                 },
             ],
             mode='subscription',
-            success_url=YOUR_DOMAIN + '/emails',
-            cancel_url=YOUR_DOMAIN,
+            success_url=DOMAIN + '/emails',
+            cancel_url=DOMAIN,
             subscription_data={
                 'trial_period_days': 7
             },
@@ -922,7 +928,7 @@ def customer_portal():
         if not current_user.stripe_customer_id:
             return "No subscription found", 400
             
-        return_url = YOUR_DOMAIN
+        return_url = DOMAIN
 
         portalSession = stripe.billing_portal.Session.create(
             customer=current_user.stripe_customer_id,
