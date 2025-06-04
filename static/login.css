@@ -1,39 +1,141 @@
-body{
-    height: 100vh;
-    overflow-y: hidden;
+/* Login Page Styling - Matching Email Interface Design */
+
+body {
+    position: relative;
+    padding-bottom: 150px;
+    background: linear-gradient(135deg, #171524 0%, #1a1830 100%);
+    min-height: 100vh;
+    color: white;
+    margin: 0;
+    padding: 0;
 }
-.container{
-    height: 100%;
+
+.container {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: start;
-    gap: 50px;
-    background-color: #171524;
-    padding: 20px;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 50px;
+    max-width: 800px;
+    margin: 0 auto;
+    text-align: center;
+    gap: 30px;
 }
-.loginheader{
-    font-size: 24px;
-    color: white;
+
+.login {
+    font-size: 32px;
+    font-weight: 600;
+    margin-bottom: 40px;
+    color: #e6d7a3;
+    text-transform: uppercase;
+    letter-spacing: 1px;
 }
-.loginlink{
-    padding: 20px;
-    color: white;
-    background-color: #ff6000;
-    border: none;
+
+.loginlink {
+    display: inline-block;
+    padding: 20px 40px;
+    background: linear-gradient(145deg, #514b7a, #5a5488);
+    border: 3px solid black;
     border-radius: 50px;
-    box-shadow: 3px 3px black;
-    text-decoration: none;
-}
-.if{
+    box-shadow: 5px 5px darkorange, 8px 8px 15px rgba(0, 0, 0, 0.3);
     color: white;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 18px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.3s ease;
+    position: relative;
 }
-@media (max-width: 600px){
-    .loginlink{
-        padding: 10px;
-        width: 100%
+
+.loginlink:hover {
+    transform: translateY(-3px);
+    box-shadow: 7px 7px darkorange, 10px 10px 20px rgba(0, 0, 0, 0.4);
+    background: linear-gradient(145deg, #5a5488, #514b7a);
+    color: #e6d7a3;
+}
+
+.loginlink:active {
+    transform: translateY(-1px);
+    box-shadow: 3px 3px darkorange, 5px 5px 10px rgba(0, 0, 0, 0.3);
+}
+
+.if {
+    background: rgba(204, 132, 0, 0.15);
+    padding: 24px;
+    border-radius: 16px;
+    border: 2px solid rgba(204, 132, 0, 0.3);
+    color: #f0f0f0;
+    line-height: 1.6;
+    font-size: 16px;
+    font-weight: 400;
+    max-width: 600px;
+    margin: 0 auto;
+    box-shadow: 0 4px 12px rgba(204, 132, 0, 0.2);
+}
+
+/* Add some visual interest with a subtle animation */
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+}
+
+.loginlink::before {
+    content: '';
+    position: absolute;
+    top: -5px;
+    left: -5px;
+    right: -5px;
+    bottom: -5px;
+    background: linear-gradient(45deg, #cc8400, #b8770a, #cc8400);
+    border-radius: 55px;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.loginlink:hover::before {
+    opacity: 0.3;
+    animation: float 3s ease-in-out infinite;
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+    .container {
+        padding: 30px 20px;
+        gap: 20px;
     }
-    .login{
-        font-size: 18px;
+    
+    .login {
+        font-size: 24px;
+        margin-bottom: 30px;
     }
+    
+    .loginlink {
+        padding: 16px 32px;
+        font-size: 16px;
+        border-radius: 40px;
+    }
+    
+    .if {
+        padding: 20px;
+        font-size: 14px;
+        margin: 0 10px;
+    }
+}
+
+/* Add a subtle background pattern for extra visual interest */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        radial-gradient(circle at 20% 80%, rgba(204, 132, 0, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(106, 90, 205, 0.1) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: -1;
 }

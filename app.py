@@ -874,6 +874,7 @@ def manage_subscription():
 import stripe 
 
 stripe.api_key = 'sk_test_51RS5xIFZzGS2kZIICxWSQ3hgSvU4vn0zKQkDTESU80WycwcBttAxclLo1wSoFcMgHy0lNDnpmawqtxRNOv0CE3nx00UrrRB2JR'
+YOUR_DOMAIN = "http://localhost:5000"
 
 
 @app.route('/create-checkout-session', methods=['POST'])
@@ -905,8 +906,8 @@ def create_checkout_session():
                 },
             ],
             mode='subscription',
-            success_url=DOMAIN + '/emails',
-            cancel_url=DOMAIN,
+            success_url=YOUR_DOMAIN + '/emails',
+            cancel_url=YOUR_DOMAIN,
             subscription_data={
                 'trial_period_days': 7
             },
@@ -924,7 +925,7 @@ def customer_portal():
         if not current_user.stripe_customer_id:
             return "No subscription found", 400
             
-        return_url = DOMAIN
+        return_url = YOUR_DOMAIN
 
         portalSession = stripe.billing_portal.Session.create(
             customer=current_user.stripe_customer_id,
@@ -1010,14 +1011,3 @@ def webhook_received():
             print(f"Subscription canceled for user {user.email}")
 
     return jsonify({'status': 'success'})
-
-
-@app.route('/update_user_acceptance', methods=['POST'])
-@login_required
-def update_user_acceptance():
-    data = request.get_json()
-    if data and data.get('accepted') is True:
-        current_user.accepted_TOS = True
-        db.session.commit()
-        return jsonify({"success": True}), 200
-    return jsonify({"error": "Invalid request"}), 400
