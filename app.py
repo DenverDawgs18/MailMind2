@@ -58,7 +58,7 @@ GOOGLE_CLIENT_SECRETS = 'secret.json'
 GOOGLE_SCOPES = ['https://mail.google.com/', 
                  'https://www.googleapis.com/auth/userinfo.email', 
                  'openid']
-GOOGLE_REDIRECT_URI = f"{DOMAIN}/google/callback"
+GOOGLE_REDIRECT_URI = f"http://localhost:5000/google/callback"
 
 @login_manager.user_loader 
 def load_user(id):
@@ -98,10 +98,7 @@ def google_callback():
         scopes=GOOGLE_SCOPES,
         redirect_uri = GOOGLE_REDIRECT_URI,
     )
-    if "localhost" in DOMAIN:
-        authorization_response = request.url.replace('http', 'https')
-    else:
-        authorization_response = request.url
+    authorization_response = request.url.replace('http', 'https')
     flow.fetch_token(authorization_response = authorization_response)
     credentials = flow.credentials
     session["google_credentials"] = {

@@ -33,6 +33,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Disable button while loading
             loadMoreBtn.disabled = true;
             loadAllBtn.disabled = true;
+            document.querySelector(".stats").textContent = "Loading ..."
             document.querySelectorAll(".restore").forEach(button => {
                 const sender = button.dataset.sender;
                 restoreSender(sender);
@@ -55,7 +56,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
                 
                 // Update button state based on whether there are more emails to load
-                loadMoreBtn.disabled = !data.has_more;
                 loadAllBtn.disabled = !data.has_more
                 
                 // Update senders list with new data

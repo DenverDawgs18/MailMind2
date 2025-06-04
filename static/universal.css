@@ -23,6 +23,9 @@ body{
     color: black;
     font-size: 18px;
 }
+a:hover {
+    color: #cc8400;
+}
 @media (max-width: 500px) {
     .navbar{
         gap: 20px; 
