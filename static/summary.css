@@ -1,163 +1,328 @@
 body{
-    background-color: #171524;
-}
-.wrapper{
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    background-color: #514b7a;
-    padding: 20px;
-    margin: 20px;
-    border-radius: 50px;
-    box-shadow: 3px 3px black;
-}
-.items{
-    max-width: 100%;
+    position: relative;
+    padding-bottom: 150px;
+    background: linear-gradient(135deg, #171524 0%, #1a1830 100%);
+    min-height: 100vh;
+    color: white;
 }
 
-.summarytext{
-    color: white;
-    max-width: 100%;
+.wrapper{
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.summaryheader {
+    font-size: 28px;
+    font-weight: 600;
+    color: #e6d7a3;
+    text-align: center;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: rgba(81, 75, 122, 0.3);
+    border-radius: 16px;
+    border: 2px solid rgba(204, 132, 0, 0.3);
+}
+
+.summarytext {
+    line-height: 1.4;
+}
+
+.items {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 20px 0;
+}
+
+.itemwrap {
+    background: linear-gradient(145deg, #514b7a, #5a5488);
+    border: 2px solid rgba(0, 0, 0, 0.8);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 3px 3px darkorange, 6px 6px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+}
+
+.itemwrap:hover {
+    transform: translateY(-2px);
+    box-shadow: 5px 5px darkorange, 8px 8px 16px rgba(0, 0, 0, 0.4);
+}
+
+.item {
+    color: #f0f0f0;
+    font-size: 16px;
+    line-height: 1.6;
+    margin: 0;
+    flex: 1;
     word-wrap: break-word;
 }
-.summary{
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 5px;
+
+.expand {
+    background: linear-gradient(145deg, #cc8400, #b8770a);
+    color: white;
+    border: 2px solid transparent;
+    padding: 8px 16px;
+    border-radius: 16px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 3px 10px rgba(204, 132, 0, 0.3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
 }
 
-.summary *{
-    color: white;
+.expand:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(204, 132, 0, 0.4);
+    background: linear-gradient(145deg, #b8770a, #cc8400);
 }
-.itemwrapper{
-    display: flex;
-    gap: 20px;
+
+.expand:active {
+    transform: translateY(0px);
 }
-.expand{
-    background-color: orange;
-    color: white;
-    border: 1px solid black;
-    font-size: 18px; 
-    border-radius: 50px;
-    padding: 10px;
-}
-.item{
-    color: white;
-}
+
 .email{
     display: flex;
     flex-direction: column;
     padding: 20px;
+    background: linear-gradient(145deg, #514b7a, #5a5488);
     border: 3px solid black;
     border-radius: 50px;
-    box-shadow: 5px 5px darkorange;
-}
-body{
+    box-shadow: 5px 5px darkorange, 8px 8px 15px rgba(0, 0, 0, 0.3);
+    width: 100%;
+    transition: all 0.3s ease;
     position: relative;
-    padding-bottom: 150px;
+    margin-top: 15px;
 }
-body{
-    background-color: #171524;
+
+.email:hover {
+    transform: translateY(-2px);
+    box-shadow: 7px 7px darkorange, 10px 10px 20px rgba(0, 0, 0, 0.4);
 }
+
 .emailsub{
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 8px;
+    margin-bottom: 15px;
 }
+
 .emailone{
     flex-direction: row;
     align-items: center;
     gap: 20px;
+    flex-wrap: wrap;
 }
+
 .large{
     font-size: 24px;
+    font-weight: 500;
 }
+
 .header{
-    font-weight: normal;
-    text-decoration: underline;
-    color: white;
+    font-weight: 600;
+    text-decoration: none;
+    color: #e6d7a3;
+    font-size: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
 }
-.wrapper{
-    padding: 20px;
-}
+
 .etext,.replylabel,.replyheader{
-    color: white;
+    color: #f0f0f0;
+    line-height: 1.6;
+    word-wrap: break-word;
 }
-.clabel{
-    color: black;
+
+.etext {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 12px;
+    border-radius: 8px;
+    border-left: 3px solid #cc8400;
 }
+
 a{
-    color: white; 
+    color: #87ceeb; 
     text-decoration: underline;
+    transition: color 0.3s ease;
 }
+
+a:hover {
+    color: #cc8400;
+}
+
 .buttons{
     display: flex;
     justify-content: center;
     gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 20px;
 }
+
 .action{
-    padding: 20px;
+    padding: 12px 24px;
     border-radius: 20px;
+    border: 2px solid transparent;
+    background: linear-gradient(145deg, #cc8400, #b8770a);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 3px 10px rgba(204, 132, 0, 0.3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 14px;
 }
+
+.action:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(204, 132, 0, 0.4);
+    background: linear-gradient(145deg, #b8770a, #cc8400);
+}
+
+.action:active {
+    transform: translateY(0px);
+}
+
+.mark {
+    background: linear-gradient(145deg, #6a5acd, #7b68ee);
+    box-shadow: 0 3px 10px rgba(106, 90, 205, 0.3);
+}
+
+.mark:hover {
+    background: linear-gradient(145deg, #7b68ee, #6a5acd);
+    box-shadow: 0 5px 15px rgba(106, 90, 205, 0.4);
+}
+
 .replywrap{
     display: none;
 }
+
+.replycontain {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 24px;
+    border-radius: 16px;
+    margin-top: 20px;
+    border: 2px solid rgba(204, 132, 0, 0.2);
+}
+
+.replyheader {
+    color: #e6d7a3;
+    font-size: 24px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
 .emailform{
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 15px;
+    width: 100%;
+    max-width: 600px;
 }
-.replycontain{
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+
+.replylabel {
+    font-weight: 500;
+    color: #e6d7a3;
+    margin-bottom: 5px;
+    align-self: flex-start;
 }
+
 .replyin{
     border-radius: 50px;
     width: 75%;
-    border: 2px solid black;
-    padding: 15px;
-    
-}
-.etext,.item {
-    word-wrap: break-word;      
-    overflow-wrap: break-word;   
-    white-space: pre-wrap;       
-    max-width: 100%;             
-    overflow-x: auto;            
+    border: 2px solid rgba(204, 132, 0, 0.3);
+    padding: 15px 20px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #333;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    outline: none;
+    min-width: 250px;
 }
 
-.itemwrap{
-    gap: 15px;
+.replyin:focus {
+    border-color: #cc8400;
+    box-shadow: 0 0 12px rgba(204, 132, 0, 0.3);
+    transform: scale(1.01);
 }
+
 @media (max-width: 600px) {
-    .itemwrap{
-        display: flex;
-
-        flex-direction: column;
-        align-items: center;
-        margin-bottom: 10px;
+    .wrapper{
+        padding: 15px;
     }
+    
+    .summaryheader {
+        font-size: 22px;
+        margin-bottom: 20px;
+        padding: 15px;
+    }
+    
+    .items {
+        gap: 15px;
+        padding: 15px 0;
+    }
+    
+    .itemwrap {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 15px;
+    }
+    
+    .item {
+        font-size: 15px;
+    }
+    
+    .expand {
+        align-self: flex-end;
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+    
     .large{
         font-size: 18px;
     }
+    
     .emailone{
         flex-direction: column;
         align-items: center;
     }
-    .email{
-        max-width: 100%;
-        padding: 10px;
+    
+    .email {
+        padding: 15px;
+        border-radius: 30px;
     }
-    .etext{
-        font-size: 16px;
+    
+    .buttons {
+        flex-direction: column;
+        gap: 15px;
     }
-    .emailsub{
-        max-width: 100%;
+    
+    .action {
+        width: 100%;
+        padding: 14px;
     }
-    .wrapper{
-        padding: 10px;
+    
+    .replyin {
+        width: 90%;
+        min-width: auto;
+    }
+    
+    .emailform {
+        width: 100%;
+        max-width: none;
     }
 }

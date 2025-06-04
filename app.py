@@ -9,7 +9,7 @@ from google.oauth2.credentials import Credentials
 from dotenv import load_dotenv
 import os
 load_dotenv()
-DOMAIN = os.getenv("DOMAIN")
+DOMAIN = "http:/localhost:5000"
 app = Flask(__name__, static_url_path='/static')
 app.config.from_pyfile('config.py')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
@@ -23,8 +23,7 @@ from redis import Redis
 app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_USE_SIGNER"] = True
-redis_host = DOMAIN.removeprefix("http:")
-app.config["SESSION_REDIS"] = Redis(host=DOMAIN, port=6379)
+app.config["SESSION_REDIS"] = Redis(host="localhost", port=6379)
 Session(app)
 from functions.get_emails import get_emails
 import requests
