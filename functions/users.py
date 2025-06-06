@@ -3,7 +3,8 @@ from app import User, db
 def create_user(email, oauth_token):
     user = User(
         email = email,
-        oauth_token = oauth_token
+        oauth_token = oauth_token,
+        subscribed = False,
     )
     db.session.add(user)
     db.session.commit()

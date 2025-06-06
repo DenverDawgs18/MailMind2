@@ -1,9 +1,6 @@
 # ml_models.py
 from openai import OpenAI
-from dotenv import load_dotenv
 import os
-
-load_dotenv()
 
 FINE_TUNED_MODEL = "ft:gpt-4o-mini-2024-07-18:mailmind:mailmind:BdKM4ji1"
 

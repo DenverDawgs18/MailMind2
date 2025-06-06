@@ -1,0 +1,30 @@
+# flyctl launch added from .gitignore
+**\.venv
+**\secret.*
+**\.env
+**\config.py
+**\uploads
+**\enron_emails.csv
+**\test_enron.csv
+**\modified_enron_emails_cleaned.csv 
+**\labeled_enron.csv 
+**\Temp
+**\MailMindActionItems4
+**\MailMindActionItems5
+**\train.jsonl
+**\test.jsonl
+
+# flyctl launch added from .venv\.gitignore
+.venv\**\*
+
+# flyctl launch added from .venv\Lib\site-packages\debugpy\_vendored\pydevd\_pydevd_frame_eval\.gitignore
+.venv\Lib\site-packages\debugpy\_vendored\pydevd\_pydevd_frame_eval\pydevd_frame_evaluator.*.so
+.venv\Lib\site-packages\debugpy\_vendored\pydevd\_pydevd_frame_eval\pydevd_frame_evaluator.*.pyd
+.venv\Lib\site-packages\debugpy\_vendored\pydevd\_pydevd_frame_eval\pydevd_frame_evaluator.pyx
+
+# flyctl launch added from .venv\Lib\site-packages\debugpy\_vendored\pydevd\pydevd_attach_to_process\linux_and_mac\.gitignore
+.venv\Lib\site-packages\debugpy\_vendored\pydevd\pydevd_attach_to_process\linux_and_mac\attach_x86.dylib
+.venv\Lib\site-packages\debugpy\_vendored\pydevd\pydevd_attach_to_process\linux_and_mac\attach_x86_64.dylib
+.venv\Lib\site-packages\debugpy\_vendored\pydevd\pydevd_attach_to_process\linux_and_mac\attach_linux_x86.o
+.venv\Lib\site-packages\debugpy\_vendored\pydevd\pydevd_attach_to_process\linux_and_mac\attach_linux_x86_64.o
+fly.toml

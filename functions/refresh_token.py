@@ -1,9 +1,7 @@
 import requests 
-from dotenv import load_dotenv
 import os
 from app import db 
 from functions.encryption import decrypt_token, encrypt_token
-load_dotenv()
 
 def refresh(user):
     print(user.oauth_token)

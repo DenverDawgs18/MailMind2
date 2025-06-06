@@ -1,4 +1,3 @@
-
 from flask import Flask, render_template, url_for, request, redirect, session, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -6,13 +5,18 @@ from sqlalchemy.orm import DeclarativeBase
 from datetime import datetime, timedelta, timezone, date
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
-from dotenv import load_dotenv
 import os
-load_dotenv()
-DOMAIN = "http:/localhost:5000"
+DOMAIN = os.getenv("DOMAIN", "https://mailmind.fly.dev")
 app = Flask(__name__, static_url_path='/static')
-app.config.from_pyfile('config.py')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
+app.config['SESSION_COOKIE_SECURE'] = True  
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
+    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+    print(f"Fixed DATABASE_URL scheme: {DATABASE_URL[:50]}...")
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 class Base(DeclarativeBase):
     pass
 db = SQLAlchemy(model_class=Base)
@@ -23,8 +27,11 @@ from redis import Redis
 app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_USE_SIGNER"] = True
-app.config["SESSION_REDIS"] = Redis(host="localhost", port=6379)
-Session(app)
+app.config["SESSION_REDIS"] = Redis(
+  host='fly-mailmind-redis.upstash.io',
+  port=6379,
+  password=os.getenv("REDIS_PASSWORD")
+)
 from functions.get_emails import get_emails
 import requests
 import json
@@ -41,13 +48,13 @@ from functions.get_one_action import get_an_action
 from functions.encryption import encrypt_token, decrypt_token
 import re
 import short_url
-import textwrap
 from werkzeug.utils import secure_filename
-import mailbox
 import time
 import markdown    
 import copy
-from sortedcontainers import SortedList
+from dateutil import parser
+import stripe 
+from flask_login import AnonymousUserMixin
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
@@ -58,7 +65,17 @@ GOOGLE_CLIENT_SECRETS = 'secret.json'
 GOOGLE_SCOPES = ['https://mail.google.com/', 
                  'https://www.googleapis.com/auth/userinfo.email', 
                  'openid']
-GOOGLE_REDIRECT_URI = f"http://localhost:5000/google/callback"
+GOOGLE_REDIRECT_URI = f"{DOMAIN}/google/callback"
+
+client_config = {
+    "web": {
+        "client_id": os.environ["GOOGLE_CLIENT_ID"],
+        "client_secret": os.environ["GOOGLE_CLIENT_SECRET"],
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "redirect_uris": "GOOGLE_REDIRECT_URI",
+    }
+}
 
 @login_manager.user_loader 
 def load_user(id):
@@ -82,10 +99,10 @@ def index():
 
 @app.route("/google/login")
 def google_login():
-    flow = Flow.from_client_secrets_file(
-        GOOGLE_CLIENT_SECRETS, 
+    flow = Flow.from_client_config(
+        client_config,
         scopes=GOOGLE_SCOPES,
-        redirect_uri = GOOGLE_REDIRECT_URI
+        redirect_uri=GOOGLE_REDIRECT_URI
     )
     auth_url, _ = flow.authorization_url(prompt="consent")
     
@@ -93,12 +110,12 @@ def google_login():
 
 @app.route('/google/callback')
 def google_callback():
-    flow = Flow.from_client_secrets_file(
-        GOOGLE_CLIENT_SECRETS, 
+    flow = Flow.from_client_config(
+        client_config,
         scopes=GOOGLE_SCOPES,
-        redirect_uri = GOOGLE_REDIRECT_URI,
+        redirect_uri=GOOGLE_REDIRECT_URI,
     )
-    authorization_response = request.url.replace('http', 'https')
+    authorization_response = request.url.replace("http", "https")
     flow.fetch_token(authorization_response = authorization_response)
     credentials = flow.credentials
     session["google_credentials"] = {
@@ -118,7 +135,7 @@ def google_callback():
     session['user_email'] = user_info.get('email')
     user = User.query.filter_by(email=session['user_email']).first()
     if not user:
-        user = create_user(session['user_email'], encrypt_token(credentials.refresh_token), subscribed = False)
+        user = create_user(session['user_email'], encrypt_token(credentials.refresh_token))
     else:
         user.oauth_token = encrypt_token(credentials.refresh_token)
     db.session.commit()
@@ -142,7 +159,6 @@ def session_clear():
     session.clear()
     return render_template("index.html")
 
-from dateutil import parser
 @app.route('/emails')
 @login_required
 def emails():
@@ -852,7 +868,7 @@ def remove_unsubscribe():
     else:
         return jsonify({"message": "No unsubscribe entry found."}), 404
 
-from flask_login import AnonymousUserMixin
+
 
 @app.route("/subscribe")
 @login_required
@@ -871,10 +887,9 @@ def manage_subscription():
         return render_template("subscribe.html")
     return render_template("manage.html")
 
-import stripe 
 
-stripe.api_key = 'sk_test_51RS5xIFZzGS2kZIICxWSQ3hgSvU4vn0zKQkDTESU80WycwcBttAxclLo1wSoFcMgHy0lNDnpmawqtxRNOv0CE3nx00UrrRB2JR'
-YOUR_DOMAIN = "http://localhost:5000"
+
+stripe.api_key = os.getenv("STRIPE_API_KEY")
 
 
 @app.route('/create-checkout-session', methods=['POST'])
@@ -906,8 +921,8 @@ def create_checkout_session():
                 },
             ],
             mode='subscription',
-            success_url=YOUR_DOMAIN + '/emails',
-            cancel_url=YOUR_DOMAIN,
+            success_url=DOMAIN + '/emails',
+            cancel_url=DOMAIN,
             subscription_data={
                 'trial_period_days': 7
             },
@@ -925,7 +940,7 @@ def customer_portal():
         if not current_user.stripe_customer_id:
             return "No subscription found", 400
             
-        return_url = YOUR_DOMAIN
+        return_url = DOMAIN
 
         portalSession = stripe.billing_portal.Session.create(
             customer=current_user.stripe_customer_id,
@@ -938,7 +953,7 @@ def customer_portal():
 
 @app.route('/webhook', methods=['POST'])
 def webhook_received():
-    webhook_secret = 'whsec_df79cd3660c102dbbef55c98b5df3ad722d3a088c1c685e45f02be24032bf2cd'
+    webhook_secret = os.getenv("WEBHOOK_SECRET")
     
     if webhook_secret:
         signature = request.headers.get('stripe-signature')
