@@ -4,6 +4,12 @@ import os
 
 FINE_TUNED_MODEL = "ft:gpt-4o-mini-2024-07-18:mailmind:mailmind:BdKM4ji1"
 
+PRODUCTION = False 
+
+if not PRODUCTION:
+    from dotenv import load_dotenv
+    load_dotenv()
+
 client = client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
 )

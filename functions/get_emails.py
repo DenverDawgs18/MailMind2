@@ -144,6 +144,7 @@ def get_emails(host: str,
     - Otherwise defaults to exactly 24 hours ago from now
     """
     msgs = []
+    logger.info(f"Token: {token}")
     try:
         # Map provider to IMAP settings
         if host.lower() == 'gmail':

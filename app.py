@@ -6,17 +6,29 @@ from datetime import datetime, timedelta, timezone, date
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 import os
-DOMAIN = os.getenv("DOMAIN", "https://mailmind.fly.dev")
+PRODUCTION = False
+if not PRODUCTION:
+    from dotenv import load_dotenv
+    load_dotenv()
+    DOMAIN = "http://localhost:5000"
+else:
+    DOMAIN = os.getenv("DOMAIN", "https://mailmind.fly.dev")
 app = Flask(__name__, static_url_path='/static')
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
-app.config['SESSION_COOKIE_SECURE'] = True  
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-DATABASE_URL = os.getenv('DATABASE_URL')
-if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
-    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
-    print(f"Fixed DATABASE_URL scheme: {DATABASE_URL[:50]}...")
-app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+if PRODUCTION:
+    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
+else:
+    app.config.from_pyfile('config.py')
+if PRODUCTION:
+    app.config['SESSION_COOKIE_SECURE'] = True  
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    DATABASE_URL = os.getenv('DATABASE_URL')
+    if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
+        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+        print(f"Fixed DATABASE_URL scheme: {DATABASE_URL[:50]}...")
+    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+else:
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///database.db"
 class Base(DeclarativeBase):
     pass
 db = SQLAlchemy(model_class=Base)
@@ -27,11 +39,15 @@ from redis import Redis
 app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_USE_SIGNER"] = True
-app.config["SESSION_REDIS"] = Redis(
-  host='fly-mailmind-redis.upstash.io',
-  port=6379,
-  password=os.getenv("REDIS_PASSWORD")
-)
+if PRODUCTION:
+    app.config["SESSION_REDIS"] = Redis(
+    host='fly-mailmind-redis.upstash.io',
+    port=6379,
+    password=os.getenv("REDIS_PASSWORD")
+    )
+else:
+    app.config["SESSION_REDIS"] = Redis(host="localhost", port=6379)
+Session(app)
 from functions.get_emails import get_emails
 import requests
 import json
@@ -54,6 +70,10 @@ import markdown
 import copy
 from dateutil import parser
 import stripe 
+stripe.api_key = os.getenv("STRIPE_API_KEY")
+import logging 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 from flask_login import AnonymousUserMixin
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -61,7 +81,6 @@ login_manager.login_view = "login"
 with app.app_context():
     db.create_all()
 
-GOOGLE_CLIENT_SECRETS = 'secret.json'
 GOOGLE_SCOPES = ['https://mail.google.com/', 
                  'https://www.googleapis.com/auth/userinfo.email', 
                  'openid']
@@ -69,8 +88,8 @@ GOOGLE_REDIRECT_URI = f"{DOMAIN}/google/callback"
 
 client_config = {
     "web": {
-        "client_id": os.environ["GOOGLE_CLIENT_ID"],
-        "client_secret": os.environ["GOOGLE_CLIENT_SECRET"],
+        "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+        "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
         "redirect_uris": "GOOGLE_REDIRECT_URI",
@@ -889,7 +908,7 @@ def manage_subscription():
 
 
 
-stripe.api_key = os.getenv("STRIPE_API_KEY")
+
 
 
 @app.route('/create-checkout-session', methods=['POST'])
@@ -953,7 +972,10 @@ def customer_portal():
 
 @app.route('/webhook', methods=['POST'])
 def webhook_received():
-    webhook_secret = os.getenv("WEBHOOK_SECRET")
+    if PRODUCTION:
+        webhook_secret = os.getenv("WEBHOOK_SECRET")
+    else:
+        webhook_secret = os.getenv("TEST_WEBHOOK")
     
     if webhook_secret:
         signature = request.headers.get('stripe-signature')
