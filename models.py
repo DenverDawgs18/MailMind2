@@ -18,11 +18,11 @@ class User(db.Model, UserMixin):
     
 class Link(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    link = db.Column(db.String())  
+    link = db.Column(db.Text())  
     short = db.Column(db.String(1000), nullable=True)
 
 class Unsubscribe(db.Model):
     id = db.Column(db.Integer, primary_key = True)
-    link = db.Column(db.String(1000))
+    link = db.Column(db.Text())
     user = db.Column(db.ForeignKey("user.id"))
     sender = db.Column(db.String(1000))

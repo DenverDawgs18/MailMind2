@@ -6,7 +6,9 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-PRODUCTION = False 
+from functions.production import production
+
+PRODUCTION = production()
 
 if not PRODUCTION:
     from dotenv import load_dotenv

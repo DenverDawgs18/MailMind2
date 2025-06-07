@@ -4,7 +4,8 @@ import os
 
 FINE_TUNED_MODEL = "ft:gpt-4o-mini-2024-07-18:mailmind:mailmind:BdKM4ji1"
 
-PRODUCTION = False 
+from functions.production import production
+PRODUCTION = production()
 
 if not PRODUCTION:
     from dotenv import load_dotenv

@@ -1,7 +1,8 @@
 from cryptography.fernet import Fernet 
 import os 
+from functions.production import production
 
-PRODUCTION = False 
+PRODUCTION = production()
 
 if not PRODUCTION:
     from dotenv import load_dotenv

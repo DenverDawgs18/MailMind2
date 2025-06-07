@@ -21,4 +21,8 @@ USER appuser
 
 EXPOSE 8080
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "app:app"]
+ENV FLASK_APP=app.py
+ENV FLASK_ENV=production
+
+# Updated CMD with timeout settings
+CMD ["sh", "-c", "flask db upgrade && gunicorn --bind 0.0.0.0:8080 --workers 2 --timeout 300 --keep-alive 65 --worker-class sync app:app"]

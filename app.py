@@ -6,7 +6,8 @@ from datetime import datetime, timedelta, timezone, date
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 import os
-PRODUCTION = False
+from functions.production import production
+PRODUCTION = production()
 if not PRODUCTION:
     from dotenv import load_dotenv
     load_dotenv()
