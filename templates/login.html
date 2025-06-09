@@ -5,15 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../static/universal.css">
     <link rel="stylesheet" href="../static/login.css">
-    <title>Document</title>
+    <title>Log In</title>
 </head>
 <body>
     {% if current_user.subscribed %}
         <div class="navbar">
             <a href="{{url_for('index')}}">Home</a>
-            <a href="{{url_for('emails')}}">Emails</a>
+            <a href="{{url_for('emails')}}">Inbox</a>
+            <a href="{{url_for('summary')}}">To-Do List</a>
             <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
-            <a href="{{url_for('summary')}}">Summary</a>
             <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
             <a href="{{url_for('manage_subscription')}}">Manage Subscription</a>
         </div>
@@ -25,10 +25,13 @@
         </div>
     {% endif %}
     <div class="container">
-        <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Log In With Google</a></h1>
         {% if current_user.subscribed %}
+            <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Log In With Google</a></h1>
             <h3 class="if">Inbox Cleaner requires you to re-log in (because of Google's requirements for developers)
                 every time you re-visit the site.  </h3>
+        {% else %}
+            <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Sign In With Google</a></h1>
+            <h3 class="if">You must log in to access the rest of the site (including the susbscribe page) </h3> 
         {% endif %}
     </div>
 </body>

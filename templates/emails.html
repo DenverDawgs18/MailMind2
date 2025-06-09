@@ -5,15 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../static/universal.css">
     <link rel="stylesheet" href="../static/emails.css">
-    <title>Document</title>
+    <title>Inbox</title>
 </head>
 <body>
     {% if current_user.subscribed %}
         <div class="navbar">
             <a href="{{url_for('index')}}">Home</a>
-            <a href="{{url_for('emails')}}">Emails</a>
+            <a href="{{url_for('emails')}}">Inbox</a>
+            <a href="{{url_for('summary')}}">To-Do List</a>
             <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
-            <a href="{{url_for('summary')}}">Summary</a>
             <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
             <a href="{{url_for('manage_subscription')}}">Manage Subscription</a>
         </div>
