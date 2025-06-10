@@ -29,7 +29,7 @@ def refresh(user):
         new_refresh_token = new_tokens.get("refresh_token")
         if new_refresh_token:
             user.oauth_token = new_refresh_token
-        db.session.commit()
+            db.session.commit()
         return new_tokens['access_token']
     else:
         # Log error or take action

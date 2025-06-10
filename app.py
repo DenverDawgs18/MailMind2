@@ -309,33 +309,43 @@ def emails():
 
 def process_unsubscribe_links(emails, current_user):
     """Helper function to process unsubscribe links in emails"""
+    changes_made = False
+    
     for email in emails:
         unsubscribe_match = re.search(r"(?i)unsubscribe", email['body'])
-        
+                 
         if unsubscribe_match:
             unsubscribe_pos = unsubscribe_match.start()
             remaining_text = email['body'][unsubscribe_pos:]
             link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
-            
+                         
             if link_match:
                 code = link_match.group(1)
                 try:
                     link_id = short_url.decode_url(code)
                     link_obj = Link.query.filter_by(id=link_id).first()
-                    
+                                         
                     if link_obj and link_obj.link:
                         real_link = link_obj.link
                         unsubj = Unsubscribe.query.filter_by(sender=email["from"]).first()
-                        
+                                                 
                         if not unsubj:
                             new_unsub = Unsubscribe(sender=email['from'], link=real_link, user=current_user.id)
                             db.session.add(new_unsub)
                             print(f"Added unsubscribe link for {email['from']}: {real_link}")
-                            db.session.commit()
+                            changes_made = True
                 except Exception as e:
                     print(f"Error processing unsubscribe link: {str(e)}")
                     continue
-
+    
+    # Only commit if there were changes made
+    if changes_made:
+        try:
+            db.session.commit()
+            print("Successfully committed all unsubscribe link changes")
+        except Exception as e:
+            print(f"Error committing unsubscribe link changes: {str(e)}")
+            db.session.rollback()
 @app.route("/get_one_action", methods=["POST"])
 @login_required 
 def get_one_action():
@@ -574,6 +584,7 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
     next_page_token = page_token
     process_all = batch_size == 0  # Flag to process all emails
     remaining_emails = batch_size if not process_all else float('inf')
+    pending_unsubscribes = []  # Store unsubscribe data for batch processing
     
     try:
         while remaining_emails > 0:
@@ -608,7 +619,11 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
                                 unsubscribe_link = find_unsubscribe_link(email_body)
                             
                             if unsubscribe_link:
-                                process_unsubscribe_link(unsubscribe_link, sender)
+                                # Collect unsubscribe data instead of processing immediately
+                                pending_unsubscribes.append({
+                                    'link': unsubscribe_link,
+                                    'sender': sender
+                                })
                         
                         senders[sender] = senders.get(sender, 0) + 1
                     
@@ -629,6 +644,10 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
             # If there's no next page token or we've processed enough emails (and not in "process all" mode), break
             if not next_page_token or (remaining_emails <= 0 and not process_all):
                 break
+        
+        # Process all unsubscribe links in a single batch
+        if pending_unsubscribes:
+            process_unsubscribe_links_batch(pending_unsubscribes)
                 
     except Exception as e:
         print(f"Error fetching emails: {str(e)}")
@@ -636,6 +655,57 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
     sorted_senders = sorted(senders.items(), key=lambda x: x[1], reverse=True)
     return sorted_senders, next_page_token, processed_count
 
+
+def process_unsubscribe_links_batch(unsubscribe_data):
+    """Process and store multiple unsubscribe links in a single database transaction."""
+    if not unsubscribe_data:
+        return
+    
+    changes_made = False
+    
+    try:
+        for data in unsubscribe_data:
+            link = data['link']
+            sender = data['sender']
+            
+            if not link:
+                continue
+            
+            try:
+                # Handle encoded links
+                if link.startswith('[LINK:') and link.endswith(']'):
+                    code = link.strip('[LINK:').strip(']').strip()
+                    try:
+                        link_id = short_url.decode_url(code)
+                        link_obj = Link.query.filter_by(id=link_id).first()
+                        if link_obj:
+                            link = link_obj.link
+                        else:
+                            continue
+                    except Exception as e:
+                        print(f"Error decoding short URL: {str(e)}")
+                        continue
+
+                # Check if unsubscribe entry already exists
+                unsubj = Unsubscribe.query.filter_by(sender=sender).first()
+                if not unsubj:
+                    new_unsub = Unsubscribe(sender=sender, link=link, user=current_user.id)
+                    db.session.add(new_unsub)
+                    print(f"Added unsubscribe link for {sender}: {link}")
+                    changes_made = True
+                    
+            except Exception as e:
+                print(f"Error processing unsubscribe link for {sender}: {str(e)}")
+                continue
+        
+        # Single commit for all changes
+        if changes_made:
+            db.session.commit()
+            print(f"Successfully committed {len([d for d in unsubscribe_data if d['link']])} unsubscribe link changes")
+            
+    except Exception as e:
+        print(f"Error committing unsubscribe link changes: {str(e)}")
+        db.session.rollback()
 
 
 def get_message_body(msg):
@@ -703,34 +773,6 @@ def find_unsubscribe_link(email_body):
             return html_link_match.group(1)
     
     return ''
-
-
-def process_unsubscribe_link(link, sender):
-    """Process and store the unsubscribe link in the database."""
-    if not link:
-        return
-    
-    try:
-        if link.startswith('[LINK:') and link.endswith(']'):
-            code = link.strip('[LINK:').strip(']').strip()
-            try:
-                link_id = short_url.decode_url(code)
-                link_obj = Link.query.filter_by(id=link_id).first()
-                if link_obj:
-                    link = link_obj.link
-            except Exception as e:
-                print(f"Error decoding short URL: {str(e)}")
-                return
-
-        unsubj = Unsubscribe.query.filter_by(sender=sender).first()
-        if not unsubj:
-
-            new_unsub = Unsubscribe(sender=sender, link=link, user=current_user.id)
-            db.session.add(new_unsub)
-            print(f"Added unsubscribe link for {sender}: {link}")
-            db.session.commit()
-    except Exception as e:
-        print(f"Error processing unsubscribe link: {str(e)}")
 
 
 @app.route('/delete_sender', methods=["POST"])
