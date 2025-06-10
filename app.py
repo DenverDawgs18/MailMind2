@@ -117,6 +117,35 @@ def logout():
 def index():
     return render_template('index.html')
 
+@app.route("/special")
+def special():
+    if PRODUCTION:
+        return render_template("index.html")
+    current_user.subscribed = False
+    db.session.commit()
+    return render_template("index.html")
+
+@app.route("/code", methods=["GET", "POST"])
+@login_required
+def code():
+    if request.method == "POST":
+        code = request.form.get("code")
+        if PRODUCTION:
+            real_code = os.getenv("CODE")
+        else:
+            from dotenv import load_dotenv 
+            load_dotenv()
+        real_code = os.getenv("CODE")
+        if str(code) == str(real_code) and str(real_code) != "DISABLED":
+            logger.info(f"CODE GRANTED TO {current_user.email}")
+            current_user.subscribed = True
+            db.session.commit()
+            return render_template("code.html", message="Code valid. Subscription granted. Click on Inbox to load your to-do list!")
+        else:
+            return render_template("code.html", message="Invalid code.")
+
+    return render_template("code.html", message=False)
+
 @app.route("/google/login")
 def google_login():
     flow = Flow.from_client_config(
@@ -354,11 +383,7 @@ def load_more():
     return jsonify({"html": rendered_emails})
 '''
             
-@app.route("/special")
-def special():
-    current_user.subscribed = False
-    db.session.commit()
-    return render_template("index.html")
+
 
 @app.route('/mark_high_priority', methods=["POST"])
 @login_required

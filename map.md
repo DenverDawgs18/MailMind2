@@ -7,14 +7,14 @@ Roadmap:
 2. Front-end work on load all on inbox cleaner
 3. Figure out function to go through all the form bullshit companies make you do when unsubbing 
 4. Add Outlook support (currently just gmail)
-5. General idiot-proofing (based on feedback from inital launch)
+5. To-Do list beefing up 
+6. Calendar integration
+7. Email snoozing
 
-
-
+Setup code for inital users
 
 A/B tests
 1000 flat on button or allow user to pick?
 
 Features:
 Snooze email
-Get AI to assess how important the email is 

@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code</title>
     <link rel="stylesheet" href="../static/universal.css">
-    <link rel="stylesheet" href="../static/login.css">
-    <title>Log In</title>
+    <link rel="stylesheet" href="../static/code.css">
 </head>
 <body>
     {% if current_user.subscribed %}
@@ -25,14 +25,14 @@
         </div>
     {% endif %}
     <div class="container">
-        {% if current_user.subscribed %}
-            <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Log In With Google</a></h1>
-            <h3 class="if">Inbox Cleaner requires you to re-log in (because of Google's requirements for developers)
-                every time you re-visit the site.  </h3>
-        {% else %}
-            <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Sign In With Google</a></h1>
-            <h3 class="if">You must log in to access the rest of the site (including the subscribe page) </h3> 
+        {% if message %}
+            <h1 class="message">{{message}}</h1>
         {% endif %}
+        <form action="/code" method="post">
+            <h1>Enter code below</h1>
+            <input type="text" name="code">
+            <button type="submit">Submit</button>
+        </form>
     </div>
 </body>
 </html>
