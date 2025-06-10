@@ -569,12 +569,19 @@ def email_cleaner():
         to_delete=session.get("deleted", [])
     )
 
+# Add this global variable to track progress
+current_progress = {"count": 0, "status": "idle"}
+
+# Add this new route to get progress updates
+@app.route('/email_progress')
+@login_required
+def get_email_progress():
+    return jsonify(current_progress)
+
+# Modify your existing fetch_gmail_emails_batch function
 def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
-    """Fetch a batch of Gmail emails and process senders
-    
-    If batch_size is 0, process all available emails.
-    Otherwise, process up to batch_size emails.
-    """
+    """Fetch a batch of Gmail emails and process senders"""
+    global current_progress
     
     creds = Credentials.from_authorized_user_info(session["google_credentials"])
     service = build("gmail", "v1", credentials=creds)
@@ -582,13 +589,15 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
     senders = {}
     processed_count = current_count
     next_page_token = page_token
-    process_all = batch_size == 0  # Flag to process all emails
+    process_all = batch_size == 0
     remaining_emails = batch_size if not process_all else float('inf')
-    pending_unsubscribes = []  # Store unsubscribe data for batch processing
+    pending_unsubscribes = []
+    
+    # Initialize progress
+    current_progress = {"count": processed_count, "status": "loading"}
     
     try:
         while remaining_emails > 0:
-            # Request up to Gmail's API limit or remaining emails needed
             request_size = min(500, remaining_emails) if not process_all else 500
             
             results = service.users().messages().list(
@@ -619,7 +628,6 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
                                 unsubscribe_link = find_unsubscribe_link(email_body)
                             
                             if unsubscribe_link:
-                                # Collect unsubscribe data instead of processing immediately
                                 pending_unsubscribes.append({
                                     'link': unsubscribe_link,
                                     'sender': sender
@@ -632,8 +640,9 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
                     
                     if processed_count % 100 == 0:
                         print(f"Processed {processed_count} emails")
+                        # Update global progress
+                        current_progress = {"count": processed_count, "status": "loading"}
                     
-                    # If we've processed enough emails and we're not in "process all" mode, break
                     if remaining_emails <= 0 and not process_all:
                         break
                         
@@ -641,20 +650,21 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
                     print(f"Error processing message {message['id']}: {str(e)}")
                     continue
             
-            # If there's no next page token or we've processed enough emails (and not in "process all" mode), break
             if not next_page_token or (remaining_emails <= 0 and not process_all):
                 break
         
-        # Process all unsubscribe links in a single batch
         if pending_unsubscribes:
             process_unsubscribe_links_batch(pending_unsubscribes)
+        
+        # Mark as complete
+        current_progress = {"count": processed_count, "status": "complete"}
                 
     except Exception as e:
         print(f"Error fetching emails: {str(e)}")
+        current_progress = {"count": processed_count, "status": "error"}
     
     sorted_senders = sorted(senders.items(), key=lambda x: x[1], reverse=True)
     return sorted_senders, next_page_token, processed_count
-
 
 def process_unsubscribe_links_batch(unsubscribe_data):
     """Process and store multiple unsubscribe links in a single database transaction."""

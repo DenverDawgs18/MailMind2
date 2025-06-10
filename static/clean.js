@@ -29,97 +29,86 @@ document.addEventListener("DOMContentLoaded", function () {
     const loadAllBtn = document.querySelector(".loadall");
     
     if (loadMoreBtn) {
-        loadMoreBtn.addEventListener("click", function() {
-            // Disable button while loading
-            loadMoreBtn.disabled = true;
-            loadAllBtn.disabled = true;
-            document.querySelector(".stats").textContent = "Loading ..."
-            document.querySelectorAll(".restore").forEach(button => {
-                const sender = button.dataset.sender;
-                restoreSender(sender);
-            });
-            
-            // Make AJAX request to load more emails
-            fetch("/email_cleaner", {
-                method: "POST",
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify({all: "no"})
-            })
-            .then(response => response.json())
-            .then(data => {
-                // Update processed count in stats element
-                if (statsElement) {
-                    statsElement.textContent = `Loaded: ${data.processed_count} emails`;
-                }
-                
-                // Update button state based on whether there are more emails to load
-                loadAllBtn.disabled = !data.has_more
-                
-                // Update senders list with new data
-                updateSendersList(data.text);
-                
-                // Check if there are any deleted senders to update
-                if (data.deleted) {
-                    updateRequestedList(data.deleted);
-                }
-            })
-            .catch(error => {
-                console.error('Error loading more emails:', error);
-                alert('Error loading emails. Please try again.');
-                
-                // Re-enable button in case of error
-                loadMoreBtn.disabled = false;
-            });
-        });
-    }
+    loadMoreBtn.addEventListener("click", function() {
+        loadEmailsWithPolling("no");
+    });
+}
+
+if (loadAllBtn) {
+    loadAllBtn.addEventListener("click", function() {
+        loadEmailsWithPolling("yes");
+    });
+}
+
+function loadEmailsWithPolling(loadAll) {
+    // Disable buttons while loading
+    loadMoreBtn.disabled = true;
+    loadAllBtn.disabled = true;
+    statsElement.textContent = "Loading ...";
     
-    if (loadAllBtn) {
-        loadAllBtn.addEventListener("click", function() {
-            // Disable button while loading
-            loadMoreBtn.disabled = true;
-            loadAllBtn.disabled = true;
-            document.querySelectorAll(".restore").forEach(button => {
-                const sender = button.dataset.sender;
-                restoreSender(sender);
-            });
-            
-            // Make AJAX request to load more emails
-            fetch("/email_cleaner", {
-                method: "POST",
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify({all: "yes"})
-            })
+    // Restore all senders first
+    document.querySelectorAll(".restore").forEach(button => {
+        const sender = button.dataset.sender;
+        restoreSender(sender);
+    });
+
+    // Start polling for progress updates
+    const progressInterval = setInterval(() => {
+        fetch('/email_progress')
             .then(response => response.json())
             .then(data => {
-                // Update processed count in stats element
-                if (statsElement) {
-                    statsElement.textContent = `Loaded: ${data.processed_count} emails`;
-                }
-                
-                // Update button state based on whether there are more emails to load
-                
-                // Update senders list with new data
-                updateSendersList(data.text);
-                
-                // Check if there are any deleted senders to update
-                if (data.deleted) {
-                    updateRequestedList(data.deleted);
+                if (data.status === "loading") {
+                    statsElement.textContent = `Loaded: ${data.count} emails`;
                 }
             })
             .catch(error => {
-                console.error('Error loading more emails:', error);
-                alert('Error loading emails. Please try again.');
-                
-                // Re-enable button in case of error
-                loadMoreBtn.disabled = false;
+                console.error('Error fetching progress:', error);
             });
-        });
+    }, 1000); // Poll every second
+
+    // Start the actual email loading process
+    fetch("/email_cleaner", {
+        method: "POST",
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({all: loadAll})
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Stop polling
+        clearInterval(progressInterval);
+        
+        // Update final count in stats element
+        if (statsElement) {
+            statsElement.textContent = `Loaded: ${data.processed_count} emails`;
+        }
+        
+        // Update button state
+        loadMoreBtn.disabled = false;
+        loadAllBtn.disabled = !data.has_more;
+        
+        // Update senders list with new data
+        updateSendersList(data.text);
+        
+        // Check if there are any deleted senders to update
+        if (data.deleted) {
+            updateRequestedList(data.deleted);
+        }
+    })
+    .catch(error => {
+        // Stop polling on error
+        clearInterval(progressInterval);
+        
+        console.error('Error loading more emails:', error);
+        alert('Error loading emails. Please try again.');
+        
+        // Re-enable buttons in case of error
+        loadMoreBtn.disabled = false;
+        loadAllBtn.disabled = false;
+        statsElement.textContent = 'Error loading emails';
+    });
     }
     const removeBtn = document.querySelector('.remove')
     removeBtn.addEventListener("click", () => {
