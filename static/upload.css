@@ -275,6 +275,10 @@ a:hover {
     color: #cc8400;
 }
 
+.load{
+    font-weight: normal;
+    text-transform: none;
+}
 /* Mobile responsive design */
 @media (max-width: 768px) {
     .uploadwrapper {

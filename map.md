@@ -3,7 +3,6 @@ JUNE 1 GOAL
 
 Stripe real at some point
 Roadmap:
-2. Front-end work on load all on inbox cleaner
 3. Figure out function to go through all the form bullshit companies make you do when unsubbing 
 4. Add Outlook support (currently just gmail)
 5. To-Do list beefing up 
