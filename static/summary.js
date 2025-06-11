@@ -1,5 +1,6 @@
 const expands = document.querySelectorAll('.expand');
 const emails = document.querySelectorAll('.email');
+const removes = document.querySelectorAll(".remove")
 
 for (let i = 0; i < expands.length; i++){
     expands[i].addEventListener("click", () => {
@@ -13,6 +14,41 @@ for (let i = 0; i < expands.length; i++){
         }
     })
 }
+
+for (let i = 0; i < removes.length; i++){
+    removes[i].addEventListener("click", (function(index) {
+        return function() {
+            // Get the todo ID from the data attribute or from the emails array
+            const todoId = removes[index].dataset.todoId; // Add data-todo-id to button
+            
+            fetch("/remove_todo", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({id: todoId})  // Send ID instead of index
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const itemwrap = removes[index].closest('.itemwrap');
+                    const emailDiv = document.querySelector(`.email[data-id="${index}"]`);
+                    
+                    if (itemwrap) {
+                        itemwrap.remove();
+                    }
+                    if (emailDiv) {
+                        emailDiv.remove();
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error removing todo:', error);
+            });
+        }
+    })(i));
+}
+
 let reply_btns = document.querySelectorAll('.reply')
 let reply_divs = document.querySelectorAll('.replydiv')
 for (let i = 0; i < reply_btns.length; i++){

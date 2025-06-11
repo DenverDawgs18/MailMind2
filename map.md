@@ -3,12 +3,13 @@ JUNE 1 GOAL
 
 Stripe real at some point
 Roadmap:
-3. Figure out function to go through all the form bullshit companies make you do when unsubbing 
-4. Add Outlook support (currently just gmail)
-5. To-Do list beefing up 
-6. Calendar integration
-7. Email snoozing
-8. Multiple inboxes
+Navbar Stickyness
+Figure out function to go through all the form bullshit companies make you do when unsubbing 
+Add Outlook support (currently just gmail)
+To-Do list beefing up 
+Calendar integration
+Email snoozing
+Multiple inboxes
 
 
 A/B tests
@@ -16,3 +17,8 @@ A/B tests
 
 Features:
 Snooze email
+
+When action item is returned 
+if not no action
+create to do item 
+commit it

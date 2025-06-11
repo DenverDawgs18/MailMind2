@@ -71,7 +71,7 @@ body{
     hyphens: auto;
 }
 
-.expand {
+.expand,.remove {
     background: linear-gradient(145deg, #cc8400, #b8770a);
     color: white;
     border: 2px solid transparent;
@@ -87,13 +87,13 @@ body{
     flex-shrink: 0;
 }
 
-.expand:hover {
+.expand:hover,.remove:hover {
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(204, 132, 0, 0.4);
     background: linear-gradient(145deg, #b8770a, #cc8400);
 }
 
-.expand:active {
+.expand:active,.remove:active {
     transform: translateY(0px);
 }
 
@@ -329,7 +329,7 @@ a:hover {
         hyphens: auto;
     }
     
-    .expand {
+    .expand,.remove {
         align-self: flex-end;
         padding: 6px 12px;
         font-size: 12px;

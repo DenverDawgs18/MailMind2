@@ -33,8 +33,9 @@
         <div class="items">
             {% for email in emails %}
                 <div class="itemwrap">
-                    <p class="item">• {{email.action_items | remove_asterisks | safe}}</p>
+                    <p class="item">• {{email.todo | remove_asterisks | safe}}</p>
                     <button class="expand" data-id="{{ loop.index0 }}">Expand</button>
+                    <button class="remove" data-todo-id="{{ email.id }}">Remove Item</button>
                 </div>
                 <div class="email" style="display:none" data-id="{{ loop.index0 }}">
                     <div class="emailone emailsub">

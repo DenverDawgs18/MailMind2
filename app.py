@@ -56,7 +56,7 @@ import base64
 from google_auth_oauthlib.flow import Flow
 import markdown
 from flask_login import login_required, LoginManager, login_user, logout_user, current_user
-from models import User, Link, Unsubscribe
+from models import User, Link, Unsubscribe, Todo
 from functions.refresh_token import refresh
 from functions.users import get_last_login, get_user, update_last_login, create_user
 from functions.linkify import linkify_text
@@ -355,9 +355,40 @@ def get_one_action():
     print(index)
     action = get_an_action(body)
     final_emails = session.get("final_emails")
+    if action.lower() != "no action." and action.lower() != "no action" and action != "" and action is not None:
+        new_todo = Todo(user=current_user.id, item=action, done=False)
+        db.session.add(new_todo)
+        db.session.commit()
+        todo_emails = session.get("todo_emails", [])
+        todo_email = final_emails[index]
+        todo_email.pop("action_items", None)
+        todo_email["todo"] = action
+        todo_email["id"] = new_todo.id 
+        todo_emails.append(todo_email)
+        session["todo_emails"] = todo_emails
+
     final_emails[index]["action_items"] = action
     session["final_emails"] = final_emails
     return jsonify({"action_item": action})
+
+@app.route("/remove_todo", methods=["POST"])
+@login_required
+def remove_todo():
+    data = request.get_json()
+    todo_id = data.get("id")  
+    
+    todo_emails = session.get("todo_emails", [])
+    if todo_emails:
+        todo = Todo.query.filter_by(id=todo_id).first()
+        if todo:
+            db.session.delete(todo)
+            db.session.commit()
+        
+        todo_emails = [email for email in todo_emails if email["id"] != todo_id]
+        session["todo_emails"] = todo_emails
+    
+    return jsonify({"success": True})
+
 
 '''
 @app.route('/load_more', methods=["POST"])
@@ -491,14 +522,14 @@ def summary():
     final_emails = session.get("final_emails", False)
     if final_emails:
         for email in final_emails: 
-            no_action = email["action_items"] != "No action" and email["action_items"] != "No action."
-            print(no_action)
-            if email["action_items"] != "Generating ..." and no_action:
-                print("appending")
-                emails.append(email)
-            elif email["action_items"] == "Generating ...":
+            if email["action_items"] == "Generating ...":
                 print('text change')
-                text = "More action items to generate on emails page"
+                text = "More action items to generate on inbox page"
+    todo_emails = session.get("todo_emails", False)
+    if todo_emails:
+        emails = todo_emails
+    else:
+        text = "More action items to generate on inbox page"
     return render_template('summary.html', emails=emails, text = text)
 
 @app.route('/email_cleaner', methods=["GET", "POST"])

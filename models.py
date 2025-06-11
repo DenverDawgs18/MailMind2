@@ -26,3 +26,10 @@ class Unsubscribe(db.Model):
     link = db.Column(db.Text())
     user = db.Column(db.ForeignKey("user.id"))
     sender = db.Column(db.String(1000))
+
+class Todo(db.Model):
+    id = db.Column(db.Integer, primary_key = True)
+    item = db.Column(db.Text())
+    user = db.Column(db.ForeignKey("user.id"))
+    done = db.Column(db.Boolean, default=False)
+    
