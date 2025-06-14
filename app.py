@@ -140,7 +140,7 @@ def index():
 def special():
     if PRODUCTION:
         return render_template("index.html")
-    print(current_user, current_user.provider)
+    print(current_user.provider)
     return render_template("index.html")
 
 @app.route("/code", methods=["GET", "POST"])
@@ -382,7 +382,7 @@ def emails():
         
         # Get new emails since last load
         print("Calling get_emails for refresh...")
-        new_emails = get_emails("gmail", current_user.email, access_token, 
+        new_emails = get_emails(current_user.provider, current_user.email, access_token, 
                              after_date=after_date, since_time=since_time)
         
         print(f"Found {len(new_emails)} new emails in refresh")
@@ -411,7 +411,7 @@ def emails():
 
     # Get emails from exactly 24 hours ago (no parameters = use default 24h window)
     # This will fetch using an IMAP date filter 2 days back, then filter precisely in Python
-    emails = get_emails("gmail", current_user.email, access_token)
+    emails = get_emails(current_user.provider, current_user.email, access_token)
     
     # Reverse order for newest first
     emails = list(reversed(emails))
@@ -662,13 +662,22 @@ def summary():
         text = "More action items to generate on inbox page"
     return render_template('summary.html', emails=emails, text = text)
 
+from functions.cleaner import (
+    get_email_service_type,
+    fetch_emails_batch_unified,
+    delete_all_senders_from_service,
+    update_senders_cache_remove,
+    update_senders_cache_restore
+)
+
 @app.route('/email_cleaner', methods=["GET", "POST"])
 @login_required
 def email_cleaner():
     if not current_user.subscribed:
         return render_template("subscribe.html")
-    """Process emails directly from Gmail"""
-    if 'google_credentials' not in session:
+    
+    service_type = get_email_service_type()
+    if not service_type:
         return redirect(url_for('login'))
     
     # Initialize session variables if they don't exist
@@ -690,7 +699,9 @@ def email_cleaner():
         else:
             batch_size = 1000 
         print(batch_size)
-        senders, next_page_token, processed_count = fetch_gmail_emails_batch(
+        
+        senders, next_page_token, processed_count = fetch_emails_batch_unified(
+            service_type=service_type,
             batch_size=batch_size,
             page_token=session.get("next_page_token"),
             current_count=session.get("processed_count", 0)
@@ -727,370 +738,25 @@ def email_cleaner():
         text=session.get("senders_cache", []), 
         processed_count=session.get("processed_count", 0),
         has_more=session.get("next_page_token") is not None,
-        to_delete=session.get("deleted", [])
+        to_delete=session.get("deleted", []),
+        service_type=service_type
     )
 
-
-# Add this new route to get progress updates
 @app.route('/email_progress')
 @login_required
 def get_email_progress():
-    return jsonify(session["current_progress"])
-
-# Modify your existing fetch_gmail_emails_batch function
-def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
-    """Fetch a batch of Gmail emails and process senders"""
-    
-    creds = Credentials.from_authorized_user_info(session["google_credentials"])
-    service = build("gmail", "v1", credentials=creds)
-    
-    senders = {}
-    processed_count = current_count
-    next_page_token = page_token
-    process_all = batch_size == 0
-    remaining_emails = batch_size if not process_all else float('inf')
-    pending_unsubscribes = []
-    
-    # Initialize progress
-    session["current_progress"] = {"count": processed_count, "status": "loading"}
-    
-    try:
-        while remaining_emails > 0:
-            request_size = min(500, remaining_emails) if not process_all else 500
-            
-            results = service.users().messages().list(
-                userId='me',
-                maxResults=request_size,
-                pageToken=next_page_token
-            ).execute()
-            
-            messages = results.get('messages', [])
-            if not messages:
-                next_page_token = None
-                break
-            
-            next_page_token = results.get('nextPageToken')
-            
-            for message in messages:
-                try:
-                    msg = service.users().messages().get(userId='me', id=message['id']).execute()
-                    headers = {header['name'].lower(): header['value'] for header in msg['payload']['headers']}
-                    sender = headers.get('from', '')
-                    
-                    if sender:
-                        if sender not in senders:
-                            unsubscribe_link = headers.get('list-unsubscribe', '').strip('<>')
-                            
-                            if not unsubscribe_link:
-                                email_body = get_message_body(msg)
-                                unsubscribe_link = find_unsubscribe_link(email_body)
-                            
-                            if unsubscribe_link:
-                                pending_unsubscribes.append({
-                                    'link': unsubscribe_link,
-                                    'sender': sender
-                                })
-                        
-                        senders[sender] = senders.get(sender, 0) + 1
-                    
-                    processed_count += 1
-                    remaining_emails -= 1
-                    
-                    if processed_count % 100 == 0:
-                        print(f"Processed {processed_count} emails")
-                        
-                    session["current_progress"] = {"count": processed_count, "status": "loading"}
-                    
-                    if remaining_emails <= 0 and not process_all:
-                        break
-                        
-                except Exception as e:
-                    print(f"Error processing message {message['id']}: {str(e)}")
-                    continue
-            
-            if not next_page_token or (remaining_emails <= 0 and not process_all):
-                break
-        
-        if pending_unsubscribes:
-            process_unsubscribe_links_batch(pending_unsubscribes)
-        
-        # Mark as complete
-        session["current_progress"] = {"count": processed_count, "status": "complete"}
-                
-    except Exception as e:
-        print(f"Error fetching emails: {str(e)}")
-        session["current_progress"] = {"count": processed_count, "status": "error"}
-    
-    sorted_senders = sorted(senders.items(), key=lambda x: x[1], reverse=True)
-    return sorted_senders, next_page_token, processed_count
-
-def process_unsubscribe_links_batch(unsubscribe_data):
-    """Process and store multiple unsubscribe links in a single database transaction."""
-    if not unsubscribe_data:
-        return
-    
-    changes_made = False
-    
-    try:
-        for data in unsubscribe_data:
-            link = data['link']
-            sender = data['sender']
-            
-            if not link:
-                continue
-            
-            try:
-                # Handle encoded links
-                if link.startswith('[LINK:') and link.endswith(']'):
-                    code = link.strip('[LINK:').strip(']').strip()
-                    try:
-                        link_id = short_url.decode_url(code)
-                        link_obj = Link.query.filter_by(id=link_id).first()
-                        if link_obj:
-                            link = link_obj.link
-                        else:
-                            continue
-                    except Exception as e:
-                        print(f"Error decoding short URL: {str(e)}")
-                        continue
-
-                # Check if unsubscribe entry already exists
-                unsubj = Unsubscribe.query.filter_by(sender=sender).first()
-                if not unsubj:
-                    new_unsub = Unsubscribe(sender=sender, link=link, user=current_user.id)
-                    db.session.add(new_unsub)
-                    print(f"Added unsubscribe link for {sender}: {link}")
-                    changes_made = True
-                    
-            except Exception as e:
-                print(f"Error processing unsubscribe link for {sender}: {str(e)}")
-                continue
-        
-        # Single commit for all changes
-        if changes_made:
-            db.session.commit()
-            print(f"Successfully committed {len([d for d in unsubscribe_data if d['link']])} unsubscribe link changes")
-            
-    except Exception as e:
-        print(f"Error committing unsubscribe link changes: {str(e)}")
-        db.session.rollback()
-
-
-def get_message_body(msg):
-    """Extract the email body from a Gmail message."""
-    if 'payload' not in msg:
-        return ""
-    
-    parts = msg['payload'].get('parts', [])
-    
-    if not parts and 'body' in msg['payload'] and 'data' in msg['payload']['body']:
-        data = msg['payload']['body']['data']
-        return base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
-
-    return extract_body_from_parts(parts)
-
-
-def extract_body_from_parts(parts):
-    """Extract the email body from message parts recursively."""
-    body = ""
-    html_content = ""
-    plain_content = ""
-    
-    for part in parts:
-        mime_type = part.get('mimeType', '')
-        
-        if mime_type == 'text/plain' and 'data' in part.get('body', {}):
-            data = part['body']['data']
-            plain_content += base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
-        
-        elif mime_type == 'text/html' and 'data' in part.get('body', {}):
-            data = part['body']['data']
-            html_content += base64.urlsafe_b64decode(data).decode('utf-8', errors='ignore')
-        
-        elif 'parts' in part:
-            part_content = extract_body_from_parts(part['parts'])
-            body += part_content
-
-    if html_content:
-        return html_content
-    elif plain_content:
-        return plain_content
-    
-    return body
-
-
-def find_unsubscribe_link(email_body):
-    """Find an unsubscribe link in the email body."""
-    if not email_body:
-        return ''
-    
-    unsubscribe_match = re.search(r"(?i)unsubscribe", email_body)
-    
-    if unsubscribe_match:
-        unsubscribe_pos = unsubscribe_match.start()
-        
-        remaining_text = email_body[unsubscribe_pos:]
-        
-        link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
-        
-        if link_match:
-            return link_match.group(1)
-            
-        html_link_match = re.search(r'href=["\'](https?://[^"\'>]+)["\']', remaining_text)
-        if html_link_match:
-            return html_link_match.group(1)
-    
-    return ''
-
-
-@app.route('/delete_sender', methods=["POST"])
-def delete_sender():
-    """Remove a sender from the tracked list without re-fetching emails from Gmail."""
-    sender_name = request.json.get("sender_name")
-    if not sender_name:
-        return jsonify({"error": "No sender specified"}), 400
-
-    deleted_senders = session.get("deleted", [])
-    removed_senders_cache = session.get("removed_senders_cache", [])
-
-    if sender_name not in deleted_senders:
-        deleted_senders.append(sender_name)
-        session["deleted"] = deleted_senders
-
-    if "senders_cache" in session:
-        updated_cache = []
-        for entry in session["senders_cache"]:
-            if entry.get("sender") == sender_name:
-                # Save removed sender to removed_senders_cache if not already there
-                if not any(d.get("sender") == sender_name for d in removed_senders_cache):
-                    removed_senders_cache.append(entry)
-            else:
-                updated_cache.append(entry)
-
-        session["senders_cache"] = updated_cache
-        session["removed_senders_cache"] = removed_senders_cache
-    print("Length:", len(session["senders_cache"]))
-
-    session.modified = True
-    return jsonify({
-        "message": f"Removed {sender_name} from the list.",
-        "text": session.get("senders_cache", []),
-        "deleted": deleted_senders,
-    })
-
-
-
-@app.route('/restore_sender', methods=["POST"])
-def restore_sender():
-    """Restore a sender back to the tracked list if it was previously removed."""
-    sender_name = request.json.get("sender_name")
-    if not sender_name:
-        return jsonify({"error": "No sender specified"}), 400
-
-    deleted_senders = session.get("deleted", [])
-    removed_senders_cache = session.get("removed_senders_cache", [])
-    senders_cache = session.get("senders_cache", [])
-
-    if sender_name not in deleted_senders:
-        return jsonify({"error": f"{sender_name} was not previously deleted"}), 400
-
-    # Remove from deleted list
-    deleted_senders.remove(sender_name)
-    session["deleted"] = deleted_senders
-
-    # Find the removed sender entry
-    restored_entry = None
-    updated_removed_cache = []
-    for entry in removed_senders_cache:
-        if entry.get("sender") == sender_name and not restored_entry:
-            restored_entry = entry
-        else:
-            updated_removed_cache.append(entry)
-
-
-
-    # Restore the sender in the original position to preserve order
-    if restored_entry:
-        # Insert sender back where it was originally:
-        # If you want strict original index, you'd need to store it in removed_senders_cache.
-        # Here, we'll append and then sort by count descending to mimic original order
-        senders_cache.append(restored_entry)
-        senders_cache.sort(key=lambda x: x.get("count", 0), reverse=True)
-
-    session["senders_cache"] = senders_cache
-    session["removed_senders_cache"] = updated_removed_cache
-    session.modified = True
-
-    print(deleted_senders)
-    return jsonify({
-        "message": f"Restored {sender_name} to the list.",
-        "text": session["senders_cache"],
-        "deleted": deleted_senders,
-    })
-
+    """Get progress updates"""
+    return jsonify(session.get("current_progress", {"count": 0, "status": "idle"}))
 
 
 @app.route('/remove_all_senders', methods=["POST"])
 def remove_all_senders():
-    """Remove all emails from senders in the deleted list"""
-    if 'google_credentials' not in session:
-        return jsonify({"error": "Not authenticated with Gmail"}), 401
-    
-    creds = Credentials.from_authorized_user_info(session["google_credentials"])
-    service = build("gmail", "v1", credentials=creds)
-    
+    """Remove all emails from senders in the deleted list - works with both Gmail and Outlook"""
     senders_to_delete = session.get('deleted', [])
     if not senders_to_delete:
         return jsonify({"message": "No senders specified for deletion"}), 400
     
-    print(f"Removing emails from these senders: {senders_to_delete}")
-    
-    deleted_count = 0
-    failed_senders = []
-    
-    for sender in senders_to_delete:
-        try:
-            query = f"from:{sender}"
-            page_token = None
-            sender_deleted_count = 0
-            
-            while True:
-                response = service.users().messages().list(
-                    userId="me", 
-                    q=query,
-                    maxResults=500,
-                    pageToken=page_token
-                ).execute()
-                
-                messages = response.get("messages", [])
-                if not messages:
-                    break
-                
-                print(f"Found {len(messages)} emails from {sender}")
-                
-                for msg in messages:
-                    try:
-                        service.users().messages().trash(userId="me", id=msg["id"]).execute()
-                        deleted_count += 1
-                        sender_deleted_count += 1
-                        
-                        # Throttle requests to avoid rate limiting
-                        if deleted_count % 50 == 0:
-                            print(f"Deleted {deleted_count} emails so far...")
-                            time.sleep(1)
-                    except Exception as msg_error:
-                        print(f"Error trashing message {msg['id']}: {str(msg_error)}")
-                        # Continue with the next message even if one fails
-                
-                page_token = response.get("nextPageToken")
-                if not page_token:
-                    break
-            
-            print(f"Deleted {sender_deleted_count} emails from {sender}")
-            
-        except Exception as e:
-            print(f"Failed to process sender {sender}: {str(e)}")
-            failed_senders.append(sender)
+    deleted_count, failed_senders = delete_all_senders_from_service(senders_to_delete)
     
     # Only remove successfully processed senders from the deleted list
     if failed_senders:
@@ -1099,7 +765,7 @@ def remove_all_senders():
         session["deleted"] = []
     
     result = {
-        "message": f"Successfully moved {deleted_count} emails from {len(senders_to_delete) - len(failed_senders)} senders to trash",
+        "message": f"Successfully deleted {deleted_count} emails from {len(senders_to_delete) - len(failed_senders)} senders",
     }
     
     if failed_senders:
@@ -1123,6 +789,29 @@ def remove_unsubscribe():
     else:
         return jsonify({"message": "No unsubscribe entry found."}), 404
 
+@app.route('/delete_sender', methods=["POST"])
+def delete_sender():
+    """Remove a sender from the tracked list without re-fetching emails from service."""
+    sender_name = request.json.get("sender_name")
+    if not sender_name:
+        return jsonify({"error": "No sender specified"}), 400
+
+    result = update_senders_cache_remove(sender_name)
+    return jsonify(result)
+
+@app.route('/restore_sender', methods=["POST"])
+def restore_sender():
+    """Restore a sender back to the tracked list if it was previously removed."""
+    sender_name = request.json.get("sender_name")
+    if not sender_name:
+        return jsonify({"error": "No sender specified"}), 400
+
+    result = update_senders_cache_restore(sender_name)
+    
+    if "error" in result:
+        return jsonify(result), 400
+    
+    return jsonify(result)
 
 
 @app.route("/subscribe")
@@ -1141,10 +830,6 @@ def manage_subscription():
     if not current_user.subscribed:
         return render_template("subscribe.html")
     return render_template("manage.html")
-
-
-
-
 
 
 @app.route('/create-checkout-session', methods=['POST'])
