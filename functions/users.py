@@ -1,9 +1,10 @@
 from app import User, db
 
-def create_user(email, oauth_token):
+def create_user(email, oauth_token, provider):
     user = User(
         email = email,
         oauth_token = oauth_token,
+        provider=provider,
         subscribed = False,
     )
     db.session.add(user)

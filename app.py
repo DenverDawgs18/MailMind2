@@ -65,6 +65,8 @@ from functions.get_one_action import get_an_action
 from functions.encryption import encrypt_token, decrypt_token
 import re
 import short_url
+import secrets
+import urllib.parse
 from werkzeug.utils import secure_filename
 import time
 import markdown    
@@ -97,6 +99,23 @@ client_config = {
     }
 }
 
+OUTLOOK_SCOPES = [
+    'https://graph.microsoft.com/Mail.ReadWrite',
+    'https://graph.microsoft.com/Mail.Send', 
+    'https://graph.microsoft.com/User.Read',
+    'openid',
+    'profile',
+    'email',
+    'offline_access'
+]
+
+OUTLOOK_REDIRECT_URI = f"{DOMAIN}/microsoft/callback"
+
+# Microsoft Graph endpoints
+MICROSOFT_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
+
 @login_manager.user_loader 
 def load_user(id):
     return User.query.get(int(id))
@@ -121,8 +140,7 @@ def index():
 def special():
     if PRODUCTION:
         return render_template("index.html")
-    current_user.subscribed = False
-    db.session.commit()
+    print(current_user, current_user.provider)
     return render_template("index.html")
 
 @app.route("/code", methods=["GET", "POST"])
@@ -184,12 +202,124 @@ def google_callback():
     session['user_email'] = user_info.get('email')
     user = User.query.filter_by(email=session['user_email']).first()
     if not user:
-        user = create_user(session['user_email'], encrypt_token(credentials.refresh_token))
+        user = create_user(session['user_email'], encrypt_token(credentials.refresh_token), provider="google")
     else:
         user.oauth_token = encrypt_token(credentials.refresh_token)
     db.session.commit()
     login_user(user, remember = True)
     return redirect(url_for("index"))
+
+@app.route("/microsoft/login")
+def microsoft_login():
+    # Generate state parameter for security
+    state = secrets.token_urlsafe(32)
+    session['oauth_state'] = state
+    
+    # Build authorization URL
+    auth_params = {
+        'client_id': os.getenv("MICROSOFT_CLIENT_ID"),
+        'response_type': 'code',
+        'redirect_uri': OUTLOOK_REDIRECT_URI,
+        'scope': ' '.join(OUTLOOK_SCOPES),
+        'state': state,
+        'response_mode': 'query'
+    }
+    
+    auth_url = MICROSOFT_AUTH_URL + '?' + urllib.parse.urlencode(auth_params)
+    return redirect(auth_url)
+
+@app.route('/microsoft/callback')
+def microsoft_callback():
+    # Verify state parameter
+    if request.args.get('state') != session.get('oauth_state'):
+        return "Invalid state parameter", 400
+    
+    # Get authorization code
+    auth_code = request.args.get('code')
+    if not auth_code:
+        return "Authorization code not found", 400
+    
+    # Exchange code for tokens
+    token_data = {
+        'client_id': os.getenv("MICROSOFT_CLIENT_ID"),
+        'client_secret': os.getenv("MICROSOFT_CLIENT_SECRET"),
+        'code': auth_code,
+        'redirect_uri': OUTLOOK_REDIRECT_URI,
+        'grant_type': 'authorization_code',
+        'scope': ' '.join(OUTLOOK_SCOPES)
+    }
+    
+    token_response = requests.post(
+        MICROSOFT_TOKEN_URL,
+        data=token_data,
+        headers={'Content-Type': 'application/x-www-form-urlencoded'}
+    )
+    
+    if token_response.status_code != 200:
+        return f"Token exchange failed: {token_response.text}", 400
+    
+    token_info = token_response.json()
+    
+    # Store credentials in session
+    session["microsoft_credentials"] = {
+        "access_token": token_info.get("access_token"),
+        "refresh_token": token_info.get("refresh_token"),
+        "token_type": token_info.get("token_type", "Bearer"),
+        "expires_in": token_info.get("expires_in"),
+        "scope": token_info.get("scope")
+    }
+    
+    # Get user info from Microsoft Graph
+    headers = {
+        'Authorization': f"Bearer {token_info['access_token']}",
+        'Content-Type': 'application/json'
+    }
+    user_response = requests.get(MICROSOFT_USERINFO_URL, headers=headers)
+    
+    if user_response.status_code != 200:
+        return f"Failed to get user info: {user_response.text}", 400
+    
+    user_info = user_response.json()
+    session['user_email'] = user_info.get('mail') or user_info.get('userPrincipalName')
+    
+    # Handle user creation/update (similar to Google implementation)
+    user = User.query.filter_by(email=session['user_email']).first()
+    if not user:
+        user = create_user(session['user_email'], encrypt_token(token_info.get("refresh_token")), provider="microsoft")
+    else:
+        user.oauth_token = encrypt_token(token_info.get("refresh_token"))
+    
+    db.session.commit()
+    login_user(user, remember=True)
+    
+    # Clean up session
+    session.pop('oauth_state', None)
+    
+    return redirect(url_for("index"))
+
+# Helper function to refresh Outlook tokens
+def refresh_outlook_token(refresh_token):
+    """Refresh an expired Outlook access token"""
+    token_data = {
+        'client_id': os.getenv("MICROSOFT_CLIENT_ID"),
+        'client_secret': os.getenv("MICROSOFT_CLIENT_SECRET"),
+        'refresh_token': refresh_token,
+        'grant_type': 'refresh_token',
+        'scope': ' '.join(OUTLOOK_SCOPES)
+    }
+    
+    response = requests.post(
+        MICROSOFT_TOKEN_URL,
+        data=token_data,
+        headers={'Content-Type': 'application/x-www-form-urlencoded'}
+    )
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise Exception(f"Token refresh failed: {response.text}")
+
+
 
 @app.template_filter('markdown')
 def markdown_filter(text):
@@ -600,19 +730,16 @@ def email_cleaner():
         to_delete=session.get("deleted", [])
     )
 
-# Add this global variable to track progress
-current_progress = {"count": 0, "status": "idle"}
 
 # Add this new route to get progress updates
 @app.route('/email_progress')
 @login_required
 def get_email_progress():
-    return jsonify(current_progress)
+    return jsonify(session["current_progress"])
 
 # Modify your existing fetch_gmail_emails_batch function
 def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
     """Fetch a batch of Gmail emails and process senders"""
-    global current_progress
     
     creds = Credentials.from_authorized_user_info(session["google_credentials"])
     service = build("gmail", "v1", credentials=creds)
@@ -625,7 +752,7 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
     pending_unsubscribes = []
     
     # Initialize progress
-    current_progress = {"count": processed_count, "status": "loading"}
+    session["current_progress"] = {"count": processed_count, "status": "loading"}
     
     try:
         while remaining_emails > 0:
@@ -671,8 +798,8 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
                     
                     if processed_count % 100 == 0:
                         print(f"Processed {processed_count} emails")
-                        # Update global progress
-                        current_progress = {"count": processed_count, "status": "loading"}
+                        
+                    session["current_progress"] = {"count": processed_count, "status": "loading"}
                     
                     if remaining_emails <= 0 and not process_all:
                         break
@@ -688,11 +815,11 @@ def fetch_gmail_emails_batch(batch_size=1000, page_token=None, current_count=0):
             process_unsubscribe_links_batch(pending_unsubscribes)
         
         # Mark as complete
-        current_progress = {"count": processed_count, "status": "complete"}
+        session["current_progress"] = {"count": processed_count, "status": "complete"}
                 
     except Exception as e:
         print(f"Error fetching emails: {str(e)}")
-        current_progress = {"count": processed_count, "status": "error"}
+        session["current_progress"] = {"count": processed_count, "status": "error"}
     
     sorted_senders = sorted(senders.items(), key=lambda x: x[1], reverse=True)
     return sorted_senders, next_page_token, processed_count

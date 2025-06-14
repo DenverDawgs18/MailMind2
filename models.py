@@ -12,6 +12,7 @@ class User(db.Model, UserMixin):
     high_priority = db.Column(JSON, default = list)
     subscribed = db.Column(db.Boolean)
     stripe_customer_id = db.Column(db.String(), unique=True)
+    provider = db.Column(db.Text())
     def __repr__(self):
         return f"<User {self.email}>"
     

@@ -28,7 +28,7 @@ def refresh(user):
         new_tokens = response.json()
         new_refresh_token = new_tokens.get("refresh_token")
         if new_refresh_token:
-            user.oauth_token = new_refresh_token
+            user.oauth_token = encrypt_token(new_refresh_token)
             db.session.commit()
         return new_tokens['access_token']
     else:
