@@ -16,7 +16,7 @@ for (let i = 0; i < unsubs.length; i++){
                 if (row) row.remove();
                                 const remainingRows = document.querySelectorAll(".unsubwrapper").length;
                 if (remainingRows <= 1) {
-                    document.querySelector(".unsubmsg").innerHTML = "<p>No unsubscribes left.</p>";
+                    document.querySelector(".unsubmsg").textContent = "No unsubscribes left";
                 }
             }
 

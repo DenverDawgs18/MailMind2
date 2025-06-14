@@ -8,27 +8,28 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from bs4 import BeautifulSoup
 from flask import session, current_app
+from functions.refresh_token import refresh
 from app import db, Unsubscribe, Link, short_url, current_user
 
 def get_email_service_type():
-    """Determine which email service to use based on session data"""
-    if 'google_credentials' in session:
-        return 'gmail'
-    elif 'microsoft_credentials' in session:
-        return 'outlook'
+    """Determine which email service to use based on user's stored provider"""
+    if hasattr(current_user, 'provider') and current_user.provider:
+        return current_user.provider.lower()
     else:
         return None
 
 def get_gmail_service():
-    """Initialize Gmail service"""
-    creds = Credentials.from_authorized_user_info(session["google_credentials"])
+    """Initialize Gmail service with fresh token"""
+    access_token = refresh(current_user)
+    # Create credentials object with just the access token
+    creds = Credentials(token=access_token)
     return build("gmail", "v1", credentials=creds)
 
 def get_outlook_headers():
-    """Get headers for Outlook API requests"""
-    token = session["microsoft_credentials"]["access_token"]
+    """Get headers for Outlook API requests with fresh token"""
+    access_token = refresh(current_user)
     return {
-        'Authorization': f'Bearer {token}',
+        'Authorization': f'Bearer {access_token}',
         'Content-Type': 'application/json'
     }
 
@@ -293,7 +294,7 @@ def fetch_emails_batch_unified(service_type, batch_size=1000, page_token=None, c
     session["current_progress"] = {"count": processed_count, "status": "loading"}
     
     try:
-        if service_type == 'gmail':
+        if service_type == 'google':
             service = get_gmail_service()
             
             while remaining_emails > 0:
@@ -331,7 +332,7 @@ def fetch_emails_batch_unified(service_type, batch_size=1000, page_token=None, c
                 if not next_page_token or (remaining_emails <= 0 and not process_all):
                     break
         
-        elif service_type == 'outlook':
+        elif service_type == 'microsoft':
             while remaining_emails > 0:
                 messages, next_page_token = get_messages_batch_outlook(
                     min(999, remaining_emails) if not process_all else 999,
@@ -443,10 +444,10 @@ def delete_all_senders_from_service(senders_to_delete):
     
     for sender in senders_to_delete:
         try:
-            if service_type == 'gmail':
+            if service_type == 'google':
                 service = get_gmail_service()
                 sender_deleted_count = delete_messages_from_sender_gmail(service, sender)
-            elif service_type == 'outlook':
+            elif service_type == 'microsoft':
                 sender_deleted_count = delete_messages_from_sender_outlook(sender)
             else:
                 sender_deleted_count = 0

@@ -638,7 +638,7 @@ def all_unsubs():
         return render_template("subscribe.html")
     unsubs = Unsubscribe.query.filter_by(user=current_user.id).all()
     if not unsubs:
-        return render_template('index.html')
+        return render_template("unsubs.html", unsubs=[], message="No unsubscribe links found.")
     else:
         return render_template('unsubs.html', unsubs=unsubs)
 
