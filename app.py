@@ -140,7 +140,7 @@ def index():
 def special():
     if PRODUCTION:
         return render_template("index.html")
-    print(current_user.provider)
+    print(session.get("microsoft_credentials", None))
     return render_template("index.html")
 
 @app.route("/code", methods=["GET", "POST"])

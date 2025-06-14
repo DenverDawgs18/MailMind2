@@ -28,8 +28,6 @@
         {% if current_user.subscribed %}
             <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Log In With Google</a></h1>
             <h1 class="login"><a class="loginlink" href="{{url_for('microsoft_login')}}">Log In With Microsoft</a></h1>
-            <h3 class="if">Inbox Cleaner requires you to re-log in (because of Google/Microsoft's requirements for developers)
-                every time you re-visit the site.  </h3>
         {% else %}
             <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Sign In With Google</a></h1>
             <h1 class="login"><a class="loginlink" href="{{url_for('microsoft_login')}}">Sign In With Microsoft</a></h1>
