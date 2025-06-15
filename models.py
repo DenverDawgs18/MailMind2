@@ -7,7 +7,7 @@ from sqlalchemy.types import Text
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key = True)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    oauth_token = db.Column(db.String(255), nullable=True)
+    oauth_token = db.Column(db.Text(), nullable=False)
     last_login = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
     high_priority = db.Column(JSON, default = list)
     subscribed = db.Column(db.Boolean)

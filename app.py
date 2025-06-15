@@ -86,7 +86,10 @@ with app.app_context():
 
 GOOGLE_SCOPES = ['https://mail.google.com/', 
                  'https://www.googleapis.com/auth/userinfo.email', 
-                 'openid']
+                 'openid',
+                 'https://www.googleapis.com/auth/calendar.freebusy',
+                 'https://www.googleapis.com/auth/calendar.events.owned',
+                 ]
 GOOGLE_REDIRECT_URI = f"{DOMAIN}/google/callback"
 
 client_config = {
@@ -140,7 +143,8 @@ def index():
 def special():
     if PRODUCTION:
         return render_template("index.html")
-    print(session.get("microsoft_credentials", None))
+    current_user.provider = "google"
+    db.session.commit()
     return render_template("index.html")
 
 @app.route("/code", methods=["GET", "POST"])
