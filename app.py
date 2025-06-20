@@ -87,8 +87,7 @@ with app.app_context():
 GOOGLE_SCOPES = ['https://mail.google.com/', 
                  'https://www.googleapis.com/auth/userinfo.email', 
                  'openid',
-                 'https://www.googleapis.com/auth/calendar.freebusy',
-                 'https://www.googleapis.com/auth/calendar.events.owned',
+                 'https://www.googleapis.com/auth/calendar',
                  ]
 GOOGLE_REDIRECT_URI = f"{DOMAIN}/google/callback"
 
@@ -143,9 +142,7 @@ def index():
 def special():
     if PRODUCTION:
         return render_template("index.html")
-    current_user.provider = "google"
-    db.session.commit()
-    return render_template("index.html")
+    return render_template("calendar.html")
 
 @app.route("/code", methods=["GET", "POST"])
 @login_required
@@ -440,6 +437,34 @@ def emails():
             
     return render_template('emails.html', emails=final_emails)
 
+from dateutil.tz import tzlocal  # pip install python-dateutil
+
+@app.route("/add_to_calendar", methods=["POST"])
+@login_required
+def add_to_calendar():
+    start = request.form.get("start")
+    end = request.form.get("end")
+    name = request.form.get("name")
+
+    start_dt = datetime.strptime(start, "%Y-%m-%dT%H:%M").replace(tzinfo=tzlocal())
+    end_dt = datetime.strptime(end, "%Y-%m-%dT%H:%M").replace(tzinfo=tzlocal())
+
+    access_token = refresh(current_user)
+    creds = Credentials(token=access_token)
+    service = build("calendar", "v3", credentials=creds)
+
+    event = {
+        "summary": name,
+        "start": {
+            'dateTime': start_dt.isoformat()
+        },
+        "end": {
+            "dateTime": end_dt.isoformat()
+        }
+    }
+
+    event = service.events().insert(calendarId='primary', body=event).execute()
+    return jsonify({"success": True})
 
 def process_unsubscribe_links(emails, current_user):
     """Helper function to process unsubscribe links in emails"""
