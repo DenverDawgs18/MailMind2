@@ -205,6 +205,100 @@ async function processEmailsSequentially(emails) {
 
                     const data = await response.json();
                     currentActionItemDiv.children[1].textContent = data.action_item;
+                    console.log(data.calendar)
+                    if (data.calendar == true) {
+                        const calendar_btn = document.createElement("button");
+                        calendar_btn.classList.add("calendarbtn");
+                        calendar_btn.textContent = "Add to Calendar";
+                        
+                        const calendar_form = document.createElement("form");
+                        calendar_form.classList.add("calendarform");
+                        calendar_form.style.display = "none";
+                        
+                        // Create form elements
+                        const nameLabel = document.createElement("label");
+                        nameLabel.setAttribute("for", "name");
+                        nameLabel.textContent = "Name:";
+                        
+                        const nameInput = document.createElement("input");
+                        nameInput.type = "text";
+                        nameInput.name = "name";
+                        nameInput.id = "name";
+                        
+                        const startLabel = document.createElement("label");
+                        startLabel.setAttribute("for", "start");
+                        startLabel.textContent = "Start:";
+                        
+                        const startInput = document.createElement("input");
+                        startInput.type = "datetime-local";
+                        startInput.id = "start";
+                        startInput.name = "start";
+                        
+                        const endLabel = document.createElement("label");
+                        endLabel.setAttribute("for", "end");
+                        endLabel.textContent = "End:";
+                        
+                        const endInput = document.createElement("input");
+                        endInput.type = "datetime-local";
+                        endInput.name = "end";
+                        endInput.id = "end";
+                        
+                        const submitBtn = document.createElement("button");
+                        submitBtn.type = "button";
+                        submitBtn.textContent = "Submit";
+                        
+                        // Append all elements to form
+                        calendar_form.appendChild(nameLabel);
+                        calendar_form.appendChild(nameInput);
+                        calendar_form.appendChild(startLabel);
+                        calendar_form.appendChild(startInput);
+                        calendar_form.appendChild(endLabel);
+                        calendar_form.appendChild(endInput);
+                        calendar_form.appendChild(submitBtn);
+                        submitBtn.addEventListener("click", async function(e) {
+                            e.preventDefault();
+                            
+                            // Collect form data
+                            const formData = new FormData();
+                            formData.append('name', nameInput.value);
+                            formData.append('start', startInput.value);
+                            formData.append('end', endInput.value);
+                            
+                            try {
+                                const response = await fetch('/add_to_calendar', {
+                                    method: 'POST',
+                                    body: formData
+                                });
+                                
+                                const result = await response.json();
+                                
+                                if (result.success === true) {
+                                    alert('Event was successfully added to the calendar!');
+                                    // Optionally hide the form after successful submission
+                                    calendar_form.style.display = "none";
+                                    // Optionally clear the form
+                                    nameInput.value = '';
+                                    startInput.value = '';
+                                    endInput.value = '';
+                                } else {
+                                    alert('Failed to add event to calendar. Please try again.');
+                                }
+                            } catch (error) {
+                                console.error('Error adding event to calendar:', error);
+                                alert('An error occurred while adding the event. Please try again.');
+                            }
+                        }); 
+                        // Add event listener to toggle form visibility
+                        calendar_btn.addEventListener("click", function() {
+                            if (calendar_form.style.display === "none") {
+                                calendar_form.style.display = "block";
+                            } else {
+                                calendar_form.style.display = "none";
+                            }
+                        });
+                        currentActionItemDiv.appendChild(calendar_btn);
+                        currentActionItemDiv.appendChild(calendar_form)
+                    }
                 } 
                 catch (err) {
                     console.error("Error fetching action item:", err);
@@ -213,6 +307,5 @@ async function processEmailsSequentially(emails) {
         }
     }
 }
-
 processEmailsSequentially(emails);
 

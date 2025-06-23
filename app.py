@@ -104,11 +104,12 @@ client_config = {
 OUTLOOK_SCOPES = [
     'https://graph.microsoft.com/Mail.ReadWrite',
     'https://graph.microsoft.com/Mail.Send', 
+    'https://graph.microsoft.com/Calendars.ReadWrite',
     'https://graph.microsoft.com/User.Read',
     'openid',
     'profile',
     'email',
-    'offline_access'
+    'offline_access',
 ]
 
 OUTLOOK_REDIRECT_URI = f"{DOMAIN}/microsoft/callback"
@@ -437,34 +438,115 @@ def emails():
             
     return render_template('emails.html', emails=final_emails)
 
-from dateutil.tz import tzlocal  # pip install python-dateutil
+from dateutil.tz import tzlocal  
 
 @app.route("/add_to_calendar", methods=["POST"])
 @login_required
 def add_to_calendar():
-    start = request.form.get("start")
-    end = request.form.get("end")
-    name = request.form.get("name")
+    try:
+        start = request.form.get("start")
+        end = request.form.get("end")
+        name = request.form.get("name")
+        
+        if not start or not end or not name:
+            return jsonify({"success": False, "error": "Missing required fields"})
+        
+        start_dt = datetime.strptime(start, "%Y-%m-%dT%H:%M").replace(tzinfo=tzlocal())
+        end_dt = datetime.strptime(end, "%Y-%m-%dT%H:%M").replace(tzinfo=tzlocal())
 
-    start_dt = datetime.strptime(start, "%Y-%m-%dT%H:%M").replace(tzinfo=tzlocal())
-    end_dt = datetime.strptime(end, "%Y-%m-%dT%H:%M").replace(tzinfo=tzlocal())
+        if end_dt <= start_dt:
+            return jsonify({"success": False, "error": "End time must be after start time"})
+        
+        # Branch based on user's calendar provider
+        if current_user.provider == "google":
+            return create_google_calendar_event(start_dt, end_dt, name)
+        elif current_user.provider == "microsoft":
+            return create_microsoft_calendar_event(start_dt, end_dt, name)
+        else:
+            return jsonify({"success": False, "error": "Unsupported calendar provider"})
+            
+    except ValueError as e:
+        return jsonify({"success": False, "error": "Invalid date format"})
+    except Exception as e:
+        print(f"Calendar API error: {str(e)}")
+        return jsonify({"success": False, "error": "Failed to create calendar event"})
 
-    access_token = refresh(current_user)
-    creds = Credentials(token=access_token)
-    service = build("calendar", "v3", credentials=creds)
-
-    event = {
-        "summary": name,
-        "start": {
-            'dateTime': start_dt.isoformat()
-        },
-        "end": {
-            "dateTime": end_dt.isoformat()
+def create_google_calendar_event(start_dt, end_dt, name):
+    """Create event in Google Calendar"""
+    try:
+        access_token = refresh(current_user)
+        creds = Credentials(token=access_token)
+        service = build("calendar", "v3", credentials=creds)
+        
+        # Create event
+        event = {
+            "summary": name,
+            "start": {
+                'dateTime': start_dt.isoformat()
+            },
+            "end": {
+                "dateTime": end_dt.isoformat()
+            }
         }
-    }
+        
+        # Insert event into calendar
+        event_result = service.events().insert(calendarId='primary', body=event).execute()
+        
+        return jsonify({
+            "success": True, 
+            "event_id": event_result.get('id'),
+            "provider": "google"
+        })
+        
+    except Exception as e:
+        print(f"Google Calendar API error: {str(e)}")
+        return jsonify({"success": False, "error": "Failed to create Google calendar event"})
 
-    event = service.events().insert(calendarId='primary', body=event).execute()
-    return jsonify({"success": True})
+def create_microsoft_calendar_event(start_dt, end_dt, name):
+    """Create event in Microsoft Calendar (Outlook)"""
+    try:
+        access_token = refresh(current_user)  # Assuming you have a Microsoft refresh function
+        
+        # Microsoft Graph API endpoint
+        url = "https://graph.microsoft.com/v1.0/me/events"
+        
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Create event payload for Microsoft Graph
+        event_data = {
+            "subject": name,
+            "start": {
+                "dateTime": start_dt.isoformat(),
+                "timeZone": str(start_dt.tzinfo) if start_dt.tzinfo else "UTC"
+            },
+            "end": {
+                "dateTime": end_dt.isoformat(),
+                "timeZone": str(end_dt.tzinfo) if end_dt.tzinfo else "UTC"
+            }
+        }
+        
+        response = requests.post(url, json=event_data, headers=headers)
+        
+        if response.status_code == 201:
+            event_result = response.json()
+            return jsonify({
+                "success": True, 
+                "event_id": event_result.get('id'),
+                "provider": "microsoft"
+            })
+        else:
+            print(f"Microsoft Graph API error: {response.status_code} - {response.text}")
+            return jsonify({
+                "success": False, 
+                "error": f"Microsoft API error: {response.status_code}"
+            })
+            
+    except Exception as e:
+        print(f"Microsoft Calendar API error: {str(e)}")
+        return jsonify({"success": False, "error": "Failed to create Microsoft calendar event"})
 
 def process_unsubscribe_links(emails, current_user):
     """Helper function to process unsubscribe links in emails"""
@@ -512,7 +594,10 @@ def get_one_action():
     body = data.get("body")
     index = int(data.get("index"))
     print(index)
+    calendar = False
     action = get_an_action(body)
+    if "meeting" in action.lower() or "conference call" in action.lower() or "calendar" in action.lower():
+        calendar = True
     final_emails = session.get("final_emails")
     if action.lower() != "no action." and action.lower() != "no action" and action != "" and action is not None:
         new_todo = Todo(user=current_user.id, item=action, done=False)
@@ -528,7 +613,7 @@ def get_one_action():
 
     final_emails[index]["action_items"] = action
     session["final_emails"] = final_emails
-    return jsonify({"action_item": action})
+    return jsonify({"action_item": action, "calendar": calendar})
 
 @app.route("/remove_todo", methods=["POST"])
 @login_required
