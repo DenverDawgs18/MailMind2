@@ -619,7 +619,7 @@ def get_one_action():
 @login_required
 def remove_todo():
     data = request.get_json()
-    todo_id = data.get("id")  
+    todo_id = int(data.get("id"))  
     
     todo_emails = session.get("todo_emails", [])
     if todo_emails:
