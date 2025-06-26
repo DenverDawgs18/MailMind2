@@ -403,12 +403,18 @@ def emails():
         final_emails = []
         for email in new_emails:
             email["action_items"] = "Generating ..."
+            email["calendar"] = False
             final_emails.append(email)
             
         emails = session.get("final_emails")
         for email in emails:
+            if "meeting" in email["action_items"].lower() or "conference call" in email["action_items"].lower() or "calendar" in email["action_items"].lower():
+                email["calendar"] = True
+            else:
+                email["calendar"] = False
             final_emails.append(email)
             
+        
         session['final_emails'] = final_emails
         current_datetime = datetime.now(timezone.utc)
         session['last_load'] = current_datetime.isoformat()
@@ -778,7 +784,12 @@ def summary():
                 text = "More action items to generate on inbox page"
     todo_emails = session.get("todo_emails", False)
     if todo_emails:
-        emails = todo_emails
+        for email in todo_emails:
+            if "meeting" in email["todo"].lower() or "conference call" in email["todo"].lower() or "calendar" in email["todo"].lower():
+                email["calendar"] = True
+            else:
+                email["calendar"] = False
+            emails.append(email)
     else:
         text = "More action items to generate on inbox page"
     return render_template('summary.html', emails=emails, text = text)

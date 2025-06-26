@@ -309,3 +309,71 @@ async function processEmailsSequentially(emails) {
 }
 processEmailsSequentially(emails);
 
+function setupStaticCalendarForms() {
+    // Find all existing calendar buttons and forms
+    const calendarBtns = document.querySelectorAll('.calendarbtn');
+    
+    calendarBtns.forEach(btn => {
+        // Find the corresponding form (should be the next sibling)
+        const calendar_form = btn.nextElementSibling;
+        
+        if (calendar_form && calendar_form.classList.contains('calendarform')) {
+            // Add event listener to toggle form visibility
+            btn.addEventListener("click", function() {
+                if (calendar_form.style.display === "none" || calendar_form.style.display === "") {
+                    calendar_form.style.display = "flex";
+                } else {
+                    calendar_form.style.display = "none";
+                }
+            });
+            
+            // Find the submit button within this form
+            const submitBtn = calendar_form.querySelector('button[type="button"]');
+            
+            if (submitBtn) {
+                submitBtn.addEventListener("click", async function(e) {
+                    e.preventDefault();
+                    
+                    // Get form inputs
+                    const nameInput = calendar_form.querySelector('input[name="name"]');
+                    const startInput = calendar_form.querySelector('input[name="start"]');
+                    const endInput = calendar_form.querySelector('input[name="end"]');
+                    
+                    // Collect form data
+                    const formData = new FormData();
+                    formData.append('name', nameInput.value);
+                    formData.append('start', startInput.value);
+                    formData.append('end', endInput.value);
+                    
+                    try {
+                        const response = await fetch('/add_to_calendar', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success === true) {
+                            alert('Event was successfully added to the calendar!');
+                            // Hide the form after successful submission
+                            calendar_form.style.display = "none";
+                            // Clear the form
+                            nameInput.value = '';
+                            startInput.value = '';
+                            endInput.value = '';
+                        } else {
+                            alert('Failed to add event to calendar. Please try again.');
+                        }
+                    } catch (error) {
+                        console.error('Error adding event to calendar:', error);
+                        alert('An error occurred while adding the event. Please try again.');
+                    }
+                });
+            }
+        }
+    });
+}
+
+// Call this function when the page loads to setup existing forms
+document.addEventListener('DOMContentLoaded', setupStaticCalendarForms);
+
