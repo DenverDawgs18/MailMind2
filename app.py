@@ -156,6 +156,13 @@ def code():
             from dotenv import load_dotenv 
             load_dotenv()
         real_code = os.getenv("CODE")
+        temp_code = os.getenv("TEMPCODE")
+        if str(code) == str(temp_code):
+            logger.info(f"TEMP CODE GRANTED TO {current_user.email}")
+            current_user.subscribed = True
+            current_user.temp = True
+            db.session.commit()
+            return render_template("code.html", message="Code valid. Subscription granted until August 1st. Click on Inbox to load your to-do list!")
         if str(code) == str(real_code) and str(real_code) != "DISABLED":
             logger.info(f"CODE GRANTED TO {current_user.email}")
             current_user.subscribed = True

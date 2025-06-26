@@ -13,6 +13,7 @@ class User(db.Model, UserMixin):
     subscribed = db.Column(db.Boolean)
     stripe_customer_id = db.Column(db.String(), unique=True)
     provider = db.Column(db.Text())
+    temp = db.Column(db.Boolean, default=False)
     def __repr__(self):
         return f"<User {self.email}>"
     
