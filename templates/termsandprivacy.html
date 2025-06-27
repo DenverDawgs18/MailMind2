@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Terms / Privacy Policy</title>
+        <link rel="stylesheet" href="../static/universal.css">
+        <link rel="stylesheet" href="../static/subscribe.css">
+    </head>
+    <body>
+        {% if current_user.subscribed %}
+            <div class="navbar">
+                <a href="{{url_for('index')}}">Home</a>
+                <a href="{{url_for('emails')}}">Inbox</a>
+                <a href="{{url_for('summary')}}">To-Do List</a>
+                <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
+                <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
+                <a href="{{url_for('manage_subscription')}}">Manage Subscription</a>
+            </div>
+        {% else %}
+            <div class="navbar">
+                <a href="{{url_for('index')}}">Home</a>
+                <a href="{{url_for('subscribe')}}">Subscribe</a>
+                <a href="{{url_for('login')}}">Log In</a>
+            </div>
+        {% endif %}
+        <div class="wrapper">
+            <div class="modal-content">
+                    <h2 id="modal-tos-title">Terms of Service (Plain English)</h2>
+                    <p>
+                        Use at Your Own Risk: This service is provided "as is" and may not always be accurate or reliable. Use it carefully.
+
+                        No Lawsuits: By using this service, you agree not to sue me (the developer) for any loss or damage caused by using the service.
+
+                        Limitation of Liability: To the maximum extent allowed by law, I am not responsible for any direct, indirect, special, incidental, or consequential damages resulting from your use of the service.
+
+                        Age Requirement: You must be at least 13 years old (or the minimum age required by your country) to use this service.
+
+                        Governing Law and Jurisdiction: These terms are governed by the laws of the United States. Any disputes will be handled in the courts located in the United States.
+
+                        Changes to Terms: I may update these terms at any time. If I do, the new terms will be posted here. Using the service after changes means you agree to the updated terms.
+
+                        Thanks for using the service!
+                    </p>
+            </div>
+            <div class="modal-content">
+                <h2 id="modal-privacy-title">Privacy Policy</h2>
+                <p>
+                    Your privacy matters. Here’s how I handle your information:
+
+                    1. Your Messages and Emails:
+                    - When you type a message or email, it is not stored permanently in any database.
+                    - Your message may be temporarily stored during your session to keep the service working smoothly — this storage is on the server side and works like a cookie, but the data is cleared when your session ends.
+                    - I cannot see your messages or emails unless you choose to share them with me. Beta testers sometimes share messages to help improve the service, but this is optional.
+
+                    2. Use of AI (OpenAI):
+                    - Your messages are sent securely to OpenAI’s API to generate responses.
+                    - OpenAI does not use your messages to train their models or keep your data.
+                    - Your messages are used only to provide you with real-time answers.
+
+                    3. No Tracking or Ads:
+                    - I do not use tracking cookies, ads, or analytics tools.
+                    - Your data is never sold or shared with third parties.
+
+                    4. Security:
+                    - I take reasonable steps to protect your temporary data during your session.
+
+                    5. Your Consent:
+                    - By using this service, you consent to the collection and use of your information as described in this policy.
+
+                    6. Age Restriction:
+                    - This service is not intended for children under 13 (or the minimum age in your region).
+
+                    7. Policy Updates:
+                    - If this policy changes, I will update this page. Using the service after updates means you agree to the changes.
+                </p>
+            </div>
+        </div>
+
+    </body>
+</html>

@@ -758,6 +758,10 @@ def send():
     smtp_server="smtp.gmail.com",
     smtp_port=587)
 
+@app.route("/termsandprivacy")
+def terms_and_privacy():
+    return render_template("termsandprivacy.html")
+
 @app.route('/unsubs')
 @login_required
 def all_unsubs():
