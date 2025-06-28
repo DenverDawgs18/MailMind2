@@ -87,7 +87,8 @@ with app.app_context():
 GOOGLE_SCOPES = ['https://mail.google.com/', 
                  'https://www.googleapis.com/auth/userinfo.email', 
                  'openid',
-                 'https://www.googleapis.com/auth/calendar',
+                 'https://www.googleapis.com/auth/calendar.calendars.readonly',
+                'https://www.googleapis.com/auth/calendar.events.owned',
                  ]
 GOOGLE_REDIRECT_URI = f"{DOMAIN}/google/callback"
 
