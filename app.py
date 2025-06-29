@@ -63,6 +63,7 @@ from functions.linkify import linkify_text
 from functions.reply import reply
 from functions.get_one_action import get_an_action
 from functions.encryption import encrypt_token, decrypt_token
+from functions.selenium import automated_unsubscribe
 import re
 import short_url
 import secrets
@@ -914,17 +915,37 @@ def remove_all_senders():
 @app.route("/remove_unsubscribe", methods=["POST"])
 def remove_unsubscribe():
     sender = request.json.get("sender")
+    manual = request.json.get("manual")
+    print(manual, type(manual))
     print(sender)
     unsubscribe = Unsubscribe.query.filter_by(sender=sender, user=current_user.id).first()
     if unsubscribe:
-        db.session.delete(unsubscribe)
-        db.session.commit()
-        return jsonify({
-            "status": "success",
-            "message": f"Removed {sender}"
-        }), 200
+        link = unsubscribe.link
+        if manual == "false":
+            auto = automated_unsubscribe(link, current_user.email)
+            print(auto["success"])
+            if auto["success"]:
+                db.session.delete(unsubscribe)
+                db.session.commit()
+                return jsonify({
+                    "status": "success",
+                    "message": f"Removed {sender}"
+                }), 200
+            else:
+                return jsonify({
+                    "status": "failure",
+                    "message": "Auto unsubscribe failed, try manually doing it. Link could also be broken",
+                })
+        else:
+            db.session.delete(unsubscribe)
+            db.session.commit()
+            return jsonify({
+                    "status": "success",
+                    "message": f"Removed {sender}"
+                }), 200
+        
     else:
-        return jsonify({"message": "No unsubscribe entry found."}), 404
+        return jsonify({"message": "No unsubscribe entry found.", "status": "failure"}), 404
 
 @app.route('/delete_sender', methods=["POST"])
 def delete_sender():

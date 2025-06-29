@@ -48,13 +48,13 @@
             <h2 class="header">Sender</h1>
             <h2 class="header">Link</h1>
         </div>
+        <div class="unsubmsg msgdisabled">{{message}}</div>
         {% for unsub in unsubs %}
             <div class="unsubwrapper">
                 <p class="sender">{{unsub.sender}}</p>
-                <a href="{{unsub.link}}" target="_blank"><button data-sender="{{unsub.sender}}" class="unsub">Unsubscribe</button></a>
+                <a href="{{unsub.link}}" target="_blank"><button data-sender="{{unsub.sender}}" data-manual="false" class="unsub">Unsubscribe</button></a>
             </div>
         {% endfor %}
-        <div class="unsubmsg">{{message}}</div>
     </div>
     <footer>
         <a href="{{url_for('terms_and_privacy')}}">Terms of Use and Privacy Policy</a>
