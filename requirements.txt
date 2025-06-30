@@ -38,6 +38,7 @@ redis==5.2.1
 regex==2024.11.6
 requests==2.32.3
 requests-oauthlib==2.0.0
+selenium==4.33.0
 short_url==1.2.2
 sortedcontainers==2.4.0
 soupsieve==2.6

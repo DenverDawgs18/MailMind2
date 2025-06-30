@@ -24,73 +24,75 @@
             <a href="{{url_for('login')}}">Log In</a>
         </div>
     {% endif %}
-    <div class="wrapper">
-        <div class="emails">
-            {% for email in emails %}
-                <div class="email" data-email-id="{{ email.id }}">
-                    <div class="emailone emailsub">
-                        <h2 class="header">From: </h2>
-                        {% if email.from %}
-                            <p class="large etext">{{email.from}}</p>
-                        {% endif %}
-                    </div>
-                    <div class="emailone emailsub">
-                        <h2 class="header">Subject: </h2>
-                        {% if email.subject %}
-                            <p class="large etext">{{email.subject | linkify_text | safe}}</p>
-                        {% endif %}
-                    </div>
-                    <div class="emailsub">
-                        <div class="action_items">
-                            <h2 class="header">Action Items</h2>
-                            {% if email.action_items %}
-                                <p class="etext">{{email.action_items | linkify_text | safe}}</p>
-                            {% endif %}
-                            {% if email.calendar %}
-                                <button class="calendarbtn">Add to Calendar</button>
-                                <form class="calendarform" style="display: none">
-                                    <label for="name">Name:</label>
-                                    <input type="text" name="name" id="name">
-                                    <label for="start">Start:</label>
-                                    <input type="datetime-local" id="start" name="start">
-                                    <label for="end">End:</label>
-                                    <input type="datetime-local" name="end" id="end">
-                                    <button type="button">Submit</button>
-                                </form>
+    <div class="main-content">
+        <div class="wrapper">
+            <div class="emails">
+                {% for email in emails %}
+                    <div class="email" data-email-id="{{ email.id }}">
+                        <div class="emailone emailsub">
+                            <h2 class="header">From: </h2>
+                            {% if email.from %}
+                                <p class="large etext">{{email.from}}</p>
                             {% endif %}
                         </div>
-                    </div>
-                    <div class="emailsub">
-                        <h2 class="header">Body</h2>
-                        {% if email.body %}
-                            <p class="etext">{{email.body | linkify_text | safe}}</p>
-                        {% endif %}
-                    </div>
-                    <div class="buttons">
-                        <button class="action reply">
-                            Reply
-                        </button>
-                            {% if email.from in current_user.high_priority %}
-                                <button class="action mark" data-sender="{{email.from}}" add="false">Unmark Sender as High Priority </button>
-                            {% else %}
-                                <button class="action mark" data-sender="{{email.from}}" add="true">Mark Sender as High Priority </button>
+                        <div class="emailone emailsub">
+                            <h2 class="header">Subject: </h2>
+                            {% if email.subject %}
+                                <p class="large etext">{{email.subject | linkify_text | safe}}</p>
                             {% endif %}
+                        </div>
+                        <div class="emailsub">
+                            <div class="action_items">
+                                <h2 class="header">Action Items</h2>
+                                {% if email.action_items %}
+                                    <p class="etext">{{email.action_items | linkify_text | safe}}</p>
+                                {% endif %}
+                                {% if email.calendar %}
+                                    <button class="calendarbtn">Add to Calendar</button>
+                                    <form class="calendarform" style="display: none">
+                                        <label for="name">Name:</label>
+                                        <input type="text" name="name" id="name">
+                                        <label for="start">Start:</label>
+                                        <input type="datetime-local" id="start" name="start">
+                                        <label for="end">End:</label>
+                                        <input type="datetime-local" name="end" id="end">
+                                        <button type="button">Submit</button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="emailsub">
+                            <h2 class="header">Body</h2>
+                            {% if email.body %}
+                                <p class="etext">{{email.body | linkify_text | safe}}</p>
+                            {% endif %}
+                        </div>
+                        <div class="buttons">
+                            <button class="action reply">
+                                Reply
+                            </button>
+                                {% if email.from in current_user.high_priority %}
+                                    <button class="action mark" data-sender="{{email.from}}" add="false">Unmark Sender as High Priority </button>
+                                {% else %}
+                                    <button class="action mark" data-sender="{{email.from}}" add="true">Mark Sender as High Priority </button>
+                                {% endif %}
+                        </div>
+                        <div id="replydiv" class="replywrap replydiv">
+                            <h1 class="replyheader">Reply</h1>
+                            <form id="replyform" class="emailform">
+                                <label for="cc" class="replylabel">CC: (please enter as list of emails seperated by commas)</label>
+                                <input type="text" id="cc" name="cc" class="cc replyin">
+                                <label for="bcc" class="replylabel">BCC: (please enter as list of emails seperated by commas)</label>
+                                <input type="text" id="bcc" name="bcc" class="bcc replyin">    
+                                <label for="body" class="replylabel">Body:</label> 
+                                <input type="text" id="body" name="body" class="body replyin">          
+                                <button type="submit" class="action replysubmit" id="replysubmit"
+                                data-from="{{email.from}}" data-subject="{{email.subject}}">Submit</button>
+                            </form>
+                        </div>
                     </div>
-                    <div id="replydiv" class="replywrap replydiv">
-                        <h1 class="replyheader">Reply</h1>
-                        <form id="replyform" class="emailform">
-                            <label for="cc" class="replylabel">CC: (please enter as list of emails seperated by commas)</label>
-                            <input type="text" id="cc" name="cc" class="cc replyin">
-                            <label for="bcc" class="replylabel">BCC: (please enter as list of emails seperated by commas)</label>
-                            <input type="text" id="bcc" name="bcc" class="bcc replyin">    
-                            <label for="body" class="replylabel">Body:</label> 
-                            <input type="text" id="body" name="body" class="body replyin">          
-                            <button type="submit" class="action replysubmit" id="replysubmit"
-                            data-from="{{email.from}}" data-subject="{{email.subject}}">Submit</button>
-                        </form>
-                    </div>
-                </div>
-            {% endfor %}
+                {% endfor %}
+            </div>
         </div>
     </div>
     <footer>

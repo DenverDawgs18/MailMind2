@@ -1,14 +1,26 @@
-body{
+/* CONSOLIDATED BODY STYLES - Replace your existing body rules with this */
+body {
     font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
     line-height: 1.5;
     font-weight: 400;
     font-synthesis: none;
     text-rendering: optimizeLegibility;
-    --webkit-font-smoothing: antialiased;
+    -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color:  white;
+    background: linear-gradient(135deg, #171524 0%, #1a1830 100%);
+    color: white;
     margin: 0;
-    padding: 0;
+    padding: 0; 
+    position: relative;
+
+    /* FLEXBOX LAYOUT FOR STICKY FOOTER */
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.main-content {
+    flex: 1; 
 }
 .navbar{
     display: flex;
@@ -45,11 +57,12 @@ footer {
     border-radius: 25px 25px 0 0;
     box-shadow: 5px 5px darkorange, 8px 8px 15px rgba(0, 0, 0, 0.3);
     padding: 30px 50px;
-    margin-top: 60px;
+    margin-top: auto;
     text-align: center;
     position: relative;
     overflow: hidden;
     transition: all 0.3s ease;
+   
 }
 
 footer::before {

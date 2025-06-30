@@ -1,11 +1,4 @@
-body {
-    position: relative;
-    padding-bottom: 150px;
-    background: linear-gradient(135deg, #171524 0%, #1a1830 100%);
-    min-height: 100vh;
-    color: white;
-    margin: 0;
-}
+
 
 .container {
     padding: 40px;

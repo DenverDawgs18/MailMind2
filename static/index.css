@@ -1,10 +1,4 @@
 
-body {
-    position: relative;
-    background: linear-gradient(135deg, #171524 0%, #1a1830 100%);
-    min-height: 100vh;
-    color: white;
-}
 
 /* Animated background particles */
 .particles {

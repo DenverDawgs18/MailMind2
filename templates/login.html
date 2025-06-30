@@ -24,16 +24,18 @@
             <a href="{{url_for('login')}}">Log In</a>
         </div>
     {% endif %}
-    <div class="container">
-        {% if current_user.subscribed %}
-            <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Log In With Google</a></h1>
-            <h1 class="login"><a class="loginlink" href="{{url_for('microsoft_login')}}">Log In With Microsoft</a></h1>
-        {% else %}
-            <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Sign In With Google</a></h1>
-            <h1 class="login"><a class="loginlink" href="{{url_for('microsoft_login')}}">Sign In With Microsoft</a></h1>
-            <h3 class="if">You must log in to access the rest of the site (including the subscribe page). 
-                Choose the email you'd like to use for the site (multi-inbox support soon!) </h3> 
-        {% endif %}
+    <div class="main-content">
+        <div class="container">
+            {% if current_user.subscribed %}
+                <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Log In With Google</a></h1>
+                <h1 class="login"><a class="loginlink" href="{{url_for('microsoft_login')}}">Log In With Microsoft</a></h1>
+            {% else %}
+                <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Sign In With Google</a></h1>
+                <h1 class="login"><a class="loginlink" href="{{url_for('microsoft_login')}}">Sign In With Microsoft</a></h1>
+                <h3 class="if">You must log in to access the rest of the site (including the subscribe page). 
+                    Choose the email you'd like to use for the site (multi-inbox support soon!) </h3> 
+            {% endif %}
+        </div>
     </div>
     <footer>
         <a href="{{url_for('terms_and_privacy')}}">Terms of Use and Privacy Policy</a>

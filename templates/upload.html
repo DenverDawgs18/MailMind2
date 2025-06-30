@@ -24,43 +24,44 @@
             <a href="{{url_for('login')}}">Log In</a>
         </div>
     {% endif %}
-    
-    <div class="uploadwrapper">
-        <div class="more">
-            <h1 class="reqhead load">Load 1000 emails to see your top senders and remove all of their emails from your inbox.
-                Alternatively, load your entire inbox to get the absolute count for each sender.
-            </h1>
-            <p class="stats">Loaded: {{processed_count}} emails</p>
-            <button class="loadmore">Load 1000 (for sampling)</button>
-            <button class="loadall">Load all</button>
-        </div>
-        <div class="requestedcontainer">
-            <h1 class="reqhead">Senders Requested to Delete</h1>
-            <div class="reqwrap">
-                {% if to_delete %}
-                    {% for sender in to_delete %}
-                        <div class="reqcont">
-                            <p class="req">{{sender}}</p>
-                            <button type="submit" class="restore" data-sender="{{sender}}">Restore</button>
-                        </div>
-                    {% endfor %}
-                {% else %}
-                    <h2 class="reqhead">No Senders Requested to Delete</h2>
-                {% endif %}
+    <div class="main-content">
+        <div class="uploadwrapper">
+            <div class="more">
+                <h1 class="reqhead load">Load 1000 emails to see your top senders and remove all of their emails from your inbox.
+                    Alternatively, load your entire inbox to get the absolute count for each sender.
+                </h1>
+                <p class="stats">Loaded: {{processed_count}} emails</p>
+                <button class="loadmore">Load 1000 (for sampling)</button>
+                <button class="loadall">Load all</button>
             </div>
-            <button type="submit" class="remove">Remove Requested Senders</button>
-        </div>
-        <div class="senders">
-            <h1 class="reqhead">Senders to Keep</h1>
-            {% for email in text%}
-                <div class="senderwrapper">
-                    <div class="sendercontainer">
-                        <p class="sender">{{email.sender}}</p>
-                        <p class="number">{{email.number}}</p>
-                    </div>
-                    <button data-sender="{{email.sender}}" class="delete">Add to Delete Pile</button>
+            <div class="requestedcontainer">
+                <h1 class="reqhead">Senders Requested to Delete</h1>
+                <div class="reqwrap">
+                    {% if to_delete %}
+                        {% for sender in to_delete %}
+                            <div class="reqcont">
+                                <p class="req">{{sender}}</p>
+                                <button type="submit" class="restore" data-sender="{{sender}}">Restore</button>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <h2 class="reqhead">No Senders Requested to Delete</h2>
+                    {% endif %}
                 </div>
-            {% endfor %}
+                <button type="submit" class="remove">Remove Requested Senders</button>
+            </div>
+            <div class="senders">
+                <h1 class="reqhead">Senders to Keep</h1>
+                {% for email in text%}
+                    <div class="senderwrapper">
+                        <div class="sendercontainer">
+                            <p class="sender">{{email.sender}}</p>
+                            <p class="number">{{email.number}}</p>
+                        </div>
+                        <button data-sender="{{email.sender}}" class="delete">Add to Delete Pile</button>
+                    </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
     <footer>

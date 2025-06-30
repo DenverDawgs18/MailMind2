@@ -24,15 +24,17 @@
             <a href="{{url_for('login')}}">Log In</a>
         </div>
     {% endif %}
-    <div class="container">
-        {% if message %}
-            <h1 class="message">{{message}}</h1>
-        {% endif %}
-        <form action="/code" method="post">
-            <h1>Enter code below</h1>
-            <input type="text" name="code">
-            <button type="submit">Submit</button>
-        </form>
+    <div class="main-content">
+        <div class="container">
+            {% if message %}
+                <h1 class="message">{{message}}</h1>
+            {% endif %}
+            <form action="/code" method="post">
+                <h1>Enter code below</h1>
+                <input type="text" name="code">
+                <button type="submit">Submit</button>
+            </form>
+        </div>
     </div>
     <footer>
         <a href="{{url_for('terms_and_privacy')}}">Terms of Use and Privacy Policy</a>
