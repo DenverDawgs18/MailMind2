@@ -14,7 +14,8 @@ for (let i = 0; i < unsubs.length; i++) {
         }
         // If manual=true, let the link open normally (don't prevent default)
         
-        button.textContent = "Attempting auto-unsubscribe"
+        button.textContent = "Attempting auto-unsubscribe";
+        button.disabled = true;
         
         fetch("/remove_unsubscribe", {
             method: "POST",
@@ -29,20 +30,22 @@ for (let i = 0; i < unsubs.length; i++) {
         .then(response => response.json())
         .then(data => {
             if (data.status === "success") {
-                console.log(data.message)
-                document.querySelector(".unsubmsg").textContent += data.message
+                document.querySelector(".unsubmsg").innerHTML += data.message + "<br>"
+                document.querySelector(".unsubmsg").classList.add("msgenabled");
+                document.querySelector(".unsubmsg").classList.remove("msgdisabled");
                 const row = button.closest("div");
                 if (row) row.remove();
                 const remainingRows = document.querySelectorAll(".unsubwrapper").length;
                 if (remainingRows <= 1) {
-                    document.querySelector(".unsubmsg").textContent += "No unsubscribes left";
+                    document.querySelector(".unsubmsg").innerHTML += "No unsubscribes left";
                 }
             } else {
                 // Selenium failed, switch to manual mode
                 button.dataset.manual = "true";
+                button.disabled = false;
                 button.textContent = "Retry (Manual)"; // Optional: change button text
                 // No need to change pointerEvents since we want the link to work now
-                document.querySelector(".unsubmsg").textContent += data.message;
+                document.querySelector(".unsubmsg").innerHTML += data.message + "<br>";
                 document.querySelector(".unsubmsg").classList.add("msgenabled");
                 document.querySelector(".unsubmsg").classList.remove("msgdisabled");
             }
