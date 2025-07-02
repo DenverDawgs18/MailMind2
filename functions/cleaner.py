@@ -1,4 +1,5 @@
 # cleaner.py - Email processing functions for Gmail and Outlook
+from app import db, current_user
 import base64
 import re
 import time
@@ -9,7 +10,8 @@ from googleapiclient.discovery import build
 from bs4 import BeautifulSoup
 from flask import session, current_app
 from functions.refresh_token import refresh
-from app import db, Unsubscribe, Link, short_url, current_user
+from models import Unsubscribe, Link
+import short_url
 
 def get_email_service_type():
     """Determine which email service to use based on user's stored provider"""
@@ -410,13 +412,17 @@ def process_unsubscribe_links_batch(unsubscribe_data):
                         print(f"Error decoding short URL: {str(e)}")
                         continue
 
-                # Check if unsubscribe entry already exists
-                unsubj = Unsubscribe.query.filter_by(sender=sender).first()
-                if not unsubj:
-                    new_unsub = Unsubscribe(sender=sender, link=link, user=current_user.id)
-                    db.session.add(new_unsub)
-                    print(f"Added unsubscribe link for {sender}: {link}")
-                    changes_made = True
+                match = re.search(r'https?://[^\s]+', link)
+
+                link = match.group(0) if match else False
+
+                if link:
+                    unsubj = Unsubscribe.query.filter_by(sender=sender).first()
+                    if not unsubj:
+                        new_unsub = Unsubscribe(sender=sender, link=link, user=current_user.id)
+                        db.session.add(new_unsub)
+                        print(f"Added unsubscribe link for {sender}: {link}")
+                        changes_made = True
                     
             except Exception as e:
                 print(f"Error processing unsubscribe link for {sender}: {str(e)}")

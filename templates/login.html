@@ -26,6 +26,10 @@
     {% endif %}
     <div class="main-content">
         <div class="container">
+            <h3 class="if">We are currently in the verification process with Google. At this current moment,
+                if you click log in with Google, you'll get a warning and to bypass it, simply click advanced and proceed
+                to MailMind. 
+            </h3>
             {% if current_user.subscribed %}
                 <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Log In With Google</a></h1>
                 <h1 class="login"><a class="loginlink" href="{{url_for('microsoft_login')}}">Log In With Microsoft</a></h1>

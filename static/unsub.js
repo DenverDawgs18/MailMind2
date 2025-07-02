@@ -14,7 +14,7 @@ for (let i = 0; i < unsubs.length; i++) {
         }
         // If manual=true, let the link open normally (don't prevent default)
         
-        console.log(button.dataset.sender);
+        button.textContent = "Attempting auto-unsubscribe"
         
         fetch("/remove_unsubscribe", {
             method: "POST",
@@ -29,7 +29,8 @@ for (let i = 0; i < unsubs.length; i++) {
         .then(response => response.json())
         .then(data => {
             if (data.status === "success") {
-                document.querySelector(".unsubmsg").textContent = data.message
+                console.log(data.message)
+                document.querySelector(".unsubmsg").textContent += data.message
                 const row = button.closest("div");
                 if (row) row.remove();
                 const remainingRows = document.querySelectorAll(".unsubwrapper").length;
@@ -41,7 +42,7 @@ for (let i = 0; i < unsubs.length; i++) {
                 button.dataset.manual = "true";
                 button.textContent = "Retry (Manual)"; // Optional: change button text
                 // No need to change pointerEvents since we want the link to work now
-                document.querySelector(".unsubmsg").textContent = data.message;
+                document.querySelector(".unsubmsg").textContent += data.message;
                 document.querySelector(".unsubmsg").classList.add("msgenabled");
                 document.querySelector(".unsubmsg").classList.remove("msgdisabled");
             }

@@ -49,7 +49,6 @@ if PRODUCTION:
 else:
     app.config["SESSION_REDIS"] = Redis(host="localhost", port=6379)
 Session(app)
-from functions.get_emails import get_emails
 import requests
 import json
 import base64
@@ -64,6 +63,7 @@ from functions.reply import reply
 from functions.get_one_action import get_an_action
 from functions.encryption import encrypt_token, decrypt_token
 from functions.selenium import automated_unsubscribe
+from functions.get_emails import get_emails
 import re
 import short_url
 import secrets
@@ -145,9 +145,29 @@ def index():
 def special():
     if PRODUCTION:
         return render_template("index.html")
-    return render_template("calendar.html")
+    unsubs = Unsubscribe.query.filter_by(user=current_user.id).all()
+    print("Found", len(unsubs), "unsubscribe entries")
 
-@app.route("/code", methods=["GET", "POST"])
+    for unsub in unsubs:
+        original_link = unsub.link or ""
+        match = re.search(r'https?://[^\s]+', original_link)
+        cleaned_link = match.group(0) if match else False
+
+        if not cleaned_link:
+            print("Deleting:", unsub.sender)
+            db.session.delete(unsub)
+        elif cleaned_link != original_link:
+            print(f"Updating {unsub.sender}: '{original_link}' -> '{cleaned_link}'")
+            unsub.link = cleaned_link  # this flags the record as 'dirty'
+
+    try:
+        db.session.commit()
+        print("Changes committed successfully.")
+    except Exception as e:
+        print("Commit failed:", e)
+
+    return render_template("index.html")
+
 @login_required
 def code():
     if request.method == "POST":
@@ -216,6 +236,7 @@ def google_callback():
         user = create_user(session['user_email'], encrypt_token(credentials.refresh_token), provider="google")
     else:
         user.oauth_token = encrypt_token(credentials.refresh_token)
+        user.provider = "google"
     db.session.commit()
     login_user(user, remember = True)
     return redirect(url_for("index"))
@@ -934,7 +955,7 @@ def remove_unsubscribe():
             else:
                 return jsonify({
                     "status": "failure",
-                    "message": "Auto unsubscribe failed, try manually doing it. Link could also be broken",
+                    "message": f"Auto unsubscribe failed for {sender}, try manually doing it. Link could also be broken.",
                 })
         else:
             db.session.delete(unsubscribe)

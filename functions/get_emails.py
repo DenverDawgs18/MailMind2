@@ -7,9 +7,9 @@ from email import message_from_bytes
 from email.header import decode_header
 import html2text
 import short_url
-
-from app import db
-from models import Link
+from bs4 import BeautifulSoup
+from models import Unsubscribe, Link
+from app import db, current_user
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,105 @@ html_converter.ignore_tables = False  # Handle tables better
 html_converter.unicode_snob = True   # Use Unicode characters
 html_converter.single_line_break = True  # Reduce excessive line breaks
 
+def find_unsubscribe_link(email_body):
+    """Find an unsubscribe link in Gmail email body."""
+    if not email_body:
+        return ''
+    
+    unsubscribe_match = re.search(r"(?i)unsubscribe", email_body)
+    
+    if unsubscribe_match:
+        unsubscribe_pos = unsubscribe_match.start()
+        remaining_text = email_body[unsubscribe_pos:]
+        
+        # Check for encoded links first
+        link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
+        if link_match:
+            return link_match.group(1)
+            
+        # Check for HTML links
+        html_link_match = re.search(r'href=["\'](https?://[^"\'>]+)["\']', remaining_text)
+        if html_link_match:
+            return html_link_match.group(1)
+    
+    return ''
+
+def find_unsubscribe_link_outlook(email_body):
+    """Find an unsubscribe link in Outlook email body."""
+    if not email_body:
+        return ''
+    
+    # Parse HTML content if it exists
+    try:
+        soup = BeautifulSoup(email_body, 'html.parser')
+        
+        # Look for unsubscribe links
+        for link in soup.find_all('a', href=True):
+            link_text = link.get_text().lower()
+            link_href = link.get('href', '')
+            
+            if 'unsubscribe' in link_text or 'unsubscribe' in link_href.lower():
+                return link_href
+    except:
+        pass
+    
+    # Fallback to regex search
+    return find_unsubscribe_link(email_body)
+
+def process_unsubscribe_links_batch(unsubscribe_data):
+    """Process and store multiple unsubscribe links in a single database transaction."""
+    if not unsubscribe_data:
+        return
+    
+    changes_made = False
+    
+    try:
+        for data in unsubscribe_data:
+            link = data['link']
+            sender = data['sender']
+            
+            if not link:
+                continue
+            
+            try:
+                # Handle encoded links
+                if link.startswith('[LINK:') and link.endswith(']'):
+                    code = link.strip('[LINK:').strip(']').strip()
+                    try:
+                        link_id = short_url.decode_url(code)
+                        link_obj = Link.query.filter_by(id=link_id).first()
+                        if link_obj:
+                            link = link_obj.link
+                        else:
+                            continue
+                    except Exception as e:
+                        print(f"Error decoding short URL: {str(e)}")
+                        continue
+
+                match = re.search(r'https?://[^\s]+', link)
+
+                link = match.group(0) if match else False
+
+                if link:
+                    unsubj = Unsubscribe.query.filter_by(sender=sender).first()
+                    if not unsubj:
+                        new_unsub = Unsubscribe(sender=sender, link=link, user=current_user.id)
+                        db.session.add(new_unsub)
+                        print(f"Added unsubscribe link for {sender}: {link}")
+                        changes_made = True
+                    
+            except Exception as e:
+                print(f"Error processing unsubscribe link for {sender}: {str(e)}")
+                continue
+        
+        # Single commit for all changes
+        if changes_made:
+            db.session.commit()
+            print(f"Successfully committed {len([d for d in unsubscribe_data if d['link']])} unsubscribe link changes")
+            
+    except Exception as e:
+        print(f"Error committing unsubscribe link changes: {str(e)}")
+        db.session.rollback()
 
 def get_or_create_short(url: str) -> str:
     """
@@ -141,6 +240,7 @@ def get_emails(host: str,
     - Otherwise defaults to exactly 24 hours ago from now
     """
     msgs = []
+    pending_unsubscribes = []
     try:
         # Set the time window for email fetching
         now = datetime.now(timezone.utc)
@@ -166,10 +266,29 @@ def get_emails(host: str,
         # Handle different providers
         if host.lower() == 'gmail' or host.lower() == "google":
             msgs = _get_gmail_emails(user_email, token, cutoff_datetime)
+            for msg in msgs:
+                unsub_link = find_unsubscribe_link(msg["body"])
+                if unsub_link and msg["from"] not in [u['sender'] for u in pending_unsubscribes]:
+                    pending_unsubscribes.append({
+                        'link': unsub_link,
+                        'sender': msg['from']
+                    })
+
         elif host.lower() == 'microsoft':
             msgs = _get_microsoft_emails(user_email, token, cutoff_datetime)
+            for msg in msgs:
+                unsub_link = find_unsubscribe_link_outlook(msg["body"])
+                if unsub_link and msg["from"] not in [u['sender'] for u in pending_unsubscribes]:
+                    pending_unsubscribes.append({
+                        'link': unsub_link,
+                        'sender': msg['from']
+                    })
         else:
             raise ValueError(f'Unsupported host: {host}')
+
+
+        if pending_unsubscribes:
+            process_unsubscribe_links_batch(pending_unsubscribes)
                  
         # Commit all new links at once
         db.session.commit()
@@ -311,6 +430,7 @@ def _get_microsoft_emails(user_email: str, token: str, cutoff_datetime: datetime
                 # Apply the same processing as Gmail emails
                 body_content = normalize_whitespace(body_content)
                 body_content = URL_PATTERN.sub(lambda m: f"[LINK: {get_or_create_short(m.group(1))}]", body_content)
+
                 
                 msgs.append({
                     'from': from_str,
