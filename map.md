@@ -9,10 +9,3 @@ Multiple inboxes
 
 A/B tests
 1000 flat on button or allow user to pick?
-
-
-
-User clicks on link
-If link hasn't been clicked on before, try auto
-if auto works, let the front-end know it can delete
-if it doesn't set the link to manual and delete when clicked no matter what

@@ -794,7 +794,7 @@ def all_unsubs():
     if not unsubs:
         return render_template("unsubs.html", unsubs=[], message="No unsubscribe links found.")
     else:
-        return render_template('unsubs.html', unsubs=unsubs)
+        return render_template('unsubs.html', unsubs=unsubs, number = len(unsubs))
 
 @app.route('/summary') 
 @login_required     

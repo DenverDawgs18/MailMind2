@@ -30,14 +30,14 @@ for (let i = 0; i < unsubs.length; i++) {
         .then(response => response.json())
         .then(data => {
             if (data.status === "success") {
-                document.querySelector(".unsubmsg").innerHTML += data.message + "<br>"
+                document.querySelector(".unsubmsg").innerHTML = data.message + "<br>"
                 document.querySelector(".unsubmsg").classList.add("msgenabled");
                 document.querySelector(".unsubmsg").classList.remove("msgdisabled");
                 const row = button.closest("div");
                 if (row) row.remove();
                 const remainingRows = document.querySelectorAll(".unsubwrapper").length;
                 if (remainingRows <= 1) {
-                    document.querySelector(".unsubmsg").innerHTML += "No unsubscribes left";
+                    document.querySelector(".unsubmsg").innerHTML = "No unsubscribes left";
                 }
             } else {
                 // Selenium failed, switch to manual mode
@@ -45,12 +45,19 @@ for (let i = 0; i < unsubs.length; i++) {
                 button.disabled = false;
                 button.textContent = "Retry (Manual)"; // Optional: change button text
                 // No need to change pointerEvents since we want the link to work now
-                document.querySelector(".unsubmsg").innerHTML += data.message + "<br>";
+                document.querySelector(".unsubmsg").innerHTML = data.message + "<br>";
                 document.querySelector(".unsubmsg").classList.add("msgenabled");
                 document.querySelector(".unsubmsg").classList.remove("msgdisabled");
             }
         });
     });
+}
+
+function updateSubnavOffset() {
+  const navbar = document.querySelector(".navbar");
+  const subnav = document.querySelector('.unsubmsg');
+  const height = navbar.offsetHeight;
+  subnav.style.top = `${height}px`;
 }
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -59,4 +66,7 @@ document.addEventListener("DOMContentLoaded", function () {
             el.innerHTML = el.innerHTML.replace(/&lt;/, '<br><br>&lt;');
         });
     }
+    updateSubnavOffset()
 });
+
+window.addEventListener("resize", updateSubnavOffset);
