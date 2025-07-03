@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../static/universal.css">
+    <link rel="stylesheet" href="../static/request.css">
+    <link rel="icon" type="image/x-icon" href="../static/imgs/MailMindTempLogo.ico">
+    <title>Contact</title>
+</head>
+<body>
+    {% if current_user.subscribed %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+            <a href="{{url_for('emails')}}">Inbox</a>
+            <a href="{{url_for('summary')}}">To-Do List</a>
+            <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
+            <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
+            <a href="{{url_for('contact')}}">Contact</a>
+        </div>
+    {% else %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+            <a href="{{url_for('request_access')}}">Request Access</a>
+            <a href="{{url_for('login')}}">Log In</a>
+        </div>
+    {% endif %}
+    <div class="main-content">
+        <div class="container">
+            <div class="form-header">
+                <h1>Contact the Developer</h1>
+                <p>Any concerns? Found a bug? Please let us know below! Thank you!</p>
+            </div>
+            
+            <form class="request-form" action="https://api.web3forms.com/submit" method="POST">
+                <input type="hidden" name="access_key" value="e56caf5c-afef-4ff8-86e5-e1ffbe1a9f21">
+                <input type="hidden" name="redirect" value="https://mywebsite.com/thanks">
+                
+                <!--
+                <div class="form-group">
+                    <label for="name">Name</label>
+                    <input type="text" name="name" id="name" placeholder="Enter your full name" required>
+                </div>
+            -->
+                
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" name="email" id="email" placeholder="Enter your email address" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="message">Message</label>
+                    <textarea name="message" id="message" placeholder="Found something wrong?" required></textarea>
+                </div>
+                
+                <button type="submit" class="submit-btn">Request Access</button>
+            </form>
+        </div>
+    </div>
+    
+    <footer>
+        <a href="{{url_for('terms_and_privacy')}}">Terms of Use and Privacy Policy</a>
+    </footer>
+
+</body>
+</html>

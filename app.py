@@ -370,6 +370,14 @@ def session_clear():
     session.clear()
     return render_template("index.html")
 
+@app.route("/request_access")
+def request_access():
+    return render_template("request_access.html")
+
+@app.route("/contact")
+def contact():
+    return render_template("contact.html")
+
 @app.route('/emails')
 @login_required
 def emails():
