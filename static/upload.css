@@ -20,7 +20,7 @@
     align-items: center;
 }
 
-.stats {
+.stats, .deleted {
     color: #e6d7a3;
     font-size: 18px;
     font-weight: 600;
@@ -283,7 +283,7 @@ a:hover {
         gap: 12px;
     }
     
-    .stats {
+    .stats, .deleted {
         font-size: 16px;
     }
     
@@ -365,7 +365,7 @@ a:hover {
         padding: 12px;
     }
     
-    .stats {
+    .stats, .deleted{
         font-size: 14px;
     }
     

@@ -936,6 +936,16 @@ def get_email_progress():
         return jsonify(json.loads(data))
     return jsonify({"count": 0, "status": "idle"})
 
+@app.route('/delete_count')
+@login_required
+def delete_count():
+    progress_key = f"delete_count{current_user.id}"
+    data = r.get(progress_key)
+    print("delete count")
+    if data:
+        return jsonify(json.loads(data))
+    return jsonify({"status": "error"})
+
 
 @app.route('/remove_all_senders', methods=["POST"])
 def remove_all_senders():
@@ -944,7 +954,12 @@ def remove_all_senders():
     if not senders_to_delete:
         return jsonify({"message": "No senders specified for deletion"}), 400
     
-    deleted_count, failed_senders = delete_all_senders_from_service(senders_to_delete)
+    def update_delete_count(data):
+        print("updating")
+        progress_key = f"delete_count{current_user.id}"
+        r.setex(progress_key, 3600, json.dumps(data))
+    
+    deleted_count, failed_senders = delete_all_senders_from_service(senders_to_delete, update_delete_count)
     
     # Only remove successfully processed senders from the deleted list
     if failed_senders:

@@ -111,7 +111,21 @@ function loadEmailsWithPolling(loadAll) {
     });
     }
     const removeBtn = document.querySelector('.remove')
+    const deleteElement = document.querySelector(".deleted")
     removeBtn.addEventListener("click", () => {
+        const deleteProgressInterval = setInterval(() => {
+            fetch('/delete_count')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === "success") {
+                        deleteElement.textContent = `Deleted: ${data.count} emails from ${data.sender}`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching delete progress:', error);
+                });
+        }, 1000); // Poll every second
+        removeBtn.disabled = true;
         fetch("/remove_all_senders", {
             method: "POST", 
             headers: {"Content-Type": "application/json"},
@@ -119,9 +133,21 @@ function loadEmailsWithPolling(loadAll) {
         })
         .then(response => response.json())
         .then(data => {
+            clearInterval(deleteProgressInterval)
             console.log(data.message)
             updateRequestedList([])
         })
+        .catch(error => {
+        // Stop polling on error
+        clearInterval(deleteProgressInterval);
+        
+        console.error('Error deleting emails:', error);
+        alert('Error deleting emails. Please try again.');
+        
+        // Re-enable buttons in case of error
+        removeBtn.disabled = false
+        deleteElement.textContent = 'Error loading emails';
+    });
     })
 });
 

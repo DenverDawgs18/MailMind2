@@ -207,7 +207,7 @@ def find_unsubscribe_link_outlook(email_body):
     # Fallback to regex search
     return find_unsubscribe_link(email_body)
 
-def delete_messages_from_sender_gmail(service, sender):
+def delete_messages_from_sender_gmail(service, sender, update_delete_count):
     """Delete all Gmail messages from a specific sender"""
     try:
         query = f"from:{sender}"
@@ -231,6 +231,8 @@ def delete_messages_from_sender_gmail(service, sender):
                     service.users().messages().trash(userId="me", id=msg["id"]).execute()
                     deleted_count += 1
                     
+                    if deleted_count % 10:
+                        update_delete_count({"count": deleted_count, "sender": sender, "status": "success"})
                     if deleted_count % 50 == 0:
                         time.sleep(1)  # Rate limiting
                 except Exception as msg_error:
@@ -245,7 +247,7 @@ def delete_messages_from_sender_gmail(service, sender):
         print(f"Error deleting Gmail messages from {sender}: {str(e)}")
         return 0
 
-def delete_messages_from_sender_outlook(sender):
+def delete_messages_from_sender_outlook(sender, update_delete_count):
     """Delete all Outlook messages from a specific sender"""
     try:
         headers = get_outlook_headers()
@@ -269,7 +271,8 @@ def delete_messages_from_sender_outlook(sender):
                     delete_response = requests.delete(delete_url, headers=headers)
                     delete_response.raise_for_status()
                     deleted_count += 1
-                    
+                    if deleted_count % 10:
+                        update_delete_count({"count": deleted_count, "sender": sender, "status": "success"})
                     if deleted_count % 50 == 0:
                         time.sleep(1)  # Rate limiting
                 except Exception as msg_error:
@@ -440,7 +443,7 @@ def process_unsubscribe_links_batch(unsubscribe_data):
         print(f"Error committing unsubscribe link changes: {str(e)}")
         db.session.rollback()
 
-def delete_all_senders_from_service(senders_to_delete):
+def delete_all_senders_from_service(senders_to_delete, update_delete_count):
     """Delete all emails from specified senders using the appropriate service"""
     service_type = get_email_service_type()
     if not service_type:
@@ -455,9 +458,9 @@ def delete_all_senders_from_service(senders_to_delete):
         try:
             if service_type == 'google':
                 service = get_gmail_service()
-                sender_deleted_count = delete_messages_from_sender_gmail(service, sender)
+                sender_deleted_count = delete_messages_from_sender_gmail(service, sender, update_delete_count)
             elif service_type == 'microsoft':
-                sender_deleted_count = delete_messages_from_sender_outlook(sender)
+                sender_deleted_count = delete_messages_from_sender_outlook(sender, update_delete_count)
             else:
                 sender_deleted_count = 0
             
