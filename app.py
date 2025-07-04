@@ -837,6 +837,19 @@ from functions.cleaner import (
     update_senders_cache_restore
 )
 
+def get_redis_client():
+    if PRODUCTION:
+        return Redis(
+            host='fly-mailmind-redis.upstash.io',
+            port=6379,
+            password=os.getenv("REDIS_PASSWORD")
+        )
+    else:
+        return Redis(host="localhost", port=6379)
+
+# Get the Redis client for progress tracking
+r = get_redis_client()
+
 @app.route('/email_cleaner', methods=["GET", "POST"])
 @login_required
 def email_cleaner():
@@ -866,9 +879,14 @@ def email_cleaner():
         else:
             batch_size = 1000 
         print(batch_size)
+
+        def update_progress(data):
+            progress_key = f"email_progress_{current_user.id}"
+            r.setex(progress_key, 3600, json.dumps(data))
         
         senders, next_page_token, processed_count = fetch_emails_batch_unified(
             service_type=service_type,
+            progress_callback=update_progress,
             batch_size=batch_size,
             page_token=session.get("next_page_token"),
             current_count=session.get("processed_count", 0)
@@ -912,8 +930,11 @@ def email_cleaner():
 @app.route('/email_progress')
 @login_required
 def get_email_progress():
-    """Get progress updates"""
-    return jsonify(session.get("current_progress", {"count": 0, "status": "idle"}))
+    progress_key = f"email_progress_{current_user.id}"
+    data = r.get(progress_key)
+    if data:
+        return jsonify(json.loads(data))
+    return jsonify({"count": 0, "status": "idle"})
 
 
 @app.route('/remove_all_senders', methods=["POST"])

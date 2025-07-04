@@ -282,7 +282,7 @@ def delete_messages_from_sender_outlook(sender):
         print(f"Error deleting Outlook messages from {sender}: {str(e)}")
         return 0
 
-def fetch_emails_batch_unified(service_type, batch_size=1000, page_token=None, current_count=0):
+def fetch_emails_batch_unified(service_type,progress_callback, batch_size=1000, page_token=None, current_count=0):
     """Unified function to fetch emails from either Gmail or Outlook"""
     
     senders = {}
@@ -293,7 +293,8 @@ def fetch_emails_batch_unified(service_type, batch_size=1000, page_token=None, c
     pending_unsubscribes = []
     
     # Initialize progress
-    session["current_progress"] = {"count": processed_count, "status": "loading"}
+    progress_callback({"count": processed_count, "status": "loading"})
+
     
     try:
         if service_type == 'google':
@@ -324,9 +325,10 @@ def fetch_emails_batch_unified(service_type, batch_size=1000, page_token=None, c
                     
                     processed_count += 1
                     remaining_emails -= 1
-                    
-                    if processed_count % 100 == 0:
-                        session["current_progress"] = {"count": processed_count, "status": "loading"}
+            
+                    if processed_count % 10 == 0:
+                        progress_callback({"count": processed_count, "status": "loading"})
+
                     
                     if remaining_emails <= 0 and not process_all:
                         break
@@ -360,8 +362,8 @@ def fetch_emails_batch_unified(service_type, batch_size=1000, page_token=None, c
                     processed_count += 1
                     remaining_emails -= 1
                     
-                    if processed_count % 100 == 0:
-                        session["current_progress"] = {"count": processed_count, "status": "loading"}
+                    if processed_count % 10 == 0:
+                        progress_callback({"count": processed_count, "status": "loading"})
                     
                     if remaining_emails <= 0 and not process_all:
                         break
@@ -373,11 +375,12 @@ def fetch_emails_batch_unified(service_type, batch_size=1000, page_token=None, c
             process_unsubscribe_links_batch(pending_unsubscribes)
         
         # Mark as complete
-        session["current_progress"] = {"count": processed_count, "status": "complete"}
+        progress_callback({"count": processed_count, "status": "complete"})
                 
     except Exception as e:
         print(f"Error fetching emails: {str(e)}")
-        session["current_progress"] = {"count": processed_count, "status": "error"}
+        progress_callback({"count": processed_count, "status": "error"})
+
     
     sorted_senders = sorted(senders.items(), key=lambda x: x[1], reverse=True)
     return sorted_senders, next_page_token, processed_count
@@ -490,7 +493,7 @@ def update_senders_cache_remove(sender_name):
         session["removed_senders_cache"] = removed_senders_cache
     
     print("Length:", len(session["senders_cache"]))
-    session.modified = True
+
     
     return {
         "message": f"Removed {sender_name} from the list.",
