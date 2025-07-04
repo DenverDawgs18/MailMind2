@@ -35,7 +35,7 @@
                 {% if current_user.subscribed %}
                     <h3 class="try"><a class="trylink" href="{{url_for('emails')}}">Load your list →</a></h3>
                 {% else %}
-                    <h3 class="try"><a class="trylink" href="{{url_for('subscribe')}}">Try it free →</a></h3>
+                    <h3 class="try"><a class="trylink" href="{{url_for('request_access')}}">Join the Beta →</a></h3>
                 {% endif %}
             </div>
             <div class="email-ui">
