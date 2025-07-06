@@ -258,13 +258,7 @@ a:hover {
     box-shadow: 7px 7px darkorange, 10px 10px 20px rgba(0, 0, 0, 0.4);
 }
 
-body{
-    position: relative;
-    padding-bottom: 150px;
-    background: linear-gradient(135deg, #171524 0%, #1a1830 100%);
-    min-height: 100vh;
-    color: white;
-}
+
 
 .emails{
     padding: 50px;

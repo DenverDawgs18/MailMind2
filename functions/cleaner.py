@@ -109,7 +109,7 @@ def get_message_details_outlook(message):
             sender = message.get('from', {}).get('emailAddress', {}).get('name', '')
         
         # Outlook doesn't typically provide unsubscribe headers in the basic message
-        # We'd need to get the full message body to search for unsubscribe links
+        # Need to get the full message body to search for unsubscribe links
         unsubscribe_link = find_unsubscribe_link_outlook(message.get('body', {}).get('content', ''))
         
         return {

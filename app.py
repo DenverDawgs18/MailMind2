@@ -631,6 +631,7 @@ def process_unsubscribe_links(emails, current_user):
         except Exception as e:
             print(f"Error committing unsubscribe link changes: {str(e)}")
             db.session.rollback()
+            
 @app.route("/get_one_action", methods=["POST"])
 @login_required 
 def get_one_action():

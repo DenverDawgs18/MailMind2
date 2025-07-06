@@ -6,6 +6,10 @@ from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import time
 import re
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 def automated_unsubscribe(unsubscribe_url, email_address=None, timeout=10):
     """
@@ -30,7 +34,7 @@ def automated_unsubscribe(unsubscribe_url, email_address=None, timeout=10):
     wait = WebDriverWait(driver, timeout)
     
     try:
-        print(f"Navigating to: {unsubscribe_url}")
+        logger.info(f"Navigating to: {unsubscribe_url}")
         driver.get(unsubscribe_url)
         
         # Wait for page to load
@@ -47,7 +51,7 @@ def automated_unsubscribe(unsubscribe_url, email_address=None, timeout=10):
                 # Try buttons first
                 button = driver.find_element(By.XPATH, 
                     f"//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{pattern}')]")
-                print(f"Found unsubscribe button with text containing: {pattern}")
+                logger.info(f"Found unsubscribe button with text containing: {pattern}")
                 driver.execute_script("arguments[0].click();", button)
                 break
                 
@@ -56,7 +60,7 @@ def automated_unsubscribe(unsubscribe_url, email_address=None, timeout=10):
                     # Try links
                     link = driver.find_element(By.XPATH, 
                         f"//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{pattern}')]")
-                    print(f"Found unsubscribe link with text containing: {pattern}")
+                    logger.info(f"Found unsubscribe link with text containing: {pattern}")
                     driver.execute_script("arguments[0].click();", link)
                     break
                     
@@ -80,7 +84,7 @@ def automated_unsubscribe(unsubscribe_url, email_address=None, timeout=10):
                     email_field = driver.find_element(By.CSS_SELECTOR, selector)
                     email_field.clear()
                     email_field.send_keys(email_address)
-                    print(f"Entered email address: {email_address}")
+                    logger.info(f"Entered email address: {email_address}")
                     break
                 except NoSuchElementException:
                     continue
@@ -96,7 +100,7 @@ def automated_unsubscribe(unsubscribe_url, email_address=None, timeout=10):
                     f"//input[@type='checkbox'][following-sibling::*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{pattern}')]]")
                 if not checkbox.is_selected():
                     driver.execute_script("arguments[0].click();", checkbox)
-                    print(f"Checked confirmation checkbox for: {pattern}")
+                    logger.info(f"Checked confirmation checkbox for: {pattern}")
                 break
             except NoSuchElementException:
                 continue
@@ -112,10 +116,10 @@ def automated_unsubscribe(unsubscribe_url, email_address=None, timeout=10):
                 for i, option_text in enumerate(options_text):
                     if any(word in option_text for word in ["all", "unsubscribe", "remove", "everything"]):
                         select.select_by_index(i)
-                        print(f"Selected dropdown option: {option_text}")
+                        logger.info(f"Selected dropdown option: {option_text}")
                         break
         except Exception as e:
-            print(f"No dropdowns found or error handling dropdowns: {e}")
+            logger.info(f"No dropdowns found or error handling dropdowns: {e}")
         
         # Strategy 5: Submit the form
         submit_patterns = [
@@ -130,7 +134,7 @@ def automated_unsubscribe(unsubscribe_url, email_address=None, timeout=10):
                 submit_btn = driver.find_element(By.XPATH, 
                     f"//input[@type='submit'][contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{pattern}')]")
                 driver.execute_script("arguments[0].click();", submit_btn)
-                print(f"Clicked submit button: {pattern}")
+                logger.info(f"Clicked submit button: {pattern}")
                 form_submitted = True
                 break
                 
@@ -140,7 +144,7 @@ def automated_unsubscribe(unsubscribe_url, email_address=None, timeout=10):
                     submit_btn = driver.find_element(By.XPATH, 
                         f"//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{pattern}')]")
                     driver.execute_script("arguments[0].click();", submit_btn)
-                    print(f"Clicked button: {pattern}")
+                    logger.info(f"Clicked button: {pattern}")
                     form_submitted = True
                     break
                     
@@ -154,10 +158,10 @@ def automated_unsubscribe(unsubscribe_url, email_address=None, timeout=10):
                 if forms:
                     # Submit the first form found
                     forms[0].submit()
-                    print("Submitted form using generic method")
+                    logger.info("Submitted form using generic method")
                     form_submitted = True
             except Exception as e:
-                print(f"Generic form submission failed: {e}")
+                logger.info(f"Generic form submission failed: {e}")
         
         # Wait for confirmation or next page
         time.sleep(5)
