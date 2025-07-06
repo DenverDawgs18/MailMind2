@@ -631,7 +631,7 @@ def process_unsubscribe_links(emails, current_user):
         except Exception as e:
             print(f"Error committing unsubscribe link changes: {str(e)}")
             db.session.rollback()
-            
+
 @app.route("/get_one_action", methods=["POST"])
 @login_required 
 def get_one_action():
@@ -805,30 +805,228 @@ def all_unsubs():
     else:
         return render_template('unsubs.html', unsubs=unsubs, number = len(unsubs))
 
-@app.route('/summary') 
-@login_required     
+@app.route('/summary')
+@login_required
 def summary():
     if not current_user.subscribed:
         return render_template("subscribe.html")
-    emails = []
-    text = ""
-    final_emails = session.get("final_emails", False)
-    if final_emails:
-        for email in final_emails: 
-            if email["action_items"] == "Generating ...":
-                print('text change')
-                text = "More action items to generate on inbox page"
-    todo_emails = session.get("todo_emails", False)
-    if todo_emails:
-        for email in todo_emails:
-            if "meeting" in email["todo"].lower() or "conference call" in email["todo"].lower() or "calendar" in email["todo"].lower():
+    
+    access_token = refresh(current_user)
+    
+    # Handle refresh case - where we're adding new emails to existing ones
+    if session.get('final_emails', False):
+        print('refresh in summary')
+        
+        # Get the last load time from session
+        if 'last_load' in session:
+            last_load_val = session.get('last_load')
+            print(f"Raw last_load from session: {last_load_val}")
+            
+            # Parse the last_load value
+            if isinstance(last_load_val, str):
+                try:
+                    last_load = parser.parse(last_load_val)
+                    # Ensure it has timezone info
+                    if last_load.tzinfo is None:
+                        last_load = last_load.replace(tzinfo=timezone.utc)
+                except Exception as e:
+                    print(f"Error parsing date: {str(e)}")
+                    last_load = datetime.now(timezone.utc)
+            elif isinstance(last_load_val, datetime):
+                last_load = last_load_val
+                # Ensure it has timezone info
+                if last_load.tzinfo is None:
+                    last_load = last_load.replace(tzinfo=timezone.utc)
+            else:
+                print(f"Unexpected type for last_load: {type(last_load_val)}")
+                last_load = datetime.now(timezone.utc)
+        else:
+            last_load = datetime.now(timezone.utc)
+            print(f"No last_load in session, using current time: {last_load}")
+        
+        # Format date and time for get_emails
+        after_date = last_load.strftime("%m-%d-%y")
+        since_time = last_load.strftime("%H:%M:%S")
+        
+        # Get new emails since last load
+        print("Calling get_emails for refresh in summary...")
+        new_emails = get_emails(current_user.provider, current_user.email, access_token, 
+                             after_date=after_date, since_time=since_time)
+        
+        print(f"Found {len(new_emails)} new emails in refresh")
+        
+        # Process unsubscribe links for new emails
+        process_unsubscribe_links(new_emails, current_user)
+        
+        # Add action items placeholder and merge with existing emails
+        final_emails = []
+        for email in new_emails:
+            email["action_items"] = "Generating ..."
+            email["calendar"] = False
+            final_emails.append(email)
+            
+        emails = session.get("final_emails")
+        for email in emails:
+            if "meeting" in email["action_items"].lower() or "conference call" in email["action_items"].lower() or "calendar" in email["action_items"].lower():
                 email["calendar"] = True
             else:
                 email["calendar"] = False
-            emails.append(email)
+            final_emails.append(email)
+            
+        session['final_emails'] = final_emails
+        current_datetime = datetime.now(timezone.utc)
+        session['last_load'] = current_datetime.isoformat()
+        
     else:
-        text = "More action items to generate on inbox page"
-    return render_template('summary.html', emails=emails, text = text)
+        # Initial load - get emails from the last 24 hours
+        current_datetime = datetime.now(timezone.utc)
+        session['last_load'] = current_datetime.isoformat()
+
+        # Get emails from exactly 24 hours ago (no parameters = use default 24h window)
+        # This will fetch using an IMAP date filter 2 days back, then filter precisely in Python
+        emails = get_emails(current_user.provider, current_user.email, access_token)
+        
+        # Reverse order for newest first
+        emails = list(reversed(emails))
+        
+        # Process unsubscribe links
+        process_unsubscribe_links(emails, current_user)
+        
+        # Sort by priority and add action items placeholder
+        final_emails = []
+        high_priority = [email for email in emails if email['from'] in current_user.high_priority] 
+        
+        for email in high_priority:
+            email["action_items"] = "Generating ..."
+            final_emails.append(email)
+            
+        for email in emails: 
+            if email not in final_emails: 
+                email["action_items"] = "Generating ..."
+                final_emails.append(email)
+                
+        session["final_emails"] = final_emails
+    
+    # Get existing todo emails from database
+    todos = Todo.query.filter_by(user=current_user.id, done=False).all()
+    
+    # Convert todos to email format for display
+    todo_emails = []
+    for todo in todos:
+        # Find the corresponding email in final_emails
+        corresponding_email = None
+        for email in final_emails:
+            if email.get("action_items") == todo.item:
+                corresponding_email = email
+                break
+                
+        if corresponding_email:
+            # Use the full email data
+            todo_email = corresponding_email.copy()
+            todo_email["todo"] = todo.item
+            todo_email["id"] = todo.id
+            
+            # Check if it's calendar-worthy
+            if any(keyword in todo.item.lower() for keyword in ["meeting", "conference call", "calendar", "appointment", "call"]):
+                todo_email["calendar"] = True
+            else:
+                todo_email["calendar"] = False
+                
+            todo_emails.append(todo_email)
+        else:
+            db.session.delete(todo)
+    db.session.commit()
+    
+    # Check for pending action items (emails that need processing)
+    pending_count = 0
+    for email in final_emails:
+        if email.get("action_items") == "Generating ..." or not email.get("action_items"):
+            pending_count += 1
+    
+    # Set appropriate message
+    if pending_count > 0:
+        text = f"Processing {pending_count} emails for action items..."
+    elif not todo_emails:
+        text = "No action items found from recent emails."
+    else:
+        text = f"Found {len(todo_emails)} action items"
+    
+    return render_template('summary.html', emails=todo_emails, text=text, pending_count=pending_count)
+
+
+@app.route('/generate_pending_actions', methods=['POST'])
+@login_required
+def generate_pending_actions():
+    """Generate action items for emails that don't have them yet"""
+    final_emails = session.get("final_emails", [])
+    if not final_emails:
+        return jsonify({
+            "success": False,
+            "message": "No emails found to process"
+        })
+    
+    generated_count = 0
+    
+    for index, email in enumerate(final_emails):
+        # Skip if already has action items
+        if email.get("action_items") and email.get("action_items") != "Generating ...":
+            continue
+            
+        try:
+            # Get action item for this email
+            body = email.get("body", "")
+            if not body:
+                final_emails[index]["action_items"] = "No action"
+                continue
+                
+            action = get_an_action(body)  # Your existing function
+            
+            # Update the email with action item
+            final_emails[index]["action_items"] = action
+            
+            # Add to database if it's a real action
+            if action and action.lower() not in ["no action.", "no action", "no action required.", ""]:
+                # Check if this action already exists for this user
+                existing_todo = Todo.query.filter_by(user=current_user.id, item=action, done=False).first()
+                
+                if not existing_todo:
+                    # Save to database
+                    new_todo = Todo(user=current_user.id, item=action, done=False)
+                    db.session.add(new_todo)
+                    db.session.commit()
+                    generated_count += 1
+                    
+        except Exception as e:
+            print(f"Error generating action for email {index}: {e}")
+            final_emails[index]["action_items"] = "Error generating action"
+            continue
+    
+    # Update session
+    session["final_emails"] = final_emails
+    
+    return jsonify({
+        "success": True,
+        "generated_count": generated_count,
+        "message": f"Generated {generated_count} new action items"
+    })
+
+
+@app.route('/get_summary_status', methods=['GET'])
+@login_required
+def get_summary_status():
+    """Get current status of action item generation"""
+    final_emails = session.get("final_emails", [])
+    
+    pending_count = 0
+    for email in final_emails:
+        if email.get("action_items") == "Generating ..." or not email.get("action_items"):
+            pending_count += 1
+    
+    return jsonify({
+        "pending_count": pending_count,
+        "total_emails": len(final_emails)
+    })
+
 
 from functions.cleaner import (
     get_email_service_type,

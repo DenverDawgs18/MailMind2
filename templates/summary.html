@@ -105,4 +105,19 @@
     </footer>
     <script src="../static/summary.js"></script>
 </body>
+<div id="status-container" style="position: fixed; top: 20px; right: 20px; z-index: 1000; max-width: 300px;"></div>
+
+{% if pending_count and pending_count > 0 %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                if (typeof initializeAutoGeneration === 'function') {
+                    initializeAutoGeneration();
+                } else {
+                    console.error('initializeAutoGeneration function not found');
+                }
+            }, 100);
+        });
+    </script>
+{% endif %}
 </html>
