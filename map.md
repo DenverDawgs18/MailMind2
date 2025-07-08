@@ -13,6 +13,7 @@ A/B tests
 
 # of Testers: 3 
 
-1. Get html to render 
-2. Fix reply to work with Outlook
-3. Add time to send to user
+
+1. Fix time selection
+2. Set up scheduler
+3. Navbar overhaul

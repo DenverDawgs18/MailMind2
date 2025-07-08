@@ -8,6 +8,7 @@
     border-radius: 16px;
     box-shadow: 3px 3px darkorange, 6px 6px 12px rgba(0, 0, 0, 0.3);
     transition: all 0.3s ease;
+    transform: translateZ(0);
 }
 
 .container:hover {
@@ -40,6 +41,7 @@
     gap: 10px;
     width: 100%;
     max-width: 300px;
+    min-width: 250px;
 }
 
 .time-label {
@@ -131,6 +133,48 @@
     cursor: not-allowed;
     transform: none;
     box-shadow: 0 2px 5px rgba(204, 132, 0, 0.2);
+}
+/* Add this to your existing CSS */
+.selection-info {
+    color: #f0f0f0;
+    font-size: 14px;
+    text-align: center;
+    margin-top: 5px;
+    padding: 5px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.selection-info.max-reached {
+    color: #cc8400;
+    font-weight: 600;
+}
+
+.selection-info.warning {
+    color: #ff6b6b;
+    font-weight: 600;
+    background: rgba(255, 107, 107, 0.1);
+    border: 1px solid rgba(255, 107, 107, 0.3);
+}
+
+/* Make the multiple select look better */
+.time-dropdown[multiple] {
+    min-height: 120px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.time-dropdown[multiple] option {
+    padding: 8px 12px;
+    margin: 2px 0;
+    border-radius: 4px;
+}
+
+.time-dropdown[multiple] option:checked {
+    background: linear-gradient(145deg, #cc8400, #b8770a);
+    color: white;
+    font-weight: 600;
 }
 
 /* Mobile responsive design */

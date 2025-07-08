@@ -8,6 +8,23 @@
     <title>Set Time</title>
 </head>
 <body>
+    {% if current_user.subscribed %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+            <a href="{{url_for('emails')}}">Inbox</a>
+            <a href="{{url_for('summary')}}">To-Do List</a>
+            <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
+            <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
+            <a href="{{url_for('set_time')}}">Set Time</a>
+            <a href="{{url_for('contact')}}">Contact</a>
+        </div>
+    {% else %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+            <a href="{{url_for('request_access')}}">Request Access</a>
+            <a href="{{url_for('login')}}">Log In</a>
+        </div>
+    {% endif %}
     <div class="main-content">
         <div class="container">
             <h3 class="timemsg">{{message}}</h3>
@@ -82,12 +99,10 @@
                             <option value="Atlantic/Reykjavik">Reykjavik (GMT)</option>
                         </optgroup>
                     </select>
-                    <div id="selection-count" class="selection-info">0 of 3 times selected</div>
                 </div>
                 <div class="dropdown-container">
                     <label for="time-select" class="time-label">Select Time(s) (Max 3):</label>
                     <select id="time-select" name="time" class="time-dropdown" multiple required>
-                        <option value="">Choose times...</option>
                         <option value="12:00 AM">12:00 AM</option>
                         <option value="12:15 AM">12:15 AM</option>
                         <option value="12:30 AM">12:30 AM</option>
@@ -185,6 +200,7 @@
                         <option value="11:30 PM">11:30 PM</option>
                         <option value="11:45 PM">11:45 PM</option>
                     </select>
+                    <div id="selection-count" class="selection-info">0 of maximum 3 times selected</div>
                 </div>
                 <button type="submit" class="timesubmit">Submit</button>
             </form>

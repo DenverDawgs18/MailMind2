@@ -145,28 +145,11 @@ def index():
 def special():
     if PRODUCTION:
         return render_template("index.html")
-    unsubs = Unsubscribe.query.filter_by(user=current_user.id).all()
-    print("Found", len(unsubs), "unsubscribe entries")
-
-    for unsub in unsubs:
-        original_link = unsub.link or ""
-        match = re.search(r'https?://[^\s]+', original_link)
-        cleaned_link = match.group(0) if match else False
-
-        if not cleaned_link:
-            print("Deleting:", unsub.sender)
-            db.session.delete(unsub)
-        elif cleaned_link != original_link:
-            print(f"Updating {unsub.sender}: '{original_link}' -> '{cleaned_link}'")
-            unsub.link = cleaned_link  # this flags the record as 'dirty'
-
-    try:
-        db.session.commit()
-        print("Changes committed successfully.")
-    except Exception as e:
-        print("Commit failed:", e)
-
+    
+    print(current_user.timezone, current_user.time)
     return render_template("index.html")
+
+
 
 @login_required
 def code():
@@ -1399,7 +1382,7 @@ def webhook_received():
 def set_time():
     if request.method == "POST":
         try:
-            # Get form data (not JSON since it's a form submission)
+            # Get form data
             timezone = request.form.get("timezone")
             times = request.form.getlist("time")  # getlist for multiple selections
             
@@ -1414,10 +1397,8 @@ def set_time():
             if len(times) > 3:
                 times = times[:3]
             
-            # Store as comma-separated string or JSON string
-            # Option 1: Comma-separated string
+            # Store as comma-separated string
             times_str = ",".join(times)
-            
             
             # Update user attributes
             current_user.timezone = timezone
@@ -1432,8 +1413,6 @@ def set_time():
     else:
         return render_template("time.html", message="Set your time and timezone for your daily to-do list to be sent to you!")
     
-
-
 @app.route('/mail')
 @login_required
 def send_email_summary():
