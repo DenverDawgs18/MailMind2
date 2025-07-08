@@ -13,4 +13,6 @@ A/B tests
 
 # of Testers: 3 
 
-
+1. Get html to render 
+2. Fix reply to work with Outlook
+3. Add time to send to user

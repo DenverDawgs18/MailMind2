@@ -1,4 +1,4 @@
-import smtplib
+
 import base64
 from flask import jsonify
 import re
@@ -9,8 +9,9 @@ from email.mime.multipart import MIMEMultipart
 from email.header import Header
 import logging
 import ssl
+import smtplib
 
-def reply(user_email, oauth_token, to_email, subject, body, reply, cc=None, bcc=None, smtp_server="smtp.gmail.com", smtp_port=587):
+def reply(user_email, oauth_token, to_email, subject, body, reply, cc=None, bcc=None, provider=None, smtp_server=None, smtp_port=None, content_type='plain'):
     """
     Sends an email using OAuth 2.0 authentication with smtplib.
     Handles non-ASCII characters and provides robust error handling.
@@ -20,13 +21,27 @@ def reply(user_email, oauth_token, to_email, subject, body, reply, cc=None, bcc=
     :param to_email: Recipient's email address
     :param subject: Email subject
     :param body: Email body (can contain non-ASCII characters)
+    :param reply: Boolean indicating if this is a reply
     :param cc: List of CC emails (optional)
     :param bcc: List of BCC emails (optional)
-    :param smtp_server: SMTP server address (default: Gmail)
-    :param smtp_port: SMTP server port (default: 587)
+    :param provider: Email provider - 'google' or 'microsoft' (optional)
+    :param smtp_server: SMTP server address (optional, overrides provider)
+    :param smtp_port: SMTP server port (optional, overrides provider)
+    :param content_type: Content type - 'plain' or 'html' (default: 'plain')
     :return: JSON response indicating success or failure
     """
     try:
+        # Configure SMTP settings based on provider
+        if smtp_server is None or smtp_port is None:
+            if provider and provider.lower() == 'microsoft':
+                smtp_server = smtp_server or "smtp.office365.com"
+                smtp_port = smtp_port or 587
+            else:  # Default to Google/Gmail
+                smtp_server = smtp_server or "smtp.gmail.com"
+                smtp_port = smtp_port or 587
+        
+        logging.info(f"Using SMTP server: {smtp_server}:{smtp_port} for provider: {provider}")
+        
         # Validate and clean email addresses
         def clean_address(addr):
             if not addr:
@@ -55,8 +70,9 @@ def reply(user_email, oauth_token, to_email, subject, body, reply, cc=None, bcc=
             if cc_list:
                 msg['Cc'] = ', '.join(cc_list)
         
-        # Add body with proper encoding
-        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+        # Add body with proper encoding - THIS IS THE KEY CHANGE
+        # Use content_type parameter to determine if it's HTML or plain text
+        msg.attach(MIMEText(body, content_type, 'utf-8'))
         
         # Format all recipients for sendmail
         recipients = [clean_email]

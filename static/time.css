@@ -1,0 +1,199 @@
+.container {
+    padding: 40px;
+    max-width: 600px;
+    margin: 100px auto;
+    text-align: center;
+    background: linear-gradient(145deg, #514b7a, #5a5488);
+    border: 2px solid rgba(0, 0, 0, 0.8);
+    border-radius: 16px;
+    box-shadow: 3px 3px darkorange, 6px 6px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+}
+
+.container:hover {
+    transform: translateY(-2px);
+    box-shadow: 5px 5px darkorange, 8px 8px 16px rgba(0, 0, 0, 0.4);
+}
+
+.timemsg {
+    color: #f0f0f0;
+    font-size: 20px;
+    font-weight: 500;
+    line-height: 1.6;
+    margin: 0 0 30px 0;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    border-left: 4px solid #cc8400;
+}
+
+.timeform {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+}
+
+.dropdown-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    max-width: 300px;
+}
+
+.time-label {
+    color: #f0f0f0;
+    font-size: 16px;
+    font-weight: 500;
+    text-align: left;
+    margin-bottom: 5px;
+}
+
+.time-dropdown {
+    padding: 12px 16px;
+    border: 2px solid rgba(204, 132, 0, 0.3);
+    border-radius: 12px;
+    background: linear-gradient(145deg, #3a3552, #423c61);
+    color: #f0f0f0;
+    font-size: 16px;
+    font-weight: 400;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.time-dropdown:hover {
+    border-color: rgba(204, 132, 0, 0.5);
+    background: linear-gradient(145deg, #423c61, #4a4369);
+}
+
+.time-dropdown:focus {
+    outline: none;
+    border-color: #cc8400;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 0 3px rgba(204, 132, 0, 0.2);
+}
+
+.time-dropdown optgroup {
+    background: #2a2440;
+    color: #f0f0f0;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 8px 0;
+}
+
+.time-dropdown optgroup[label="US Timezones"] {
+    border-bottom: 1px solid rgba(204, 132, 0, 0.3);
+}
+
+.time-dropdown option {
+    background: #3a3552;
+    color: #f0f0f0;
+    padding: 8px;
+}
+
+.time-dropdown option:hover {
+    background: #cc8400;
+    color: white;
+}
+
+.timesubmit {
+    display: inline-block;
+    background: linear-gradient(145deg, #cc8400, #b8770a);
+    color: white;
+    text-decoration: none;
+    padding: 16px 32px;
+    border: none;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 15px rgba(204, 132, 0, 0.3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    min-width: 120px;
+}
+
+.timesubmit:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(204, 132, 0, 0.4);
+    background: linear-gradient(145deg, #b8770a, #cc8400);
+}
+
+.timesubmit:active {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(204, 132, 0, 0.3);
+}
+
+.timesubmit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: 0 2px 5px rgba(204, 132, 0, 0.2);
+}
+
+/* Mobile responsive design */
+@media (max-width: 768px) {
+    .container {
+        margin: 20px;
+        padding: 30px 20px;
+        max-width: none;
+    }
+    
+    .timemsg {
+        font-size: 18px;
+        margin-bottom: 25px;
+        padding: 15px;
+    }
+    
+    .dropdown-container {
+        max-width: 100%;
+    }
+    
+    .time-label {
+        font-size: 15px;
+    }
+    
+    .time-dropdown {
+        padding: 10px 14px;
+        font-size: 15px;
+    }
+    
+    .timesubmit {
+        padding: 14px 28px;
+        font-size: 15px;
+        letter-spacing: 0.5px;
+        width: 100%;
+        max-width: 200px;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        margin: 15px;
+        padding: 25px 15px;
+    }
+    
+    .timemsg {
+        font-size: 16px;
+        margin-bottom: 20px;
+        padding: 12px;
+    }
+    
+    .time-label {
+        font-size: 14px;
+    }
+    
+    .time-dropdown {
+        padding: 8px 12px;
+        font-size: 14px;
+    }
+    
+    .timesubmit {
+        padding: 12px 24px;
+        font-size: 14px;
+        width: 100%;
+        max-width: none;
+    }
+}

@@ -758,17 +758,18 @@ def reply_view():
     bcc = data.get('bcc')
     body = data.get('body')
     subject = data.get('subject')
-    print(body)
-    return reply(user_email=current_user.email,
-    oauth_token=refresh(current_user),
-    to_email=original_from,
-    subject=subject,
-    body=body,
-    reply=True,
-    cc=cc, 
-    bcc=bcc,
-    smtp_server="smtp.gmail.com",
-    smtp_port=587)
+    return reply(
+            user_email=current_user.email,
+            oauth_token=refresh(current_user),
+            to_email = original_from,
+            subject=subject,
+            body=body,
+            reply=True,
+            cc=cc,
+            bcc=bcc,
+            provider=current_user.provider,  
+        )
+
 
 @app.route('/send', methods=["POST"])
 @login_required
@@ -779,16 +780,17 @@ def send():
     body = data.get('body')
     cc = data.get('cc')
     bcc = data.get('bcc')
-    return reply(user_email=current_user.email,
-    oauth_token=refresh(current_user),
-    to_email=to,
-    subject=subject,
-    body=body,
-    reply=False,
-    cc=cc, 
-    bcc=bcc,
-    smtp_server="smtp.gmail.com",
-    smtp_port=587)
+    return reply(
+            user_email=current_user.email,
+            oauth_token=refresh(current_user),
+            to_email = to,
+            subject=subject,
+            body=body,
+            reply=False,
+            cc=cc,
+            bcc=bcc,
+            provider=current_user.provider,  
+        )
 
 @app.route("/termsandprivacy")
 def terms_and_privacy():
@@ -1391,3 +1393,469 @@ def webhook_received():
             print(f"Subscription canceled for user {user.email}")
 
     return jsonify({'status': 'success'})
+
+@app.route("/set_time", methods=["POST", "GET"])
+@login_required
+def set_time():
+    if request.method == "POST":
+        try:
+            # Get form data (not JSON since it's a form submission)
+            timezone = request.form.get("timezone")
+            times = request.form.getlist("time")  # getlist for multiple selections
+            
+            # Validate that both timezone and at least one time are provided
+            if not timezone:
+                return render_template("time.html", message="Please select a timezone")
+            
+            if not times or len(times) == 0:
+                return render_template("time.html", message="Please select at least one time")
+            
+            # Limit to maximum 3 times (additional safety check)
+            if len(times) > 3:
+                times = times[:3]
+            
+            # Store as comma-separated string or JSON string
+            # Option 1: Comma-separated string
+            times_str = ",".join(times)
+            
+            
+            # Update user attributes
+            current_user.timezone = timezone
+            current_user.time = times_str
+            
+            db.session.commit()
+            
+            return render_template("time.html", message="Successfully set time and timezone!")
+            
+        except Exception as e:
+            return render_template("time.html", message="Error setting time and timezone")
+    else:
+        return render_template("time.html", message="Set your time and timezone for your daily to-do list to be sent to you!")
+    
+
+
+@app.route('/mail')
+@login_required
+def send_email_summary():
+    """Send email summary of last 24 hours action items"""
+    try:
+        # Get user's access token
+        access_token = refresh(current_user)
+        
+        # Get emails from last 24 hours
+        emails = get_emails(current_user.provider, current_user.email, access_token)
+        
+        if not emails:
+            return jsonify({
+                "success": False,
+                "message": "No emails found in the last 24 hours"
+            })
+        
+        # Process emails for action items
+        emails = list(reversed(emails))  # Newest first
+        process_unsubscribe_links(emails, current_user)
+        
+        # Generate action items for all emails
+        action_items = []
+        for email in emails:
+            try:
+                body = email.get("body", "")
+                if body:
+                    action = get_an_action(body)
+                    if action and action.lower() not in ["no action.", "no action", "no action required.", ""]:
+                        email["action_items"] = action
+                        email["calendar"] = is_calendar_worthy(action)
+                        action_items.append(email)
+                    else:
+                        email["action_items"] = "No action"
+                        email["calendar"] = False
+                else:
+                    email["action_items"] = "No action"
+                    email["calendar"] = False
+            except Exception as e:
+                logger.error(f"Error generating action for email: {e}")
+                email["action_items"] = "Error generating action"
+                email["calendar"] = False
+        
+        # Send email summary
+        if action_items:
+            email_sent = send_reply_email(action_items, current_user.email)
+            if email_sent:
+                return jsonify({
+                    "success": True,
+                    "message": f"Email summary sent with {len(action_items)} action items",
+                    "action_count": len(action_items)
+                })
+            else:
+                return jsonify({
+                    "success": False,
+                    "message": "Failed to send email summary"
+                })
+        else:
+            return jsonify({
+                "success": True,
+                "message": "No action items found to send",
+                "action_count": 0
+            })
+            
+    except Exception as e:
+        logger.error(f"Error in send_email_summary: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": "An error occurred while processing email summary"
+        })
+
+def is_calendar_worthy(action_text):
+    """Check if action item is calendar-worthy"""
+    calendar_keywords = ["meeting", "conference call", "calendar", "appointment", "call", "schedule", "event"]
+    return any(keyword in action_text.lower() for keyword in calendar_keywords)
+
+def send_reply_email(action_items, user_email):
+    """Send email using the reply function"""
+    try:
+        # Generate HTML email content
+        html_content = generate_email_html(action_items, user_email)
+        
+        # Prepare email data
+        subject = f"Daily To Do List from MailMind for {datetime.now().strftime('%B %d, %Y')}"
+        
+        # Send email via reply function as HTML
+        result = reply(
+            user_email=current_user.email,
+            oauth_token=refresh(current_user),
+            to_email=current_user.email,
+            subject=subject,
+            body=html_content,
+            reply=False,
+            cc=None,
+            bcc=None,
+            provider=current_user.provider,  # Pass the provider from user object
+            content_type='html'
+        )
+        
+        if result:  # Assuming reply function returns True on success
+            logger.info(f"Email sent successfully to {current_user.email}")
+            return True
+        else:
+            logger.error(f"Failed to send email using reply function")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error sending email via reply function: {str(e)}")
+        return False
+
+def generate_email_html(action_items, user_email):
+    """Generate rich HTML email content"""
+    
+    # HTML email template matching your summary page style
+    html_template = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Daily Action Items Summary</title>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                margin: 0;
+                padding: 20px;
+                background: linear-gradient(135deg, #2c1810 0%, #3a2317 100%);
+                color: #f0f0f0;
+                line-height: 1.6;
+            }
+            .container {
+                max-width: 800px;
+                margin: 0 auto;
+                background: linear-gradient(145deg, #514b7a, #5a5488);
+                border-radius: 20px;
+                padding: 30px;
+                border: 2px solid rgba(204, 132, 0, 0.3);
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            }
+            .header {
+                text-align: center;
+                margin-bottom: 30px;
+            }
+            .header h1 {
+                font-size: 28px;
+                font-weight: 600;
+                color: #e6d7a3;
+                margin: 0 0 10px 0;
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+            }
+            .header p {
+                font-size: 16px;
+                color: #b8b8b8;
+                margin: 0;
+            }
+            .summary-stats {
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 12px;
+                padding: 20px;
+                margin-bottom: 30px;
+                text-align: center;
+                border: 1px solid rgba(204, 132, 0, 0.2);
+            }
+            .summary-stats h2 {
+                color: #cc8400;
+                font-size: 20px;
+                margin: 0 0 10px 0;
+            }
+            .summary-stats p {
+                color: #e6d7a3;
+                font-size: 14px;
+                margin: 0;
+            }
+            .action-item {
+                background: linear-gradient(145deg, #3a3560, #444070);
+                border-radius: 16px;
+                padding: 20px;
+                margin-bottom: 20px;
+                border: 2px solid rgba(204, 132, 0, 0.2);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+                transition: transform 0.2s ease;
+            }
+            .action-item:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+            }
+            .action-text {
+                color: #f0f0f0;
+                font-size: 16px;
+                font-weight: 500;
+                margin: 0 0 15px 0;
+                padding: 10px 0;
+                border-bottom: 1px solid rgba(204, 132, 0, 0.2);
+            }
+            .action-text:before {
+                content: "• ";
+                color: #cc8400;
+                font-weight: bold;
+            }
+            .calendar-badge {
+                display: inline-block;
+                background: linear-gradient(145deg, #cc8400, #b8770a);
+                color: white;
+                padding: 4px 10px;
+                border-radius: 12px;
+                font-size: 12px;
+                font-weight: 600;
+                text-transform: uppercase;
+                margin-bottom: 10px;
+                letter-spacing: 0.5px;
+            }
+            .email-details {
+                background: rgba(0, 0, 0, 0.15);
+                border-radius: 8px;
+                padding: 15px;
+                margin-top: 10px;
+                border-left: 3px solid #cc8400;
+            }
+            .email-field {
+                margin-bottom: 10px;
+            }
+            .email-field:last-child {
+                margin-bottom: 0;
+            }
+            .email-field strong {
+                color: #e6d7a3;
+                font-size: 14px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                display: block;
+                margin-bottom: 5px;
+            }
+            .email-field span {
+                color: #f0f0f0;
+                font-size: 14px;
+                word-wrap: break-word;
+            }
+            .email-body {
+                max-height: 200px;
+                overflow-y: auto;
+                padding: 10px;
+                background: rgba(0, 0, 0, 0.1);
+                border-radius: 4px;
+                font-size: 13px;
+                line-height: 1.4;
+                color: white;
+            }
+            .footer {
+                text-align: center;
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 1px solid rgba(204, 132, 0, 0.2);
+                color: #b8b8b8;
+                font-size: 14px;
+            }
+            .footer a {
+                color: #cc8400;
+                text-decoration: none;
+            }
+            .footer a:hover {
+                text-decoration: underline;
+            }
+            @media (max-width: 600px) {
+                body {
+                    padding: 10px;
+                }
+                .container {
+                    padding: 20px;
+                }
+                .header h1 {
+                    font-size: 24px;
+                }
+                .action-item {
+                    padding: 15px;
+                }
+                .action-text {
+                    font-size: 14px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>📧 Daily Action Items Summary</h1>
+                <p>{{ current_date }}</p>
+            </div>
+            
+            <div class="summary-stats">
+                <h2>{{ action_count }} Action Items Found</h2>
+                <p>From your last 24 hours of emails • {{ user_email }}</p>
+            </div>
+            
+            {% for email in action_items %}
+            <div class="action-item">
+                {% if email.calendar %}
+                <div class="calendar-badge">📅 Calendar Event</div>
+                {% endif %}
+                
+                <div class="action-text">{{ email.action_items | linkify_text }}</div>
+                
+                <div class="email-details">
+                    <div class="email-field">
+                        <strong>From:</strong>
+                        <span>{{ email.from }}</span>
+                    </div>
+                    
+                    <div class="email-field">
+                        <strong>Subject:</strong>
+                        <span>{{ email.subject }}</span>
+                    </div>
+                    
+                    {% if email.body %}
+                    <div class="email-field">
+                        <strong>Body:</strong>
+                        <div class="email-body">{{ email.body | linkify_text }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+            
+            <div class="footer">
+                <p>
+                    This summary was generated automatically from your email inbox with <a href="mailmind.fly.dev"> MailMind </a> <br>
+                    <a href="mailto:pautomas55@gmail.com">Contact Support</a>  
+                    <a href="#">Unsubscribe</a>
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Render the template with data
+    from jinja2 import Template, Environment
+    
+    # Create Jinja2 environment with custom filter
+    env = Environment()
+    
+    # Register the linkify_text filter (assuming it's available in your app context)
+    # If you need to import it, add: from your_module import linkify_text
+    env.filters['linkify_text'] = linkify_text
+    
+    template = env.from_string(html_template)
+    
+    return template.render(
+        action_items=action_items,
+        user_email=user_email,
+        current_date=datetime.now().strftime('%B %d, %Y'),
+        action_count=len(action_items)
+    )
+
+# Alternative route for testing email template
+@app.route('/test_email_template')
+@login_required
+def test_email_template():
+    """Test route to preview email template in browser"""
+    try:
+        # Get sample data
+        access_token = refresh(current_user)
+        emails = get_emails(current_user.provider, current_user.email, access_token)
+        
+        if not emails:
+            sample_data = [{
+                "from": "example@company.com",
+                "subject": "Project Update Required",
+                "body": "Hi there, we need to discuss the project timeline and deliverables. Please review the attached documents and let me know your thoughts by end of week. Visit https://example.com for more details.",
+                "action_items": "Review project documents and provide feedback by end of week. Check https://example.com for updates",
+                "calendar": True
+            }]
+        else:
+            # Process first few emails as sample
+            sample_data = []
+            for email in emails:  # Take first 3 emails
+                body = email.get("body", "")
+                if body:
+                    action = get_an_action(body)
+                    if action and action.lower() not in ["no action.", "no action", "no action required.", ""]:
+                        email["action_items"] = action
+                        email["calendar"] = is_calendar_worthy(action)
+                        sample_data.append(email)
+        
+        # Generate HTML and return it directly for preview
+        html_content = generate_email_html(sample_data, current_user.email)
+        return html_content
+        
+    except Exception as e:
+        logger.error(f"Error in test_email_template: {str(e)}")
+        return f"<h1>Error</h1><p>{str(e)}</p>"
+
+# Route to manually trigger email sending (for testing)
+@app.route('/send_test_email')
+@login_required
+def send_test_email():
+    """Manual trigger for testing email sending"""
+    try:
+        # Create sample data
+        sample_data = [{
+            "from": "test@example.com",
+            "subject": "Test Email Action Item",
+            "body": "This is a test email to verify the mailing functionality works correctly. Visit https://example.com for more info.",
+            "action_items": "Test the email mailing system and verify delivery. Check https://example.com",
+            "calendar": False
+        }]
+        
+        email_sent = send_reply_email(sample_data, current_user.email)
+        
+        if email_sent:
+            return jsonify({
+                "success": True,
+                "message": f"Test email sent successfully to {current_user.email}"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": "Failed to send test email"
+            })
+            
+    except Exception as e:
+        logger.error(f"Error in send_test_email: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        })
