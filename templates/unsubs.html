@@ -54,7 +54,7 @@
             {% for unsub in unsubs %}
                 <div class="unsubwrapper">
                     <p class="sender">{{unsub.sender}}</p>
-                    <a href="{{unsub.link}}" target="_blank"><button data-sender="{{unsub.sender}}" data-manual="false" class="unsub">Unsubscribe</button></a>
+                    <a href="{{unsub.link}}" target="_blank"><button data-sender="{{unsub.sender}}" data-manual="true" class="unsub">Unsubscribe</button></a>
                 </div>
             {% endfor %}
         </div>

@@ -14,6 +14,4 @@ A/B tests
 # of Testers: 3 
 
 
-1. Fix time selection
-2. Set up scheduler
 3. Navbar overhaul

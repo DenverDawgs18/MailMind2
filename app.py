@@ -121,6 +121,10 @@ MICROSOFT_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/autho
 MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
 
+
+from functions.scheduler import init_scheduler 
+init_scheduler(app)
+
 @login_manager.user_loader 
 def load_user(id):
     return User.query.get(int(id))
@@ -1606,6 +1610,7 @@ def generate_email_html(action_items, user_email):
                 margin: 0 0 15px 0;
                 padding: 10px 0;
                 border-bottom: 1px solid rgba(204, 132, 0, 0.2);
+                color: white;
             }
             .action-text:before {
                 content: "• ";
@@ -1646,7 +1651,7 @@ def generate_email_html(action_items, user_email):
                 margin-bottom: 5px;
             }
             .email-field span {
-                color: #f0f0f0;
+                color: white;
                 font-size: 14px;
                 word-wrap: break-word;
             }
