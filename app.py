@@ -125,6 +125,23 @@ MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
 from functions.scheduler import init_scheduler, trigger_email_check
 init_scheduler(app)
 
+@app.route('/admin/trigger-scheduler', methods=['POST'])
+def trigger_scheduler():
+    """Manually trigger the email scheduler"""
+    try:
+        trigger_email_check()
+        return jsonify({
+            "success": True,
+            "message": "Scheduler triggered successfully",
+            "timestamp": datetime.now().isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Error triggering scheduler: {str(e)}",
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
 @login_manager.user_loader 
 def load_user(id):
     return User.query.get(int(id))

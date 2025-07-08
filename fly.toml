@@ -38,3 +38,7 @@ primary_region = "ord"
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
+  
+[cron]
+  schedule = "*/15 * * * *"  # Every 15 minutes
+  command = "curl -X POST https://mailmind.fly.dev/admin/trigger-scheduler"
