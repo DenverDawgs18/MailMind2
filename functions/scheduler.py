@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 # Global scheduler instance
 scheduler = None
+# Store Flask app reference for context
+flask_app = None
 
 def generate_email_html(action_items, user_email):
     """Generate rich HTML email content"""
@@ -60,13 +62,13 @@ def generate_email_html(action_items, user_email):
             .header h1 {
                 font-size: 28px;
                 font-weight: 600;
-                color: #e6d7a3;
+                color: white;
                 margin: 0 0 10px 0;
                 text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
             }
             .header p {
                 font-size: 16px;
-                color: #b8b8b8;
+                color: white;
                 margin: 0;
             }
             .summary-stats {
@@ -78,12 +80,12 @@ def generate_email_html(action_items, user_email):
                 border: 1px solid rgba(204, 132, 0, 0.2);
             }
             .summary-stats h2 {
-                color: #cc8400;
+                color: white;
                 font-size: 20px;
                 margin: 0 0 10px 0;
             }
             .summary-stats p {
-                color: #e6d7a3;
+                color: white;
                 font-size: 14px;
                 margin: 0;
             }
@@ -140,7 +142,7 @@ def generate_email_html(action_items, user_email):
                 margin-bottom: 0;
             }
             .email-field strong {
-                color: #e6d7a3;
+                color: white;
                 font-size: 14px;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
@@ -167,7 +169,7 @@ def generate_email_html(action_items, user_email):
                 margin-top: 30px;
                 padding-top: 20px;
                 border-top: 1px solid rgba(204, 132, 0, 0.2);
-                color: #b8b8b8;
+                color: white;
                 font-size: 14px;
             }
             .footer a {
@@ -176,6 +178,9 @@ def generate_email_html(action_items, user_email):
             }
             .footer a:hover {
                 text-decoration: underline;
+            }
+            .footer p {
+            color: white;
             }
             @media (max-width: 600px) {
                 body {
@@ -267,6 +272,7 @@ def generate_email_html(action_items, user_email):
         current_date=datetime.now().strftime('%B %d, %Y'),
         action_count=len(action_items)
     )
+
 def is_calendar_worthy(action_text):
     """Check if action item is calendar-worthy"""
     calendar_keywords = ["meeting", "conference call", "calendar", "appointment", "call", "schedule", "event"]
@@ -348,7 +354,10 @@ def process_unsubscribe_links(emails, user):
 
 def init_scheduler(app):
     """Initialize the email scheduler"""
-    global scheduler
+    global scheduler, flask_app
+    
+    # Store Flask app reference for context
+    flask_app = app
     
     # Configure scheduler
     executors = {
@@ -598,10 +607,16 @@ def send_reply_email_for_user(action_items: List[Dict], user: User) -> bool:
 
 def check_and_send_emails():
     """Main function that runs every 15 minutes to check and send emails"""
+    global flask_app
+    
     logger.info("Checking for users to send email summaries...")
     
-    # We need to work within Flask app context
-    with current_app.app_context():
+    # Use the stored Flask app reference for context
+    if not flask_app:
+        logger.error("Flask app not available for scheduler context")
+        return
+    
+    with flask_app.app_context():
         try:
             users_to_process = get_users_to_process()
             
@@ -640,4 +655,3 @@ def get_scheduler_status():
             "jobs": [{"id": job.id, "name": job.name, "next_run": str(job.next_run_time)} for job in jobs]
         }
     return {"scheduler_running": False, "jobs": []}
-

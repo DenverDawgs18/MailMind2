@@ -122,7 +122,7 @@ MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/toke
 MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
 
 
-from functions.scheduler import init_scheduler 
+from functions.scheduler import init_scheduler, trigger_email_check
 init_scheduler(app)
 
 @login_manager.user_loader 
@@ -150,7 +150,7 @@ def special():
     if PRODUCTION:
         return render_template("index.html")
     
-    print(current_user.timezone, current_user.time)
+    trigger_email_check()
     return render_template("index.html")
 
 
@@ -1563,13 +1563,13 @@ def generate_email_html(action_items, user_email):
             .header h1 {
                 font-size: 28px;
                 font-weight: 600;
-                color: #e6d7a3;
+                color: white;
                 margin: 0 0 10px 0;
                 text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
             }
             .header p {
                 font-size: 16px;
-                color: #b8b8b8;
+                color: white;
                 margin: 0;
             }
             .summary-stats {
@@ -1581,12 +1581,12 @@ def generate_email_html(action_items, user_email):
                 border: 1px solid rgba(204, 132, 0, 0.2);
             }
             .summary-stats h2 {
-                color: #cc8400;
+                color: white;
                 font-size: 20px;
                 margin: 0 0 10px 0;
             }
             .summary-stats p {
-                color: #e6d7a3;
+                color: white;
                 font-size: 14px;
                 margin: 0;
             }
@@ -1643,7 +1643,7 @@ def generate_email_html(action_items, user_email):
                 margin-bottom: 0;
             }
             .email-field strong {
-                color: #e6d7a3;
+                color: white;
                 font-size: 14px;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
@@ -1670,7 +1670,7 @@ def generate_email_html(action_items, user_email):
                 margin-top: 30px;
                 padding-top: 20px;
                 border-top: 1px solid rgba(204, 132, 0, 0.2);
-                color: #b8b8b8;
+                color: white;
                 font-size: 14px;
             }
             .footer a {
@@ -1679,6 +1679,9 @@ def generate_email_html(action_items, user_email):
             }
             .footer a:hover {
                 text-decoration: underline;
+            }
+            .footer p {
+            color: white;
             }
             @media (max-width: 600px) {
                 body {
