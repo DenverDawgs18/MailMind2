@@ -121,9 +121,98 @@ MICROSOFT_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/autho
 MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
 
+from functools import wraps
+from functions.scheduler import get_users_to_process, send_email_summary_for_user, trigger_email_check
+        
 
-from functions.scheduler import init_scheduler, trigger_email_check
-init_scheduler(app)
+def require_admin_key(f):
+    """Decorator to require admin key for scheduled tasks"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        admin_key = os.environ.get('ADMIN_KEY', 'your-default-key-here')
+        
+        # Check for key in header, query param, or form data
+        provided_key = (
+            request.headers.get('X-Admin-Key') or 
+            request.args.get('key') or 
+            request.form.get('key')
+        )
+        
+        if not provided_key or provided_key != admin_key:
+            return jsonify({
+                "error": "Unauthorized",
+                "message": "Invalid or missing admin key"
+            }), 401
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+
+@app.route('/cron/email-scheduler', methods=['POST', 'GET'])
+@require_admin_key
+def cron_email_scheduler():
+    """Endpoint for EasyCron to trigger email scheduler"""
+    try:
+        
+        start_time = datetime.now()
+        
+        # Get users who need email summaries
+        users_to_process = get_users_to_process()
+        
+        if not users_to_process:
+            return jsonify({
+                "success": True,
+                "message": "No users scheduled for email summaries at this time",
+                "users_processed": 0,
+                "emails_sent": 0,
+                "processing_time": f"{(datetime.now() - start_time).total_seconds():.2f}s",
+                "timestamp": datetime.now().isoformat()
+            }), 200
+        
+        # Process each user
+        results = []
+        for user in users_to_process:
+            try:
+                result = send_email_summary_for_user(user)
+                results.append(result)
+                
+                # Log the result
+                if result["success"]:
+                    print(f"✓ Email sent to {user.email}: {result['message']}")
+                else:
+                    print(f"✗ Failed for {user.email}: {result['message']}")
+                    
+            except Exception as e:
+                error_result = {
+                    "success": False,
+                    "user": user.email,
+                    "message": str(e)
+                }
+                results.append(error_result)
+                print(f"✗ Error processing {user.email}: {str(e)}")
+        
+        # Calculate summary
+        successful = sum(1 for r in results if r["success"])
+        processing_time = (datetime.now() - start_time).total_seconds()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Processed {len(users_to_process)} users",
+            "users_processed": len(users_to_process),
+            "emails_sent": successful,
+            "failed": len(results) - successful,
+            "processing_time": f"{processing_time:.2f}s",
+            "results": results,
+            "timestamp": datetime.now().isoformat()
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Error running scheduler: {str(e)}",
+            "timestamp": datetime.now().isoformat()
+        }), 500
 
 @app.route('/admin/trigger-scheduler', methods=['POST'])
 def trigger_scheduler():

@@ -31,6 +31,7 @@ joblib==1.4.2
 Markdown==3.7
 markdown-it-py==3.0.0
 MarkupSafe==3.0.2
+modal==1.0.5
 oauthlib==3.2.2
 openai==1.82.0
 psycopg2-binary==2.9.7
