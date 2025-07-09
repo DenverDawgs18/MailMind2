@@ -335,6 +335,8 @@ def _get_gmail_emails(user_email: str, token: str, cutoff_datetime: datetime) ->
                 msg = message_from_bytes(raw)
                 frm = safe_decode_header(msg['From'])
                 subj = safe_decode_header(msg['Subject'])
+                if "daily to do list from mailmind" in subj.lower():
+                    continue
                 body = extract_content(msg)
                 msgs.append({'from': frm, 'subject': subj, 'body': body, 'utc': internal_date})
                          

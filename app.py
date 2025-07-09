@@ -1652,224 +1652,109 @@ def generate_email_html(action_items, user_email):
     <!DOCTYPE html>
     <html lang="en">
     <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Daily Action Items Summary</title>
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                margin: 0;
-                padding: 20px;
-                background: linear-gradient(135deg, #2c1810 0%, #3a2317 100%);
-                color: #f0f0f0;
-                line-height: 1.6;
-            }
-            .container {
-                max-width: 800px;
-                margin: 0 auto;
-                background: linear-gradient(145deg, #514b7a, #5a5488);
-                border-radius: 20px;
-                padding: 30px;
-                border: 2px solid rgba(204, 132, 0, 0.3);
-                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-            }
-            .header {
-                text-align: center;
-                margin-bottom: 30px;
-            }
-            .header h1 {
-                font-size: 28px;
-                font-weight: 600;
-                color: white;
-                margin: 0 0 10px 0;
-                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-            }
-            .header p {
-                font-size: 16px;
-                color: white;
-                margin: 0;
-            }
-            .summary-stats {
-                background: rgba(0, 0, 0, 0.2);
-                border-radius: 12px;
-                padding: 20px;
-                margin-bottom: 30px;
-                text-align: center;
-                border: 1px solid rgba(204, 132, 0, 0.2);
-            }
-            .summary-stats h2 {
-                color: white;
-                font-size: 20px;
-                margin: 0 0 10px 0;
-            }
-            .summary-stats p {
-                color: white;
-                font-size: 14px;
-                margin: 0;
-            }
-            .action-item {
-                background: linear-gradient(145deg, #3a3560, #444070);
-                border-radius: 16px;
-                padding: 20px;
-                margin-bottom: 20px;
-                border: 2px solid rgba(204, 132, 0, 0.2);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-                transition: transform 0.2s ease;
-            }
-            .action-item:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-            }
-            .action-text {
-                color: #f0f0f0;
-                font-size: 16px;
-                font-weight: 500;
-                margin: 0 0 15px 0;
-                padding: 10px 0;
-                border-bottom: 1px solid rgba(204, 132, 0, 0.2);
-                color: white;
-            }
-            .action-text:before {
-                content: "• ";
-                color: #cc8400;
-                font-weight: bold;
-            }
-            .calendar-badge {
-                display: inline-block;
-                background: linear-gradient(145deg, #cc8400, #b8770a);
-                color: white;
-                padding: 4px 10px;
-                border-radius: 12px;
-                font-size: 12px;
-                font-weight: 600;
-                text-transform: uppercase;
-                margin-bottom: 10px;
-                letter-spacing: 0.5px;
-            }
-            .email-details {
-                background: rgba(0, 0, 0, 0.15);
-                border-radius: 8px;
-                padding: 15px;
-                margin-top: 10px;
-                border-left: 3px solid #cc8400;
-            }
-            .email-field {
-                margin-bottom: 10px;
-            }
-            .email-field:last-child {
-                margin-bottom: 0;
-            }
-            .email-field strong {
-                color: white;
-                font-size: 14px;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                display: block;
-                margin-bottom: 5px;
-            }
-            .email-field span {
-                color: white;
-                font-size: 14px;
-                word-wrap: break-word;
-            }
-            .email-body {
-                max-height: 200px;
-                overflow-y: auto;
-                padding: 10px;
-                background: rgba(0, 0, 0, 0.1);
-                border-radius: 4px;
-                font-size: 13px;
-                line-height: 1.4;
-                color: white;
-            }
-            .footer {
-                text-align: center;
-                margin-top: 30px;
-                padding-top: 20px;
-                border-top: 1px solid rgba(204, 132, 0, 0.2);
-                color: white;
-                font-size: 14px;
-            }
-            .footer a {
-                color: #cc8400;
-                text-decoration: none;
-            }
-            .footer a:hover {
-                text-decoration: underline;
-            }
-            .footer p {
-            color: white;
-            }
-            @media (max-width: 600px) {
-                body {
-                    padding: 10px;
-                }
-                .container {
-                    padding: 20px;
-                }
-                .header h1 {
-                    font-size: 24px;
-                }
-                .action-item {
-                    padding: 15px;
-                }
-                .action-text {
-                    font-size: 14px;
-                }
-            }
-        </style>
+    <meta charset="UTF-8" />
+    <title>MailMind Daily Summary</title>
+    <style>
+        body {
+        background: #171524;
+        color: #f0f0f0;
+        font-family: Inter, system-ui, sans-serif;
+        margin: 0;
+        padding: 20px;
+        }
+        .container {
+        max-width: 600px;
+        margin: 0 auto;
+        background: linear-gradient(145deg, #514b7a, #5a5488);
+        border: 2px solid black;
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
+        }
+        h1 {
+        text-align: center;
+        font-size: 24px;
+        color: #e6d7a3;
+        margin-bottom: 10px;
+        }
+        .top-link {
+        text-align: center;
+        margin-bottom: 20px;
+        }
+        .top-link a {
+        color: #cc8400;
+        font-weight: bold;
+        text-decoration: none;
+        font-size: 14px;
+        }
+        .summary-info {
+        text-align: center;
+        font-size: 14px;
+        margin-bottom: 30px;
+        color: #f0f0f0;
+        }
+        .item {
+        background: #3a3560;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-left: 4px solid #cc8400;
+        border-radius: 12px;
+        padding: 15px 20px;
+        margin-bottom: 20px;
+        }
+        .item p {
+        margin: 4px 0;
+        font-size: 14px;
+        }
+        .item .action {
+        color: #e6d7a3;
+        font-weight: 600;
+        }
+        .footer {
+        text-align: center;
+        font-size: 12px;
+        color: #ccc;
+        margin-top: 30px;
+        }
+        .footer a {
+        color: #e6d7a3;
+        text-decoration: none;
+        }
+        .footer a:hover {
+        color: #cc8400;
+        }
+    </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                <h1>📧 Daily Action Items Summary</h1>
-                <p>{{ current_date }}</p>
-            </div>
-            
-            <div class="summary-stats">
-                <h2>{{ action_count }} Action Items Found</h2>
-                <p>From your last 24 hours of emails • {{ user_email }}</p>
-            </div>
-            
-            {% for email in action_items %}
-            <div class="action-item">
-                {% if email.calendar %}
-                <div class="calendar-badge">📅 Calendar Event</div>
-                {% endif %}
-                
-                <div class="action-text">{{ email.action_items | linkify_text }}</div>
-                
-                <div class="email-details">
-                    <div class="email-field">
-                        <strong>From:</strong>
-                        <span>{{ email.from }}</span>
-                    </div>
-                    
-                    <div class="email-field">
-                        <strong>Subject:</strong>
-                        <span>{{ email.subject }}</span>
-                    </div>
-                    
-                    {% if email.body %}
-                    <div class="email-field">
-                        <strong>Body:</strong>
-                        <div class="email-body">{{ email.body | linkify_text }}</div>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
-            
-            <div class="footer">
-                <p>
-                    This summary was generated automatically from your email inbox with <a href="mailmind.fly.dev"> MailMind </a> <br>
-                    <a href="mailto:pautomas55@gmail.com">Contact Support</a>  
-                    <a href="#">Unsubscribe</a>
-                </p>
-            </div>
+    <div class="container">
+        <h1>📬 Your Daily Action Summary</h1>
+
+        <div class="top-link">
+        <a href="https://mailmind.fly.dev/summary">View Full List →</a>
         </div>
+
+        <div class="summary-info">
+        <p>{{ action_count }} action items • {{ current_date }}</p>
+        <p>{{ user_email }}</p>
+        </div>
+
+        {% for email in action_items%}
+        <div class="item">
+        <p class="action">• {{ email.action_items | linkify_text }}</p>
+        <p><strong>From:</strong> {{ email.from }}</p>
+        <p><strong>Subject:</strong> {{ email.subject }}</p>
+        </div>
+        {% endfor %}
+
+        <div class="footer">
+        <p>
+            Sent by <a href="https://mailmind.fly.dev">MailMind</a> • 
+            <a href="mailto:pautomas55@gmail.com">Support</a> • 
+        </p>
+        </div>
+    </div>
     </body>
     </html>
+
     """
     
     # Render the template with data

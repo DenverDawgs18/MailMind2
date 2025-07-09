@@ -1,0 +1,21 @@
+I’m 17 and recently launched a product called MailMind. 
+
+It’s a privacy-first email tool that takes the last 24 hours of your inbox and turns it into a clean, 
+actionable to-do list. The AI powering it is custom-built, beating out Microsoft's paper on the topic.
+
+MailMind does five things:
+
+Extracts tasks and meetings from your inbox and puts them in a to-do list
+
+This to-do list is automatically delivered to your inbox, up to 3 times a day.
+
+Detects invites and lets you add them to your calendar in a few clicks
+
+Automatically collects unsubscribe links and puts them in a convenient dashboard for you to 
+unsubscribe from unwanted mailing lists quickly
+
+Loads your inbox and shows you your top senders, allowing for quick removal and cleanup of your backlog. 
+We're really targeting people like personal trainers who just want to check their email and get out ASAP,
+not spend hours learning Superhuman macros or digging through their inbox for the actionable emails.
+
+Currently in beta, join the beta at https://mailmind.fly.dev/request_access
