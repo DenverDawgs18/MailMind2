@@ -1516,12 +1516,17 @@ def set_time():
             
             db.session.commit()
             
-            return render_template("time.html", message="Successfully set time and timezone!")
+            return render_template("time.html", message= f"Successfully set time(s) to {times_str} and timezone to {timezone}!")
             
         except Exception as e:
-            return render_template("time.html", message="Error setting time and timezone")
+            return render_template("time.html", message= f"Error setting time and timezone")
     else:
-        return render_template("time.html", message="Set your time and timezone for your daily to-do list to be sent to you!")
+        time = current_user.time 
+        timezone = current_user.timezone 
+        if time and timezone:
+            return render_template("time.html", message= f"Update your time(s) from {time} in timezone {timezone}")
+        else:
+            return render_template("time.html", message="Set your time and timezone for your daily to-do list to be sent to you!")
     
 @app.route('/mail')
 @login_required
@@ -1952,3 +1957,7 @@ def send_test_email():
             "success": False,
             "message": str(e)
         })
+    
+@app.route("/beta")
+def beta():
+    return render_template("beta.html")

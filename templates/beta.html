@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../static/universal.css">
+    <link rel="stylesheet" href="../static/login.css">
+    <link rel="icon" type="image/x-icon" href="../static/imgs/MailMindTempLogo.ico">
+    <title>Log In</title>
+</head>
+<body>
+    {% if current_user.subscribed %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+            <a href="{{url_for('emails')}}">Inbox</a>
+            <a href="{{url_for('summary')}}">To-Do List</a>
+            <a href="{{url_for('all_unsubs')}}">Mailing Lists</a>
+            <a href="{{url_for('email_cleaner')}}">Inbox Cleaner</a>
+            <a href="{{url_for('set_time')}}">Set Time</a>
+            <a href="{{url_for('contact')}}">Contact</a>
+        </div>
+    {% else %}
+        <div class="navbar">
+            <a href="{{url_for('index')}}">Home</a>
+            <a href="{{url_for('request_access')}}">Request Access</a>
+            <a href="{{url_for('login')}}">Log In</a>
+        </div>
+    {% endif %}
+    <div class="main-content">
+        <div class="container">
+            <h3 class="if"> You wil be recieving an email shortly with instructions on how to join the MailMind beta. 
+                Thank you for your interest!
+            </h3>
+        </div>
+    </div>
+    <footer>
+        <a href="{{url_for('terms_and_privacy')}}">Terms of Use and Privacy Policy</a>
+    </footer>
+</body>
+</html>
