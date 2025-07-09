@@ -6,6 +6,8 @@ def create_user(email, oauth_token, provider):
         oauth_token = oauth_token,
         provider=provider,
         subscribed = False,
+        time = None, 
+        timezone = None
     )
     db.session.add(user)
     db.session.commit()

@@ -332,7 +332,10 @@ def google_callback():
         user.provider = "google"
     db.session.commit()
     login_user(user, remember = True)
-    return redirect(url_for("index"))
+    if user.time and user.timezone:
+        return redirect(url_for("summary"))
+    else:
+        return redirect(url_for("set_time"))
 
 @app.route("/microsoft/login")
 def microsoft_login():
@@ -420,7 +423,10 @@ def microsoft_callback():
     # Clean up session
     session.pop('oauth_state', None)
     
-    return redirect(url_for("index"))
+    if user.time and user.timezone:
+        return redirect(url_for("summary"))
+    else:
+        return redirect(url_for("set_time"))
 
 # Helper function to refresh Outlook tokens
 def refresh_outlook_token(refresh_token):
