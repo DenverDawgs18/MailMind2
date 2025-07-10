@@ -138,8 +138,8 @@ def get_messages_batch_gmail(service, batch_size, page_token=None):
         return messages, next_token
     except HttpError as e:
         if e.resp.status == 429:  # Rate limit
-            print("Gmail rate limit hit, waiting 60 seconds...")
-            time.sleep(60)
+            print("Gmail rate limit hit, waiting 30 seconds...")
+            time.sleep(30)
             return get_messages_batch_gmail(service, batch_size, page_token)
         else:
             print(f"HTTP Error fetching Gmail messages: {str(e)}")
@@ -166,7 +166,7 @@ def get_messages_batch_outlook(batch_size, page_token=None):
         response = requests.get(url, headers=headers, timeout=30)
         
         if response.status_code == 429:  # Rate limit
-            retry_after = int(response.headers.get('Retry-After', 60))
+            retry_after = max(int(response.headers.get('Retry-After', 30)))
             print(f"Outlook rate limit hit, waiting {retry_after} seconds...")
             time.sleep(retry_after)
             return get_messages_batch_outlook(batch_size, page_token)
@@ -182,7 +182,7 @@ def get_messages_batch_outlook(batch_size, page_token=None):
         print(f"Error fetching Outlook messages: {str(e)}")
         return [], None
 
-def get_message_details_gmail_sequential(service, message_ids):
+def get_message_details_gmail_sequential(service, message_ids, progress_callback, current_count):
     """Get Gmail message details sequentially to avoid concurrent request limits"""
     if not message_ids:
         return {}
@@ -213,12 +213,12 @@ def get_message_details_gmail_sequential(service, message_ids):
             
             # Progress indicator
             if (i + 1) % 10 == 0:
-                print(f"Processed {i + 1}/{len(message_ids)} messages")
+                progress_callback({"count": current_count + i + 1, "status": "loading"})
                 
         except HttpError as e:
             if e.resp.status == 429:  # Rate limit
                 print(f"Rate limit hit processing message {msg_id}, waiting...")
-                time.sleep(random.uniform(10, 30))
+                time.sleep(random.uniform(10, 20))
                 # Retry this message
                 try:
                     rate_limit_gmail()
@@ -248,7 +248,7 @@ def get_message_details_gmail_sequential(service, message_ids):
     
     return results
 
-def get_message_details_outlook_sequential(messages):
+def get_message_details_outlook_sequential(messages, progress_callback, current_count):
     """Process multiple Outlook messages sequentially to avoid rate limits"""
     if not messages:
         return {}
@@ -264,7 +264,7 @@ def get_message_details_outlook_sequential(messages):
             
             # Progress indicator
             if (i + 1) % 25 == 0:
-                print(f"Processed {i + 1}/{len(messages)} Outlook messages")
+                progress_callback({"count": current_count + i + i, "status": "loading"})
                 
         except Exception as e:
             print(f"Error processing Outlook message {message.get('id')}: {str(e)}")
@@ -410,7 +410,7 @@ def delete_messages_from_sender_gmail(service, sender, update_delete_count):
                 except HttpError as e:
                     if e.resp.status == 429:  # Rate limit
                         print(f"Rate limit hit deleting message, waiting...")
-                        time.sleep(random.uniform(30, 60))
+                        time.sleep(random.uniform(15, 30))
                         # Retry this message
                         try:
                             rate_limit_gmail()
@@ -528,7 +528,7 @@ def fetch_emails_batch_unified(service_type, progress_callback, batch_size=1000,
             while remaining_emails > 0:
                 messages, next_page_token = get_messages_batch_gmail(
                     service, 
-                    min(100, remaining_emails) if not process_all else 100,  # Reduced batch size
+                    min(250, remaining_emails) if not process_all else 250,  # Reduced batch size
                     next_page_token
                 )
                 
@@ -538,7 +538,7 @@ def fetch_emails_batch_unified(service_type, progress_callback, batch_size=1000,
                 
                 # Process messages sequentially
                 message_ids = [msg['id'] for msg in messages]
-                batch_details = get_message_details_gmail_sequential(service, message_ids)
+                batch_details = get_message_details_gmail_sequential(service, message_ids, progress_callback, processed_count)
                 
                 for message_id, details in batch_details.items():
                     if details and details['sender']:
@@ -554,7 +554,7 @@ def fetch_emails_batch_unified(service_type, progress_callback, batch_size=1000,
                     processed_count += 1
                     remaining_emails -= 1
                     
-                    if processed_count % 25 == 0:
+                    if processed_count % 10 == 0:
                         progress_callback({"count": processed_count, "status": "loading"})
                     
                     if remaining_emails <= 0 and not process_all:
@@ -569,7 +569,7 @@ def fetch_emails_batch_unified(service_type, progress_callback, batch_size=1000,
         elif service_type == 'microsoft':
             while remaining_emails > 0:
                 messages, next_page_token = get_messages_batch_outlook(
-                    min(100, remaining_emails) if not process_all else 100,  # Reduced batch size
+                    min(250, remaining_emails) if not process_all else 250,  # Reduced batch size
                     next_page_token
                 )
                 
@@ -578,7 +578,7 @@ def fetch_emails_batch_unified(service_type, progress_callback, batch_size=1000,
                     break
                 
                 # Process messages sequentially
-                batch_details = get_message_details_outlook_sequential(messages)
+                batch_details = get_message_details_outlook_sequential(messages, progress_callback, processed_count)
                 
                 for message_id, details in batch_details.items():
                     if details and details['sender']:
@@ -594,7 +594,7 @@ def fetch_emails_batch_unified(service_type, progress_callback, batch_size=1000,
                     processed_count += 1
                     remaining_emails -= 1
                     
-                    if processed_count % 25 == 0:
+                    if processed_count % 10 == 0:
                         progress_callback({"count": processed_count, "status": "loading"})
                     
                     if remaining_emails <= 0 and not process_all:

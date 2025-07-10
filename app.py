@@ -1715,18 +1715,21 @@ def generate_email_html(action_items, user_email):
         color: #ccc;
         margin-top: 30px;
         }
+        p {
+        color: white;
+        }
         .footer a {
-        color: #e6d7a3;
         text-decoration: none;
+        color: darkorange;
         }
         .footer a:hover {
-        color: #cc8400;
+        color: #e6d7a3;
         }
     </style>
     </head>
     <body>
     <div class="container">
-        <h1>📬 Your Daily Action Summary</h1>
+        <h1>📬 Your Daily To Do List</h1>
 
         <div class="top-link">
         <a href="https://mailmind.fly.dev/summary">View Full List →</a>
