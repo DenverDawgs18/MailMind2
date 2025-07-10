@@ -11,6 +11,9 @@ primary_region = "ord"
 [env]
   PORT = "8080"
   FLASK_ENV = "production"
+  DISPLAY = ":99"
+  CHROME_BIN = "/usr/bin/google-chrome"
+  CHROMEDRIVER_PATH = "/usr/local/bin/chromedriver"
 
 [http_service]
   internal_port = 8080

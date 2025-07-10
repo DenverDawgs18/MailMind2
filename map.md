@@ -15,4 +15,3 @@ A/B tests
 
 2. Navbar help
 3. Selenium work in prod
-4. Cron scalability

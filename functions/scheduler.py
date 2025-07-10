@@ -130,7 +130,7 @@ def generate_email_html(action_items, user_email):
         <div class="footer">
         <p>
             Sent by <a href="https://mailmind.fly.dev">MailMind</a> • 
-            <a href="mailto:pautomas55@gmail.com">Support</a> • 
+            <a href="mailto:pautomas55@gmail.com">Support</a> 
         </p>
         </div>
     </div>
