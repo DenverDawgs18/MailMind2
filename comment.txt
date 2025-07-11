@@ -1,2 +1,2 @@
-https://mailmind.fly.dev Inbox -> To-Do List in <5 minutes. 
-Mailing list unsubscribe dashboard and inbox cleaner as well to help maintain Inbox Zero.
+I built something that has really helped me with inbox management.
+https://mailmind.fly.dev Inbox -> To-Do List in <5 minutes, automatically.

@@ -403,9 +403,7 @@ def delete_messages_from_sender_gmail(service, sender, update_delete_count):
                     
                     service.users().messages().trash(userId="me", id=msg["id"]).execute()
                     deleted_count += 1
-                    
-                    if deleted_count % 10 == 0:
-                        update_delete_count({"count": deleted_count, "sender": sender, "status": "success"})
+                    update_delete_count({"count": deleted_count, "sender": sender, "status": "success"})
                     
                 except HttpError as e:
                     if e.resp.status == 429:  # Rate limit
