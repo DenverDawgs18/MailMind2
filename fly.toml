@@ -32,6 +32,10 @@ primary_region = "ord"
     protocol = "http"
     timeout = "2s"
 
+[processes]
+  app = "gunicorn app:app"
+  scheduler = "python scheduler_run.py"
+
 [http_service.concurrency]
   type = "connections"
   hard_limit = 25

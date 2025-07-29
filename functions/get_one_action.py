@@ -1,4 +1,4 @@
-# ml_models.py
+# get_one_action.py
 from openai import OpenAI
 import os
 
@@ -9,12 +9,13 @@ PRODUCTION = production()
 
 if not PRODUCTION:
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(override=True)
 
 client = client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
 )
 
+print(client.organization)
 
 system_prompt = """
 You are an expert email assistant specializing in action item extraction. 

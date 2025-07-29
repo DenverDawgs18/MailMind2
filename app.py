@@ -152,7 +152,7 @@ def require_admin_key(f):
 @app.route('/cron/email-scheduler', methods=['POST', 'GET'])
 @require_admin_key
 def cron_email_scheduler():
-    """Endpoint for EasyCron to trigger email scheduler"""
+    """Endpoint for CronJob to trigger email scheduler"""
     try:
         
         start_time = datetime.now()
@@ -260,7 +260,7 @@ def special():
     return render_template("index.html")
 
 
-
+@app.route("/code", methods=["POST", "GET"])
 @login_required
 def code():
     if request.method == "POST":
@@ -271,18 +271,19 @@ def code():
             from dotenv import load_dotenv 
             load_dotenv()
         real_code = os.getenv("CODE")
-        temp_code = os.getenv("TEMPCODE")
+        temp_code = os.getenv("TEMP_CODE")
+        print(code, temp_code)
         if str(code) == str(temp_code):
             logger.info(f"TEMP CODE GRANTED TO {current_user.email}")
             current_user.subscribed = True
             current_user.temp = True
             db.session.commit()
-            return render_template("code.html", message="Code valid. Subscription granted until August 1st. Click on Inbox to load your to-do list!")
-        if str(code) == str(real_code) and str(real_code) != "DISABLED":
+            return render_template("code.html", message="Code valid. Subscription granted until launch. Click on To-Do List to load your to-do list!")
+        elif str(code) == str(real_code) and str(real_code) != "DISABLED":
             logger.info(f"CODE GRANTED TO {current_user.email}")
             current_user.subscribed = True
             db.session.commit()
-            return render_template("code.html", message="Code valid. Subscription granted. Click on Inbox to load your to-do list!")
+            return render_template("code.html", message="Code valid. Subscription granted. Click on To-Do List to load your to-do list!")
         else:
             return render_template("code.html", message="Invalid code.")
 

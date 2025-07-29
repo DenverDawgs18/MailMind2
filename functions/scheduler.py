@@ -1,3 +1,4 @@
+# scheduler.py
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
@@ -135,6 +136,7 @@ def generate_email_html(action_items, user_email):
             Sent by <a href="https://mailmind.fly.dev">MailMind</a> • 
             <a href="mailto:pautomas55@gmail.com">Support</a> 
         </p>
+        <p style="color:#888;font-size:10px;">MailMind ID: {{ uuid }}</p>
         </div>
     </div>
     </body>
@@ -154,11 +156,14 @@ def generate_email_html(action_items, user_email):
     
     template = env.from_string(html_template)
     
+    from uuid import uuid4
+
     return template.render(
         action_items=action_items,
         user_email=user_email,
         current_date=datetime.now().strftime('%B %d, %Y'),
-        action_count=len(action_items)
+        action_count=len(action_items),
+        uuid=str(uuid4())
     )
 
 def is_calendar_worthy(action_text):
