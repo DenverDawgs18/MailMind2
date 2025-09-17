@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
 from flask import current_app
 from sqlalchemy import and_
@@ -272,7 +272,7 @@ def init_scheduler(app):
     # Add the recurring job that runs every 15 minutes
     scheduler.add_job(
         func=check_and_send_emails,
-        trigger=IntervalTrigger(minutes=15),
+        trigger=CronTrigger(minute='0,15,30,45'),
         id='email_summary_checker',
         name='Check for users to send email summaries',
         replace_existing=True
@@ -502,7 +502,7 @@ def check_and_send_emails():
     """Main function that runs every 15 minutes to check and send emails"""
     global flask_app
     
-    logger.info("Checking for users to send email summaries...")
+    logger.info("Checking for users to send email summaries..., running check_and_send_emails()")
     
     # Use the stored Flask app reference for context
     if not flask_app:

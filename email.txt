@@ -1,8 +1,8 @@
 Hello! Thank you for your interest in the MailMind beta. To access it, here are the steps:
-1. Sign in with the email you sent (the same one you're receiving this from). We are in the "testing" phase with Google OAuth so you might see a warning 
+1. Sign in with the email you sent (Gmail). We are in the "testing" phase with Google OAuth so you might see a warning 
 as we are not verified with them yet (since we haven't launched), but rest assured your data is safe. 
 2. Manually go to /code on the site and enter the following code: !TEMPCODEFORMAILMIND**
-You will have access through the beta period. At that time, your access
+You will havie access through the beta period. At that time, your access
 will simply be deactivated until you subscribe.
 3. As we're in beta, feedback is critical. The top 5 beta users who give the best / most feedback will 
 receive lifetime access. You can do this on the contact page.

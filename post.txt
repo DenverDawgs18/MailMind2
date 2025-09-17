@@ -1,4 +1,4 @@
-I’m 17 and recently launched a product called MailMind. 
+Email -> To-Do List, Automatically
 
 It’s a privacy-first email tool that takes the last 24 hours of your inbox and turns it into a clean, 
 actionable to-do list. The AI powering it is custom-built, beating out Microsoft's paper on the topic.
