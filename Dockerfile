@@ -53,4 +53,4 @@ ENV CHROME_BIN=/usr/bin/google-chrome
 ENV CHROMEDRIVER_PATH=/usr/local/bin/chromedriver
 
 # Updated CMD with timeout settings
-CMD ["sh", "-c", "flask db upgrade && gunicorn --bind 0.0.0.0:8080 --workers 2 --timeout 300 --keep-alive 65 --worker-class sync app:app"]
+CMD ["sh", "-c", "flask db upgrade && gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 4 --timeout 300 --keep-alive 65 --worker-class sync app:app"]
