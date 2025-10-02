@@ -35,7 +35,6 @@ body{
     width: 100%;
 }
 
-/* Updated itemwrap to use grid layout */
 .itemwrap {
     background: linear-gradient(145deg, #514b7a, #5a5488);
     border: 2px solid rgba(0, 0, 0, 0.8);
@@ -43,11 +42,10 @@ body{
     padding: 20px;
     box-shadow: 3px 3px darkorange, 6px 6px 12px rgba(0, 0, 0, 0.3);
     transition: all 0.3s ease;
-    display: grid;
-    grid-template-columns: 1fr auto auto auto;
-    grid-template-rows: auto auto;
-    gap: 15px;
+    display: flex;
+    justify-content: space-between;
     align-items: center;
+    gap: 15px;
     width: 100%;
     box-sizing: border-box;
 }
@@ -57,49 +55,18 @@ body{
     box-shadow: 5px 5px darkorange, 8px 8px 16px rgba(0, 0, 0, 0.4);
 }
 
-.itemwrap > .item {
+.item {
     color: #f0f0f0;
     font-size: 16px;
     line-height: 1.6;
     margin: 0;
+    flex: 1;
     word-wrap: break-word;
     overflow-wrap: break-word;
     hyphens: auto;
-    grid-column: 1 / -1;
-    grid-row: 1;
 }
 
-.itemwrap > .expand {
-    grid-column: 2;
-    grid-row: 1;
-}
-
-.itemwrap > .remove {
-    grid-column: 3;
-    grid-row: 1;
-}
-
-.itemwrap > .calendarbtn {
-    grid-column: 4;
-    grid-row: 1;
-}
-
-.itemwrap > .calendarform {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    background: rgba(0, 0, 0, 0.25);
-    border: 2px solid rgba(204, 132, 0, 0.2);
-    border-radius: 12px;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    width: 100%;
-    box-sizing: border-box;
-    margin-top: 5px;
-}
-
-.expand, .remove, .calendarbtn {
+.expand,.remove {
     background: linear-gradient(145deg, #cc8400, #b8770a);
     color: white;
     border: 2px solid transparent;
@@ -115,20 +82,14 @@ body{
     flex-shrink: 0;
 }
 
-.expand:hover, .remove:hover, .calendarbtn:hover {
+.expand:hover,.remove:hover {
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(204, 132, 0, 0.4);
     background: linear-gradient(145deg, #b8770a, #cc8400);
 }
 
-.expand:active, .remove:active, .calendarbtn:active {
+.expand:active,.remove:active {
     transform: translateY(0px);
-}
-
-.expand:disabled, .remove:disabled, .calendarbtn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
 }
 
 .email{
@@ -189,7 +150,7 @@ body{
     flex-shrink: 0;
 }
 
-.etext, .replylabel, .replyheader{
+.etext,.replylabel,.replyheader{
     color: #f0f0f0;
     line-height: 1.6;
     word-wrap: break-word;
@@ -253,12 +214,6 @@ a:hover {
 
 .action:active {
     transform: translateY(0px);
-}
-
-.action:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
 }
 
 .mark {
@@ -332,6 +287,123 @@ a:hover {
     box-shadow: 0 0 12px rgba(204, 132, 0, 0.3);
     transform: scale(1.01);
 }
+/* Update itemwrap to accommodate the new structure */
+.itemwrap {
+    background: linear-gradient(145deg, #514b7a, #5a5488);
+    border: 2px solid rgba(0, 0, 0, 0.8);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 3px 3px darkorange, 6px 6px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.itemwrap:hover {
+    transform: translateY(-2px);
+    box-shadow: 5px 5px darkorange, 8px 8px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* Create a flex container for the item text and buttons */
+.itemwrap > .item {
+    color: #f0f0f0;
+    font-size: 16px;
+    line-height: 1.6;
+    margin: 0;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    order: 1;
+}
+
+/* Style the buttons to appear in a row */
+.itemwrap > .expand,
+.itemwrap > .remove,
+.itemwrap > .calendarbtn {
+    background: linear-gradient(145deg, #cc8400, #b8770a);
+    color: white;
+    border: 2px solid transparent;
+    padding: 8px 16px;
+    border-radius: 16px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 3px 10px rgba(204, 132, 0, 0.3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+    order: 2;
+    align-self: flex-end;
+}
+
+.itemwrap > .expand:hover,
+.itemwrap > .remove:hover,
+.itemwrap > .calendarbtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(204, 132, 0, 0.4);
+    background: linear-gradient(145deg, #b8770a, #cc8400);
+}
+
+.itemwrap > .expand:active,
+.itemwrap > .remove:active,
+.itemwrap > .calendarbtn:active {
+    transform: translateY(0px);
+}
+
+/* Create a button container for better layout */
+.itemwrap::after {
+    content: '';
+    display: block;
+    width: 100%;
+    order: 2;
+}
+
+.itemwrap {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    grid-template-rows: auto auto;
+    gap: 15px;
+    align-items: center;
+}
+
+.itemwrap > .item {
+    grid-column: 1 / -1;
+    grid-row: 1;
+}
+
+.itemwrap > .expand {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.itemwrap > .remove {
+    grid-column: 3;
+    grid-row: 1;
+}
+
+.itemwrap > .calendarbtn {
+    grid-column: 4;
+    grid-row: 1;
+}
+
+.itemwrap > .calendarform {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    background: rgba(0, 0, 0, 0.25);
+    border: 2px solid rgba(204, 132, 0, 0.2);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 5px;
+}
 
 /* Calendar Form Labels - Match header styling */
 .calendarform label {
@@ -393,34 +465,14 @@ a:hover {
     transform: translateY(0px);
 }
 
-.calendarform button[type="button"]:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-}
-
-/* No todos message styling */
-.no-todos-message {
-    text-align: center;
-    color: #e6d7a3;
-    font-style: italic;
-    margin: 40px 0;
-    padding: 30px;
-    background: rgba(81, 75, 122, 0.2);
-    border-radius: 12px;
-    border: 2px solid rgba(204, 132, 0, 0.2);
-}
-
 /* Mobile Responsive Updates */
-@media (max-width: 768px) {
+@media (max-width: 600px) {
     .itemwrap {
         display: flex;
         flex-direction: column;
         align-items: flex-start;
         gap: 12px;
         padding: 15px;
-        grid-template-columns: none;
-        grid-template-rows: none;
     }
     
     .itemwrap > .item {
@@ -438,7 +490,6 @@ a:hover {
         font-size: 12px;
         white-space: nowrap;
         align-self: flex-end;
-        margin-left: 5px;
     }
     
     .itemwrap > .calendarform {
@@ -464,9 +515,24 @@ a:hover {
         font-size: 12px;
         min-width: auto;
     }
-}
-
-@media (max-width: 600px) {
+    .calendarbtn {
+        width: 100%;
+        padding: 14px;
+        font-size: 12px;
+    }
+    
+    .calendarform {
+        padding: 20px;
+    }
+    
+    .calendarform input {
+        padding: 12px 16px;
+    }
+    
+    .calendarform button[type="button"] {
+        width: 100%;
+        padding: 14px;
+    }
     .wrapper{
         padding: 10px;
         width: calc(100% - 20px);
@@ -502,7 +568,7 @@ a:hover {
         hyphens: auto;
     }
     
-    .expand, .remove, .calendarbtn {
+    .expand,.remove {
         align-self: flex-end;
         padding: 6px 12px;
         font-size: 12px;

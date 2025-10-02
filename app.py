@@ -253,10 +253,6 @@ def index():
 
 @app.route("/special")
 def special():
-    if PRODUCTION:
-        return render_template("index.html")
-    
-    trigger_email_check()
     return render_template("index.html")
 
 
@@ -333,10 +329,13 @@ def google_callback():
         user.provider = "google"
     db.session.commit()
     login_user(user, remember = True)
-    if user.time and user.timezone:
-        return redirect(url_for("summary"))
+    if user.subscribed:
+        if user.time and user.timezone:
+            return redirect(url_for("summary"))
+        else:
+            return redirect(url_for("set_time"))
     else:
-        return redirect(url_for("set_time"))
+        return redirect(url_for("code"))
 
 @app.route("/microsoft/login")
 def microsoft_login():
@@ -741,6 +740,7 @@ def get_one_action():
     print(index)
     calendar = False
     action = get_an_action(body)
+    print(action)
     if "meeting" in action.lower() or "conference call" in action.lower() or "calendar" in action.lower():
         calendar = True
     final_emails = session.get("final_emails")
@@ -755,66 +755,12 @@ def get_one_action():
         todo_email["id"] = new_todo.id 
         todo_emails.append(todo_email)
         session["todo_emails"] = todo_emails
+    else:
+        action = "No action."
 
     final_emails[index]["action_items"] = action
     session["final_emails"] = final_emails
     return jsonify({"action_item": action, "calendar": calendar})
-
-# New endpoint specifically for summary() page - creates database todos
-@app.route("/get_summary_action", methods=["POST"])
-@login_required
-def get_summary_action():
-    try:
-        data = request.get_json()
-        body = data.get("body")
-        index = int(data.get("index"))
-        
-        print(f"Processing action for summary page, index {index}")
-        
-        # Generate action item
-        action = get_an_action(body)
-        
-        # Check if it's a calendar event
-        calendar_keywords = {"meeting", "conference call", "calendar", "appointment", "call"}
-        calendar = any(keyword in action.lower() for keyword in calendar_keywords)
-        
-        # Get final_emails from session
-        final_emails = session.get("final_emails", [])
-        
-        # Update the email in final_emails
-        if index < len(final_emails):
-            final_emails[index]["action_items"] = action
-            final_emails[index]["calendar"] = calendar
-            session["final_emails"] = final_emails
-        
-        # Only create Todo objects for actual action items (not "No action")
-        if (action.lower() not in ["no action.", "no action", "no action required.", ""] and 
-            action is not None and action.strip()):
-            
-            # Create new todo in database
-            new_todo = Todo(user=current_user.id, item=action, done=False)
-            db.session.add(new_todo)
-            db.session.commit()
-            
-            return jsonify({
-                "success": True,
-                "action_item": action,
-                "calendar": calendar,
-                "todo_id": new_todo.id
-            })
-        else:
-            # No action required - don't create todo, return None for todo_id
-            # This signals the frontend to hide this item
-            return jsonify({
-                "success": True,
-                "action_item": "No action",
-                "calendar": False,
-                "todo_id": None
-            })
-            
-    except Exception as e:
-        print(f"Error in get_summary_action: {str(e)}")
-        return jsonify({"success": False, "error": str(e)})
 
 @app.route("/remove_todo", methods=["POST"])
 @login_required
@@ -869,45 +815,7 @@ def load_more():
     return jsonify({"html": rendered_emails})
 '''
             
-# Unified priority endpoint for both pages
-@app.route("/mark_priority", methods=["POST"])
-@login_required
-def mark_priority():
-    try:
-        data = request.get_json()
-        sender = data.get("sender")
-        add = data.get("add")  # Boolean: True to add, False to remove
-        
-        if not sender:
-            return jsonify({"success": False, "message": "No sender provided"})
-        
-        # Initialize high_priority list if it doesn't exist
-        if not current_user.high_priority:
-            current_user.high_priority = []
-        
-        if add:
-            # Add to high priority
-            if sender not in current_user.high_priority:
-                current_user.high_priority.append(sender)
-                message = f"Marked {sender} as high priority"
-            else:
-                message = f"{sender} is already marked as high priority"
-        else:
-            # Remove from high priority
-            if sender in current_user.high_priority:
-                current_user.high_priority.remove(sender)
-                message = f"Unmarked {sender} as high priority"
-            else:
-                message = f"{sender} was not marked as high priority"
-        
-        # Save changes to database
-        db.session.commit()
-        
-        return jsonify({"success": True, "message": message})
-        
-    except Exception as e:
-        print(f"Error updating priority: {str(e)}")
-        return jsonify({"success": False, "message": "Error updating priority"})
+
 
 @app.route('/mark_high_priority', methods=["POST"])
 @login_required
@@ -1014,7 +922,31 @@ def summary():
         print('refresh in summary')
         
         # Get the last load time from session
-        last_load = _parse_last_load_time()
+        if 'last_load' in session:
+            last_load_val = session.get('last_load')
+            print(f"Raw last_load from session: {last_load_val}")
+            
+            # Parse the last_load value
+            if isinstance(last_load_val, str):
+                try:
+                    last_load = parser.parse(last_load_val)
+                    # Ensure it has timezone info
+                    if last_load.tzinfo is None:
+                        last_load = last_load.replace(tzinfo=timezone.utc)
+                except Exception as e:
+                    print(f"Error parsing date: {str(e)}")
+                    last_load = datetime.now(timezone.utc)
+            elif isinstance(last_load_val, datetime):
+                last_load = last_load_val
+                # Ensure it has timezone info
+                if last_load.tzinfo is None:
+                    last_load = last_load.replace(tzinfo=timezone.utc)
+            else:
+                print(f"Unexpected type for last_load: {type(last_load_val)}")
+                last_load = datetime.now(timezone.utc)
+        else:
+            last_load = datetime.now(timezone.utc)
+            print(f"No last_load in session, using current time: {last_load}")
         
         # Format date and time for get_emails
         after_date = last_load.strftime("%m-%d-%y")
@@ -1039,17 +971,26 @@ def summary():
             
         emails = session.get("final_emails")
         for email in emails:
+            # Check if action item already has calendar keywords
+            if email.get("action_items") and isinstance(email["action_items"], str):
+                if any(keyword in email["action_items"].lower() for keyword in ["meeting", "conference call", "calendar", "appointment", "call"]):
+                    email["calendar"] = True
+                else:
+                    email["calendar"] = False
+            else:
+                email["calendar"] = False
             final_emails.append(email)
-        
+            
         session['final_emails'] = final_emails
-        session['last_load'] = datetime.now(timezone.utc).isoformat()
-    
+        current_datetime = datetime.now(timezone.utc)
+        session['last_load'] = current_datetime.isoformat()
+        
     else:
-        # Initial load - get emails from the last 24 hours (same as emails route)
-        print("Initial load in summary")
-        session['last_load'] = datetime.now(timezone.utc).isoformat()
+        # Initial load - get emails from the last 24 hours
+        current_datetime = datetime.now(timezone.utc)
+        session['last_load'] = current_datetime.isoformat()
 
-        # Get emails from exactly 24 hours ago
+        # Get emails from exactly 24 hours ago (no parameters = use default 24h window)
         emails = get_emails(current_user.provider, current_user.email, access_token)
         
         # Reverse order for newest first
@@ -1058,68 +999,122 @@ def summary():
         # Process unsubscribe links
         process_unsubscribe_links(emails, current_user)
         
-        # Sort by priority and add action items placeholder (same as emails route)
+        # Sort by priority and add action items placeholder
         final_emails = []
-        high_priority_senders = current_user.high_priority or []
-        high_priority = [email for email in emails if email.get('from') in high_priority_senders]
+        high_priority = [email for email in emails if email['from'] in current_user.high_priority] 
         
         for email in high_priority:
             email["action_items"] = "Generating ..."
+            email["calendar"] = False
             final_emails.append(email)
             
         for email in emails: 
             if email not in final_emails: 
                 email["action_items"] = "Generating ..."
+                email["calendar"] = False
                 final_emails.append(email)
                 
         session["final_emails"] = final_emails
     
-    # For summary page, we show ALL emails initially with "Generating..."
-    # JavaScript will handle hiding the "No action" ones
-    return render_template('summary.html', 
-                         emails=final_emails, 
-                         text=f"Processing {len(final_emails)} emails for action items...", 
-                         pending_count=len(final_emails))
-
-def _parse_last_load_time():
-    """Helper function to parse last_load time from session"""
-    if 'last_load' not in session:
-        print("No last_load in session, using current time")
-        return datetime.now(timezone.utc)
+    # Get existing todo emails from database
+    todos = Todo.query.filter_by(user=current_user.id, done=False).all()
     
-    last_load_val = session.get('last_load')
-    print(f"Raw last_load from session: {last_load_val}")
+    # Create a map of existing todos by email content for faster lookup
+    existing_todos = {}
+    for todo in todos:
+        # Try to find matching email in final_emails
+        for email in final_emails:
+            if email.get("action_items") == todo.item:
+                existing_todos[id(email)] = {
+                    'todo': todo.item,
+                    'id': todo.id,
+                    'calendar': any(keyword in todo.item.lower() for keyword in ["meeting", "conference call", "calendar", "appointment", "call"])
+                }
+                # Update the email with the saved action item
+                email["action_items"] = todo.item
+                email["calendar"] = existing_todos[id(email)]['calendar']
+                break
     
-    try:
-        if isinstance(last_load_val, str):
-            last_load = parser.parse(last_load_val)
-        elif isinstance(last_load_val, datetime):
-            last_load = last_load_val
-        else:
-            print(f"Unexpected type for last_load: {type(last_load_val)}")
-            return datetime.now(timezone.utc)
-        
-        # Ensure timezone info
-        if last_load.tzinfo is None:
-            last_load = last_load.replace(tzinfo=timezone.utc)
-        
-        return last_load
+    # Clean up orphaned todos (todos that don't match any current emails)
+    for todo in todos:
+        found_match = False
+        for email in final_emails:
+            if email.get("action_items") == todo.item:
+                found_match = True
+                break
+        if not found_match:
+            db.session.delete(todo)
+    db.session.commit()
     
-    except Exception as e:
-        print(f"Error parsing date: {str(e)}")
-        return datetime.now(timezone.utc)
-
-
-
-
-def _get_status_message(pending_count, todo_count):
-    """Generate appropriate status message"""
-    if pending_count > 0:
-        return f"Processing {pending_count} emails for action items..."
-    elif todo_count == 0:
-        return "No action items found from recent emails."
+    # Count emails that still need processing
+    emails_needing_processing = []
+    for i, email in enumerate(final_emails):
+        if email.get("action_items") == "Generating ..." or not email.get("action_items"):
+            emails_needing_processing.append({
+                'index': i,
+                'email': email
+            })
+    
+    # Set appropriate message
+    if emails_needing_processing:
+        text = f"Processing {len(emails_needing_processing)} emails for action items..."
     else:
-        return f"Found {todo_count - pending_count} action items"
+        # Filter emails that have actual action items (not just "No action.")
+        actionable_emails = [email for email in final_emails 
+                           if email.get("action_items") and 
+                           email["action_items"] != "No action." and
+                           email["action_items"] != "Generating ..."]
+        if not actionable_emails:
+            text = "No action items found from recent emails."
+        else:
+            text = f"Found {len(actionable_emails)} action items"
+    
+    return render_template('summary.html', emails=final_emails, text=text, 
+                         pending_count=len(emails_needing_processing))
+
+
+# New endpoint to save individual todo items
+@app.route('/save_todo_item', methods=['POST'])
+@login_required
+def save_todo_item():
+    try:
+        data = request.get_json()
+        action_item = data.get('action_item')
+        email_index = data.get('email_index')
+        
+        if not action_item or email_index is None:
+            return jsonify({'success': False, 'message': 'Missing required data'})
+        
+        # Don't save "No action." items
+        if action_item.strip().lower() == "no action.":
+            return jsonify({'success': True, 'message': 'No action item to save'})
+        
+        # Check if this todo already exists for this user
+        existing_todo = Todo.query.filter_by(user=current_user.id, item=action_item, done=False).first()
+        if existing_todo:
+            return jsonify({'success': True, 'message': 'Todo already exists', 'todo_id': existing_todo.id})
+        
+        # Create new todo
+        new_todo = Todo(
+            user=current_user.id,
+            item=action_item,
+            done=False
+        )
+        
+        db.session.add(new_todo)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Todo saved successfully',
+            'todo_id': new_todo.id
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error saving todo: {str(e)}")
+        return jsonify({'success': False, 'message': 'Error saving todo item'})
+
 @app.route('/generate_pending_actions', methods=['POST'])
 @login_required
 def generate_pending_actions():
@@ -1146,8 +1141,6 @@ def generate_pending_actions():
                 continue
                 
             action = get_an_action(body)  # Your existing function
-
-            print("Action: ", action)
             
             # Update the email with action item
             final_emails[index]["action_items"] = action
