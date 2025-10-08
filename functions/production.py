@@ -1,2 +1,5 @@
 def production():
-    return False
+    return True
+
+def simple():
+    return True

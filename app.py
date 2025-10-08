@@ -6,8 +6,9 @@ from datetime import datetime, timedelta, timezone, date
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 import os
-from functions.production import production
+from functions.production import production, simple
 PRODUCTION = production()
+SIMPLE = simple()
 if not PRODUCTION:
     from dotenv import load_dotenv
     load_dotenv()
@@ -64,6 +65,7 @@ from functions.get_one_action import get_an_action
 from functions.encryption import encrypt_token, decrypt_token
 from functions.selenium import automated_unsubscribe
 from functions.get_emails import get_emails
+from functions.process_unsub import process_unsubscribe_links
 import re
 import short_url
 import secrets
@@ -121,121 +123,9 @@ MICROSOFT_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/autho
 MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
 
-from functools import wraps
-from functions.scheduler import get_users_to_process, send_email_summary_for_user, trigger_email_check
-        
-
-def require_admin_key(f):
-    """Decorator to require admin key for scheduled tasks"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        admin_key = os.environ.get('ADMIN_KEY', 'your-default-key-here')
-        
-        # Check for key in header, query param, or form data
-        provided_key = (
-            request.headers.get('X-Admin-Key') or 
-            request.args.get('key') or 
-            request.form.get('key')
-        )
-        
-        if not provided_key or provided_key != admin_key:
-            return jsonify({
-                "error": "Unauthorized",
-                "message": "Invalid or missing admin key"
-            }), 401
-        
-        return f(*args, **kwargs)
-    return decorated_function
-
-
-
-@app.route('/cron/email-scheduler', methods=['POST', 'GET'])
-@require_admin_key
-def cron_email_scheduler():
-    """Endpoint for CronJob to trigger email scheduler"""
-    try:
-        
-        start_time = datetime.now()
-        
-        # Get users who need email summaries
-        users_to_process = get_users_to_process()
-        
-        if not users_to_process:
-            return jsonify({
-                "success": True,
-                "message": "No users scheduled for email summaries at this time",
-                "users_processed": 0,
-                "emails_sent": 0,
-                "processing_time": f"{(datetime.now() - start_time).total_seconds():.2f}s",
-                "timestamp": datetime.now().isoformat()
-            }), 200
-        
-        # Process each user
-        results = []
-        for user in users_to_process:
-            try:
-                result = send_email_summary_for_user(user)
-                results.append(result)
-                
-                # Log the result
-                if result["success"]:
-                    print(f"✓ Email sent to {user.email}: {result['message']}")
-                else:
-                    print(f"✗ Failed for {user.email}: {result['message']}")
-                    
-            except Exception as e:
-                error_result = {
-                    "success": False,
-                    "user": user.email,
-                    "message": str(e)
-                }
-                results.append(error_result)
-                print(f"✗ Error processing {user.email}: {str(e)}")
-        
-        # Calculate summary
-        successful = sum(1 for r in results if r["success"])
-        processing_time = (datetime.now() - start_time).total_seconds()
-        
-        return jsonify({
-            "success": True,
-            "message": f"Processed {len(users_to_process)} users",
-            "users_processed": len(users_to_process),
-            "emails_sent": successful,
-            "failed": len(results) - successful,
-            "processing_time": f"{processing_time:.2f}s",
-            "results": results,
-            "timestamp": datetime.now().isoformat()
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Error running scheduler: {str(e)}",
-            "timestamp": datetime.now().isoformat()
-        }), 500
-
-@app.route('/admin/trigger-scheduler', methods=['POST'])
-def trigger_scheduler():
-    """Manually trigger the email scheduler"""
-    try:
-        trigger_email_check()
-        return jsonify({
-            "success": True,
-            "message": "Scheduler triggered successfully",
-            "timestamp": datetime.now().isoformat()
-        }), 200
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Error triggering scheduler: {str(e)}",
-            "timestamp": datetime.now().isoformat()
-        }), 500
-
 @login_manager.user_loader 
 def load_user(id):
     return User.query.get(int(id))
-
-
 
 @app.route("/login")
 def login():
@@ -292,7 +182,7 @@ def google_login():
         scopes=GOOGLE_SCOPES,
         redirect_uri=GOOGLE_REDIRECT_URI
     )
-    auth_url, _ = flow.authorization_url(prompt="consent")
+    auth_url, _ = flow.authorization_url(prompt="consent", access_type='offline')
     
     return redirect(auth_url)
 
@@ -527,7 +417,8 @@ def emails():
         print(f"Found {len(new_emails)} new emails in refresh")
         
         # Process unsubscribe links for new emails
-        process_unsubscribe_links(new_emails, current_user)
+        if not SIMPLE:
+            process_unsubscribe_links(new_emails, current_user)
         
         # Add action items placeholder and merge with existing emails
         final_emails = []
@@ -562,7 +453,8 @@ def emails():
     emails = list(reversed(emails))
     
     # Process unsubscribe links
-    process_unsubscribe_links(emails, current_user)
+    if not SIMPLE:
+        process_unsubscribe_links(emails, current_user)
     
     # Sort by priority and add action items placeholder
     final_emails = []
@@ -582,6 +474,8 @@ def emails():
     return render_template('emails.html', emails=final_emails)
 
 from dateutil.tz import tzlocal  
+
+from functions.calendar import create_google_calendar_event, create_microsoft_calendar_event
 
 @app.route("/add_to_calendar", methods=["POST"])
 @login_required
@@ -614,122 +508,6 @@ def add_to_calendar():
         print(f"Calendar API error: {str(e)}")
         return jsonify({"success": False, "error": "Failed to create calendar event"})
 
-def create_google_calendar_event(start_dt, end_dt, name):
-    """Create event in Google Calendar"""
-    try:
-        access_token = refresh(current_user)
-        creds = Credentials(token=access_token)
-        service = build("calendar", "v3", credentials=creds)
-        
-        # Create event
-        event = {
-            "summary": name,
-            "start": {
-                'dateTime': start_dt.isoformat()
-            },
-            "end": {
-                "dateTime": end_dt.isoformat()
-            }
-        }
-        
-        # Insert event into calendar
-        event_result = service.events().insert(calendarId='primary', body=event).execute()
-        
-        return jsonify({
-            "success": True, 
-            "event_id": event_result.get('id'),
-            "provider": "google"
-        })
-        
-    except Exception as e:
-        print(f"Google Calendar API error: {str(e)}")
-        return jsonify({"success": False, "error": "Failed to create Google calendar event"})
-
-def create_microsoft_calendar_event(start_dt, end_dt, name):
-    """Create event in Microsoft Calendar (Outlook)"""
-    try:
-        access_token = refresh(current_user)  # Assuming you have a Microsoft refresh function
-        
-        # Microsoft Graph API endpoint
-        url = "https://graph.microsoft.com/v1.0/me/events"
-        
-        headers = {
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json'
-        }
-        
-        # Create event payload for Microsoft Graph
-        event_data = {
-            "subject": name,
-            "start": {
-                "dateTime": start_dt.isoformat(),
-                "timeZone": str(start_dt.tzinfo) if start_dt.tzinfo else "UTC"
-            },
-            "end": {
-                "dateTime": end_dt.isoformat(),
-                "timeZone": str(end_dt.tzinfo) if end_dt.tzinfo else "UTC"
-            }
-        }
-        
-        response = requests.post(url, json=event_data, headers=headers)
-        
-        if response.status_code == 201:
-            event_result = response.json()
-            return jsonify({
-                "success": True, 
-                "event_id": event_result.get('id'),
-                "provider": "microsoft"
-            })
-        else:
-            print(f"Microsoft Graph API error: {response.status_code} - {response.text}")
-            return jsonify({
-                "success": False, 
-                "error": f"Microsoft API error: {response.status_code}"
-            })
-            
-    except Exception as e:
-        print(f"Microsoft Calendar API error: {str(e)}")
-        return jsonify({"success": False, "error": "Failed to create Microsoft calendar event"})
-
-def process_unsubscribe_links(emails, current_user):
-    """Helper function to process unsubscribe links in emails"""
-    changes_made = False
-    
-    for email in emails:
-        unsubscribe_match = re.search(r"(?i)unsubscribe", email['body'])
-                 
-        if unsubscribe_match:
-            unsubscribe_pos = unsubscribe_match.start()
-            remaining_text = email['body'][unsubscribe_pos:]
-            link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
-                         
-            if link_match:
-                code = link_match.group(1)
-                try:
-                    link_id = short_url.decode_url(code)
-                    link_obj = Link.query.filter_by(id=link_id).first()
-                                         
-                    if link_obj and link_obj.link:
-                        real_link = link_obj.link
-                        unsubj = Unsubscribe.query.filter_by(sender=email["from"]).first()
-                                                 
-                        if not unsubj:
-                            new_unsub = Unsubscribe(sender=email['from'], link=real_link, user=current_user.id)
-                            db.session.add(new_unsub)
-                            print(f"Added unsubscribe link for {email['from']}: {real_link}")
-                            changes_made = True
-                except Exception as e:
-                    print(f"Error processing unsubscribe link: {str(e)}")
-                    continue
-    
-    # Only commit if there were changes made
-    if changes_made:
-        try:
-            db.session.commit()
-            print("Successfully committed all unsubscribe link changes")
-        except Exception as e:
-            print(f"Error committing unsubscribe link changes: {str(e)}")
-            db.session.rollback()
 
 @app.route("/get_one_action", methods=["POST"])
 @login_required 
@@ -781,39 +559,6 @@ def remove_todo():
     return jsonify({"success": True})
 
 
-'''
-@app.route('/load_more', methods=["POST"])
-@login_required
-def load_more():
-    print('loading more')
-    final_emails = session.get('final_emails', [])
- 
-    final_final = final_emails.copy()  
-    access_token = refresh(current_user)
-    prev = session['since']
-    prev = prev.strftime("%m-%d-%y")
-    day = session['since'] - timedelta(days=1)
-    session['since'] = day
-    day = day.strftime("%m-%d-%y")
-    new_emails = get_emails("gmail", current_user.email, access_token, after_date=day, since_time=session['time'], old=final_emails)
-    new_emails.reverse()
-    to_process = []
-    for email in new_emails:
-        if email not in final_emails:
-            to_process.append(email)
-    if to_process:
-        action_items = batch_get_action_items(to_process)
-        for j, email in enumerate(to_process):
-            email["action_items"] = action_items[j]
-            final_emails.append(email)
-        
-    session['final_emails'] = final_final
-
-    new_emails = [email for email in final_final if email not in final_emails]
-    rendered_emails = render_template("email_snippet.html", emails=new_emails)
-
-    return jsonify({"html": rendered_emails})
-'''
             
 
 
@@ -898,16 +643,6 @@ def send():
 def terms_and_privacy():
     return render_template("termsandprivacy.html")
 
-@app.route('/unsubs')
-@login_required
-def all_unsubs():
-    if not current_user.subscribed:
-        return render_template("subscribe.html")
-    unsubs = Unsubscribe.query.filter_by(user=current_user.id).all()
-    if not unsubs:
-        return render_template("unsubs.html", unsubs=[], number = 0)
-    else:
-        return render_template('unsubs.html', unsubs=unsubs, number = len(unsubs))
 
 @app.route('/summary')
 @login_required
@@ -960,7 +695,8 @@ def summary():
         print(f"Found {len(new_emails)} new emails in refresh")
         
         # Process unsubscribe links for new emails
-        process_unsubscribe_links(new_emails, current_user)
+        if not SIMPLE:
+            process_unsubscribe_links(new_emails, current_user)
         
         # Add action items placeholder and merge with existing emails
         final_emails = []
@@ -997,7 +733,8 @@ def summary():
         emails = list(reversed(emails))
         
         # Process unsubscribe links
-        process_unsubscribe_links(emails, current_user)
+        if not SIMPLE:
+            process_unsubscribe_links(emails, current_user)
         
         # Sort by priority and add action items placeholder
         final_emails = []
@@ -1073,48 +810,6 @@ def summary():
                          pending_count=len(emails_needing_processing))
 
 
-# New endpoint to save individual todo items
-@app.route('/save_todo_item', methods=['POST'])
-@login_required
-def save_todo_item():
-    try:
-        data = request.get_json()
-        action_item = data.get('action_item')
-        email_index = data.get('email_index')
-        
-        if not action_item or email_index is None:
-            return jsonify({'success': False, 'message': 'Missing required data'})
-        
-        # Don't save "No action." items
-        if action_item.strip().lower() == "no action.":
-            return jsonify({'success': True, 'message': 'No action item to save'})
-        
-        # Check if this todo already exists for this user
-        existing_todo = Todo.query.filter_by(user=current_user.id, item=action_item, done=False).first()
-        if existing_todo:
-            return jsonify({'success': True, 'message': 'Todo already exists', 'todo_id': existing_todo.id})
-        
-        # Create new todo
-        new_todo = Todo(
-            user=current_user.id,
-            item=action_item,
-            done=False
-        )
-        
-        db.session.add(new_todo)
-        db.session.commit()
-        
-        return jsonify({
-            'success': True, 
-            'message': 'Todo saved successfully',
-            'todo_id': new_todo.id
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error saving todo: {str(e)}")
-        return jsonify({'success': False, 'message': 'Error saving todo item'})
-
 @app.route('/generate_pending_actions', methods=['POST'])
 @login_required
 def generate_pending_actions():
@@ -1123,7 +818,7 @@ def generate_pending_actions():
     if not final_emails:
         return jsonify({
             "success": False,
-            "message": "No emails found to process"
+            "message": "No emaiils found to process"
         })
     
     generated_count = 0
@@ -1171,22 +866,222 @@ def generate_pending_actions():
         "message": f"Generated {generated_count} new action items"
     })
 
-
-@app.route('/get_summary_status', methods=['GET'])
+@app.route("/subscribe")
 @login_required
-def get_summary_status():
-    """Get current status of action item generation"""
-    final_emails = session.get("final_emails", [])
+def subscribe():
+    if type(current_user) == AnonymousUserMixin:
+        print("redirecting")
+        return redirect(url_for('login'))
+    if current_user.subscribed:
+        return redirect(url_for('index'))
+    return render_template("subscribe.html")
+ 
+
+@app.route("/manage_subscription")
+def manage_subscription():
+    if not current_user.subscribed:
+        return render_template("subscribe.html")
+    return render_template("manage.html")
+
+
+@app.route('/create-checkout-session', methods=['POST'])
+@login_required
+def create_checkout_session():
+    try:
+        prices = stripe.Price.list(
+            lookup_keys=[request.form['lookup_key']],
+            expand=['data.product']
+        )
+
+        # Create or get Stripe customer for current user
+        if not current_user.stripe_customer_id:
+            # Create new Stripe customer
+            customer = stripe.Customer.create(
+                email=current_user.email,
+                name=current_user.name if hasattr(current_user, 'name') else None,
+            )
+            # Save customer ID to user
+            current_user.stripe_customer_id = customer.id
+            db.session.commit()
+
+        checkout_session = stripe.checkout.Session.create(
+            customer=current_user.stripe_customer_id,  # Link to existing customer
+            line_items=[
+                {
+                    'price': prices.data[0].id,
+                    'quantity': 1,
+                },
+            ],
+            mode='subscription',
+            success_url=DOMAIN + '/emails',
+            cancel_url=DOMAIN,
+            subscription_data={
+                'trial_period_days': 7
+            },
+        )
+        return redirect(checkout_session.url, code=303)
+    except Exception as e:
+        print(e)
+        return "Server error", 500
     
-    pending_count = 0
-    for email in final_emails:
-        if email.get("action_items") == "Generating ..." or not email.get("action_items"):
-            pending_count += 1
+@login_required
+@app.route('/create-portal-session', methods=['POST'])
+def customer_portal():
+    try:
+        # Use the customer ID from the current user's database record
+        if not current_user.stripe_customer_id:
+            return "No subscription found", 400
+            
+        return_url = DOMAIN
+
+        portalSession = stripe.billing_portal.Session.create(
+            customer=current_user.stripe_customer_id,
+            return_url=return_url,
+        )
+        return redirect(portalSession.url, code=303)
+    except Exception as e:
+        print(f"Portal session error: {e}")
+        return "Server error", 500
+
+@app.route('/webhook', methods=['POST'])
+def webhook_received():
+    if PRODUCTION:
+        webhook_secret = os.getenv("WEBHOOK_SECRET")
+    else:
+        webhook_secret = os.getenv("TEST_WEBHOOK")
     
-    return jsonify({
-        "pending_count": pending_count,
-        "total_emails": len(final_emails)
-    })
+    if webhook_secret:
+        signature = request.headers.get('stripe-signature')
+        try:
+            event = stripe.Webhook.construct_event(
+                payload=request.data, 
+                sig_header=signature, 
+                secret=webhook_secret
+            )
+        except Exception as e:
+            print(f"Webhook signature verification failed: {e}")
+            return "Bad signature", 400
+    else:
+        event = json.loads(request.data)
+
+    data = event['data']
+    event_type = event['type']
+    data_object = data['object']
+
+    print(f"EVENT: {event_type}")
+
+    # Helper function to find user by Stripe customer ID
+    def find_user_by_customer_id(customer_id):
+        print(customer_id)
+        return User.query.filter_by(stripe_customer_id=customer_id).first()
+
+    if event_type == 'checkout.session.completed':
+        print('🔔 Payment succeeded!')
+        customer_id = data_object.get('customer')
+        user = find_user_by_customer_id(customer_id)
+        if user:
+            user.subscribed = True
+            db.session.commit()
+            print(f"User {user.email} subscription activated")
+
+    elif event_type == 'customer.subscription.trial_will_end':
+        print('Subscription trial will end')
+        customer_id = data_object.get('customer')
+        user = find_user_by_customer_id(customer_id)
+        if user:
+            print(f"Trial ending for user {user.email}")
+
+    elif event_type == 'customer.subscription.created':
+        print(f'Subscription created {event["id"]}')
+        customer_id = data_object.get('customer')
+        user = find_user_by_customer_id(customer_id)
+        if user:
+            user.subscribed = True
+            db.session.commit()
+            print(f"Subscription created for user {user.email}")
+
+    elif event_type == 'customer.subscription.updated':
+        print(f'Subscription updated {event["id"]}')
+        customer_id = data_object.get('customer')
+        user = find_user_by_customer_id(customer_id)
+        if user:
+            # Check subscription status
+            subscription_status = data_object.get('status')
+            user.subscribed = subscription_status in ['active', 'trialing']
+            db.session.commit()
+            print(f"Subscription updated for user {user.email}, status: {subscription_status}")
+
+    elif event_type == 'customer.subscription.deleted':
+        print(f'Subscription canceled {event["id"]}')
+        customer_id = data_object.get('customer')
+        user = find_user_by_customer_id(customer_id)
+        if user:
+            user.subscribed = False
+            db.session.commit()
+            print(f"Subscription canceled for user {user.email}")
+
+    return jsonify({'status': 'success'})
+
+
+
+'''
+@app.route("/set_time", methods=["POST", "GET"])
+@login_required
+def set_time():
+    if request.method == "POST":
+        try:
+            # Get form data
+            timezone = request.form.get("timezone")
+            times = request.form.getlist("time")  # getlist for multiple selections
+            
+            # Validate that both timezone and at least one time are provided
+            if not timezone:
+                return render_template("time.html", message="Please select a timezone")
+            
+            if not times or len(times) == 0:
+                return render_template("time.html", message="Please select at least one time")
+            
+            # Limit to maximum 3 times (additional safety check)
+            if len(times) > 3:
+                times = times[:3]
+            
+            # Store as comma-separated string
+            times_str = ",".join(times)
+            
+            # Update user attributes
+            current_user.timezone = timezone
+            current_user.time = times_str
+            
+            db.session.commit()
+            
+            return render_template("time.html", message= f"Successfully set time(s) to {times_str} and timezone to {timezone}!")
+            
+        except Exception as e:
+            return render_template("time.html", message= f"Error setting time and timezone")
+    else:
+        time = current_user.time 
+        timezone = current_user.timezone 
+        if time and timezone:
+            return render_template("time.html", message= f"Update your time(s) from {time} in timezone {timezone}")
+        else:
+            return render_template("time.html", message="Set your time and timezone for your daily to-do list to be sent to you!")
+    
+@app.route("/beta")
+def beta():
+    return render_template("beta.html")
+
+
+@app.route('/unsubs')
+@login_required
+def all_unsubs():
+    if not current_user.subscribed:
+        return render_template("subscribe.html")
+    unsubs = Unsubscribe.query.filter_by(user=current_user.id).all()
+    if not unsubs:
+        return render_template("unsubs.html", unsubs=[], number = 0)
+    else:
+        return render_template('unsubs.html', unsubs=unsubs, number = len(unsubs))
+
 
 
 from functions.cleaner import (
@@ -1397,521 +1292,4 @@ def restore_sender():
     return jsonify(result)
 
 
-@app.route("/subscribe")
-@login_required
-def subscribe():
-    if type(current_user) == AnonymousUserMixin:
-        print("redirecting")
-        return redirect(url_for('login'))
-    if current_user.subscribed:
-        return redirect(url_for('index'))
-    return render_template("subscribe.html")
- 
-
-@app.route("/manage_subscription")
-def manage_subscription():
-    if not current_user.subscribed:
-        return render_template("subscribe.html")
-    return render_template("manage.html")
-
-
-@app.route('/create-checkout-session', methods=['POST'])
-@login_required
-def create_checkout_session():
-    try:
-        prices = stripe.Price.list(
-            lookup_keys=[request.form['lookup_key']],
-            expand=['data.product']
-        )
-
-        # Create or get Stripe customer for current user
-        if not current_user.stripe_customer_id:
-            # Create new Stripe customer
-            customer = stripe.Customer.create(
-                email=current_user.email,
-                name=current_user.name if hasattr(current_user, 'name') else None,
-            )
-            # Save customer ID to user
-            current_user.stripe_customer_id = customer.id
-            db.session.commit()
-
-        checkout_session = stripe.checkout.Session.create(
-            customer=current_user.stripe_customer_id,  # Link to existing customer
-            line_items=[
-                {
-                    'price': prices.data[0].id,
-                    'quantity': 1,
-                },
-            ],
-            mode='subscription',
-            success_url=DOMAIN + '/emails',
-            cancel_url=DOMAIN,
-            subscription_data={
-                'trial_period_days': 7
-            },
-        )
-        return redirect(checkout_session.url, code=303)
-    except Exception as e:
-        print(e)
-        return "Server error", 500
-    
-@login_required
-@app.route('/create-portal-session', methods=['POST'])
-def customer_portal():
-    try:
-        # Use the customer ID from the current user's database record
-        if not current_user.stripe_customer_id:
-            return "No subscription found", 400
-            
-        return_url = DOMAIN
-
-        portalSession = stripe.billing_portal.Session.create(
-            customer=current_user.stripe_customer_id,
-            return_url=return_url,
-        )
-        return redirect(portalSession.url, code=303)
-    except Exception as e:
-        print(f"Portal session error: {e}")
-        return "Server error", 500
-
-@app.route('/webhook', methods=['POST'])
-def webhook_received():
-    if PRODUCTION:
-        webhook_secret = os.getenv("WEBHOOK_SECRET")
-    else:
-        webhook_secret = os.getenv("TEST_WEBHOOK")
-    
-    if webhook_secret:
-        signature = request.headers.get('stripe-signature')
-        try:
-            event = stripe.Webhook.construct_event(
-                payload=request.data, 
-                sig_header=signature, 
-                secret=webhook_secret
-            )
-        except Exception as e:
-            print(f"Webhook signature verification failed: {e}")
-            return "Bad signature", 400
-    else:
-        event = json.loads(request.data)
-
-    data = event['data']
-    event_type = event['type']
-    data_object = data['object']
-
-    print(f"EVENT: {event_type}")
-
-    # Helper function to find user by Stripe customer ID
-    def find_user_by_customer_id(customer_id):
-        print(customer_id)
-        return User.query.filter_by(stripe_customer_id=customer_id).first()
-
-    if event_type == 'checkout.session.completed':
-        print('🔔 Payment succeeded!')
-        customer_id = data_object.get('customer')
-        user = find_user_by_customer_id(customer_id)
-        if user:
-            user.subscribed = True
-            db.session.commit()
-            print(f"User {user.email} subscription activated")
-
-    elif event_type == 'customer.subscription.trial_will_end':
-        print('Subscription trial will end')
-        customer_id = data_object.get('customer')
-        user = find_user_by_customer_id(customer_id)
-        if user:
-            print(f"Trial ending for user {user.email}")
-
-    elif event_type == 'customer.subscription.created':
-        print(f'Subscription created {event["id"]}')
-        customer_id = data_object.get('customer')
-        user = find_user_by_customer_id(customer_id)
-        if user:
-            user.subscribed = True
-            db.session.commit()
-            print(f"Subscription created for user {user.email}")
-
-    elif event_type == 'customer.subscription.updated':
-        print(f'Subscription updated {event["id"]}')
-        customer_id = data_object.get('customer')
-        user = find_user_by_customer_id(customer_id)
-        if user:
-            # Check subscription status
-            subscription_status = data_object.get('status')
-            user.subscribed = subscription_status in ['active', 'trialing']
-            db.session.commit()
-            print(f"Subscription updated for user {user.email}, status: {subscription_status}")
-
-    elif event_type == 'customer.subscription.deleted':
-        print(f'Subscription canceled {event["id"]}')
-        customer_id = data_object.get('customer')
-        user = find_user_by_customer_id(customer_id)
-        if user:
-            user.subscribed = False
-            db.session.commit()
-            print(f"Subscription canceled for user {user.email}")
-
-    return jsonify({'status': 'success'})
-
-@app.route("/set_time", methods=["POST", "GET"])
-@login_required
-def set_time():
-    if request.method == "POST":
-        try:
-            # Get form data
-            timezone = request.form.get("timezone")
-            times = request.form.getlist("time")  # getlist for multiple selections
-            
-            # Validate that both timezone and at least one time are provided
-            if not timezone:
-                return render_template("time.html", message="Please select a timezone")
-            
-            if not times or len(times) == 0:
-                return render_template("time.html", message="Please select at least one time")
-            
-            # Limit to maximum 3 times (additional safety check)
-            if len(times) > 3:
-                times = times[:3]
-            
-            # Store as comma-separated string
-            times_str = ",".join(times)
-            
-            # Update user attributes
-            current_user.timezone = timezone
-            current_user.time = times_str
-            
-            db.session.commit()
-            
-            return render_template("time.html", message= f"Successfully set time(s) to {times_str} and timezone to {timezone}!")
-            
-        except Exception as e:
-            return render_template("time.html", message= f"Error setting time and timezone")
-    else:
-        time = current_user.time 
-        timezone = current_user.timezone 
-        if time and timezone:
-            return render_template("time.html", message= f"Update your time(s) from {time} in timezone {timezone}")
-        else:
-            return render_template("time.html", message="Set your time and timezone for your daily to-do list to be sent to you!")
-    
-@app.route('/mail')
-@login_required
-def send_email_summary():
-    """Send email summary of last 24 hours action items"""
-    try:
-        # Get user's access token
-        access_token = refresh(current_user)
-        
-        # Get emails from last 24 hours
-        emails = get_emails(current_user.provider, current_user.email, access_token)
-        
-        if not emails:
-            return jsonify({
-                "success": False,
-                "message": "No emails found in the last 24 hours"
-            })
-        
-        # Process emails for action items
-        emails = list(reversed(emails))  # Newest first
-        process_unsubscribe_links(emails, current_user)
-        
-        # Generate action items for all emails
-        action_items = []
-        for email in emails:
-            try:
-                body = email.get("body", "")
-                if body:
-                    action = get_an_action(body)
-                    if action and action.lower() not in ["no action.", "no action", "no action required.", ""]:
-                        email["action_items"] = action
-                        email["calendar"] = is_calendar_worthy(action)
-                        action_items.append(email)
-                    else:
-                        email["action_items"] = "No action"
-                        email["calendar"] = False
-                else:
-                    email["action_items"] = "No action"
-                    email["calendar"] = False
-            except Exception as e:
-                logger.error(f"Error generating action for email: {e}")
-                email["action_items"] = "Error generating action"
-                email["calendar"] = False
-        
-        # Send email summary
-        if action_items:
-            email_sent = send_reply_email(action_items, current_user.email)
-            if email_sent:
-                return jsonify({
-                    "success": True,
-                    "message": f"Email summary sent with {len(action_items)} action items",
-                    "action_count": len(action_items)
-                })
-            else:
-                return jsonify({
-                    "success": False,
-                    "message": "Failed to send email summary"
-                })
-        else:
-            return jsonify({
-                "success": True,
-                "message": "No action items found to send",
-                "action_count": 0
-            })
-            
-    except Exception as e:
-        logger.error(f"Error in send_email_summary: {str(e)}")
-        return jsonify({
-            "success": False,
-            "message": "An error occurred while processing email summary"
-        })
-
-def is_calendar_worthy(action_text):
-    """Check if action item is calendar-worthy"""
-    calendar_keywords = ["meeting", "conference call", "calendar", "appointment", "call", "schedule", "event"]
-    return any(keyword in action_text.lower() for keyword in calendar_keywords)
-
-def send_reply_email(action_items, user_email):
-    """Send email using the reply function"""
-    try:
-        # Generate HTML email content
-        html_content = generate_email_html(action_items, user_email)
-        
-        # Prepare email data
-        subject = f"Daily To Do List from MailMind for {datetime.now().strftime('%B %d, %Y')}"
-        
-        # Send email via reply function as HTML
-        result = reply(
-            user_email=current_user.email,
-            oauth_token=refresh(current_user),
-            to_email=current_user.email,
-            subject=subject,
-            body=html_content,
-            reply=False,
-            cc=None,
-            bcc=None,
-            provider=current_user.provider,  # Pass the provider from user object
-            content_type='html'
-        )
-        
-        if result:  # Assuming reply function returns True on success
-            logger.info(f"Email sent successfully to {current_user.email}")
-            return True
-        else:
-            logger.error(f"Failed to send email using reply function")
-            return False
-            
-    except Exception as e:
-        logger.error(f"Error sending email via reply function: {str(e)}")
-        return False
-
-def generate_email_html(action_items, user_email):
-    """Generate rich HTML email content"""
-    
-    # HTML email template matching your summary page style
-    html_template = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-    <meta charset="UTF-8" />
-    <title>MailMind Daily Summary</title>
-    <style>
-        body {
-        background: #171524;
-        color: #f0f0f0;
-        font-family: Inter, system-ui, sans-serif;
-        margin: 0;
-        padding: 20px;
-        }
-        .container {
-        max-width: 600px;
-        margin: 0 auto;
-        background: linear-gradient(145deg, #514b7a, #5a5488);
-        border: 2px solid black;
-        border-radius: 20px;
-        padding: 30px;
-        box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
-        }
-        h1 {
-        text-align: center;
-        font-size: 24px;
-        color: #e6d7a3;
-        margin-bottom: 10px;
-        }
-        .top-link {
-        text-align: center;
-        margin-bottom: 20px;
-        }
-        .top-link a {
-        color: #cc8400;
-        font-weight: bold;
-        text-decoration: none;
-        font-size: 14px;
-        }
-        .summary-info {
-        text-align: center;
-        font-size: 14px;
-        margin-bottom: 30px;
-        color: #f0f0f0;
-        }
-        .item {
-        background: #3a3560;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-left: 4px solid #cc8400;
-        border-radius: 12px;
-        padding: 15px 20px;
-        margin-bottom: 20px;
-        }
-        .item p {
-        margin: 4px 0;
-        font-size: 14px;
-        }
-        .item .action {
-        color: #e6d7a3;
-        font-weight: 600;
-        }
-        .footer {
-        text-align: center;
-        font-size: 12px;
-        color: #ccc;
-        margin-top: 30px;
-        }
-        p {
-        color: white;
-        }
-        .footer a {
-        text-decoration: none;
-        color: darkorange;
-        }
-        .footer a:hover {
-        color: #e6d7a3;
-        }
-    </style>
-    </head>
-    <body>
-    <div class="container">
-        <h1>📬 Your Daily To Do List</h1>
-
-        <div class="top-link">
-        <a href="https://mailmind.fly.dev/summary">View Full List →</a>
-        </div>
-
-        <div class="summary-info">
-        <p>{{ action_count }} action items • {{ current_date }}</p>
-        <p>{{ user_email }}</p>
-        </div>
-
-        {% for email in action_items%}
-        <div class="item">
-        <p class="action">• {{ email.action_items | linkify_text }}</p>
-        <p><strong>From:</strong> {{ email.from }}</p>
-        <p><strong>Subject:</strong> {{ email.subject }}</p>
-        </div>
-        {% endfor %}
-
-        <div class="footer">
-        <p>
-            Sent by <a href="https://mailmind.fly.dev">MailMind</a> • 
-            <a href="mailto:pautomas55@gmail.com">Support</a> 
-        </p>
-        </div>
-    </div>
-    </body>
-    </html>
-
-    """
-    
-    # Render the template with data
-    from jinja2 import Template, Environment
-    
-    # Create Jinja2 environment with custom filter
-    env = Environment()
-    
-    # Register the linkify_text filter (assuming it's available in your app context)
-    # If you need to import it, add: from your_module import linkify_text
-    env.filters['linkify_text'] = linkify_text
-    
-    template = env.from_string(html_template)
-    
-    return template.render(
-        action_items=action_items,
-        user_email=user_email,
-        current_date=datetime.now().strftime('%B %d, %Y'),
-        action_count=len(action_items)
-    )
-
-# Alternative route for testing email template
-@app.route('/test_email_template')
-@login_required
-def test_email_template():
-    """Test route to preview email template in browser"""
-    try:
-        # Get sample data
-        access_token = refresh(current_user)
-        emails = get_emails(current_user.provider, current_user.email, access_token)
-        
-        if not emails:
-            sample_data = [{
-                "from": "example@company.com",
-                "subject": "Project Update Required",
-                "body": "Hi there, we need to discuss the project timeline and deliverables. Please review the attached documents and let me know your thoughts by end of week. Visit https://example.com for more details.",
-                "action_items": "Review project documents and provide feedback by end of week. Check https://example.com for updates",
-                "calendar": True
-            }]
-        else:
-            # Process first few emails as sample
-            sample_data = []
-            for email in emails:  # Take first 3 emails
-                body = email.get("body", "")
-                if body:
-                    action = get_an_action(body)
-                    if action and action.lower() not in ["no action.", "no action", "no action required.", ""]:
-                        email["action_items"] = action
-                        email["calendar"] = is_calendar_worthy(action)
-                        sample_data.append(email)
-        
-        # Generate HTML and return it directly for preview
-        html_content = generate_email_html(sample_data, current_user.email)
-        return html_content
-        
-    except Exception as e:
-        logger.error(f"Error in test_email_template: {str(e)}")
-        return f"<h1>Error</h1><p>{str(e)}</p>"
-
-# Route to manually trigger email sending (for testing)
-@app.route('/send_test_email')
-@login_required
-def send_test_email():
-    """Manual trigger for testing email sending"""
-    try:
-        # Create sample data
-        sample_data = [{
-            "from": "test@example.com",
-            "subject": "Test Email Action Item",
-            "body": "This is a test email to verify the mailing functionality works correctly. Visit https://example.com for more info.",
-            "action_items": "Test the email mailing system and verify delivery. Check https://example.com",
-            "calendar": False
-        }]
-        
-        email_sent = send_reply_email(sample_data, current_user.email)
-        
-        if email_sent:
-            return jsonify({
-                "success": True,
-                "message": f"Test email sent successfully to {current_user.email}"
-            })
-        else:
-            return jsonify({
-                "success": False,
-                "message": "Failed to send test email"
-            })
-            
-    except Exception as e:
-        logger.error(f"Error in send_test_email: {str(e)}")
-        return jsonify({
-            "success": False,
-            "message": str(e)
-        })
-    
-@app.route("/beta")
-def beta():
-    return render_template("beta.html")
+'''
