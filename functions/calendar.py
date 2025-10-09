@@ -1,6 +1,6 @@
 from app import current_user
 import requests
-from refresh_token import refresh
+from functions.refresh_token import refresh
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from flask import jsonify
