@@ -558,10 +558,6 @@ def remove_todo():
     
     return jsonify({"success": True})
 
-
-            
-
-
 @app.route('/mark_high_priority', methods=["POST"])
 @login_required
 def mark_high_priority():
@@ -642,7 +638,6 @@ def send():
 @app.route("/termsandprivacy")
 def terms_and_privacy():
     return render_template("termsandprivacy.html")
-
 
 @app.route('/summary')
 @login_required
@@ -1024,7 +1019,6 @@ def webhook_received():
 
 
 
-'''
 @app.route("/set_time", methods=["POST", "GET"])
 @login_required
 def set_time():
@@ -1070,7 +1064,7 @@ def set_time():
 def beta():
     return render_template("beta.html")
 
-
+'''
 @app.route('/unsubs')
 @login_required
 def all_unsubs():
