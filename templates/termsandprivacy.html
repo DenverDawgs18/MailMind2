@@ -19,17 +19,23 @@
     <body>
         {% if current_user.subscribed %}
             <div class="navbar">
-                <a href="{{url_for('index')}}">Home</a>
-                <a href="{{url_for('emails')}}">Inbox</a>
-                <a href="{{url_for('summary')}}">To-Do List</a>
-                <a href="{{url_for('set_time')}}">Set Time</a>
-                <a href="{{url_for('contact')}}">Contact</a>
+                <a href="{{url_for('index')}}" class="home">Home</a>
+                <div class="navwrap">
+                    <a href="{{url_for('emails')}}">Inbox</a>
+                    <a href="{{url_for('summary')}}">To-Do List</a>
+                    <a href="{{url_for('set_time')}}">Set Time</a>
+                    <a href="{{url_for('contact')}}">Contact</a>
+                </div>
+                <div class="empty">
+                </div>
             </div>
         {% else %}
             <div class="navbar">
                 <a href="{{url_for('index')}}">Home</a>
-                <a href="{{url_for('request_access')}}">Request Access</a>
-                <a href="{{url_for('login')}}">Log In</a>
+                <div class="navwrap">
+                    <a href="{{url_for('request_access')}}">Request Access</a>
+                    <a href="{{url_for('login')}}">Log In</a>
+                </div>
             </div>
         {% endif %}
         <div class="main-content">

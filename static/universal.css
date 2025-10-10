@@ -24,22 +24,27 @@ body {
 }
 .navbar{
     display: flex;
-    justify-content: start;
+    justify-content: space-between;
     gap: 50px;
     padding: 20px;
-    background-color: white;
+    background: linear-gradient(145deg, #514b7a, #5a5488);
     flex-wrap: wrap;
     position: sticky;
     top: 0;
     z-index: 5;
 }
-.navbar > a{
+.navbar > .navwrap > a, .navbar > a{
     text-decoration: none;
-    color: black;
+    color: white;
     font-size: 18px;
 }
-a:hover {
+.navwrap{
+    display: flex;
+    gap: 20px;
+}
+.navbar > .navwrap > a:hover, .navbar > a:hover, footer a:hover {
     color: #cc8400;
+    transform: translateY(-1px);
 }
 @media (max-width: 500px) {
     .navbar{
@@ -112,10 +117,7 @@ footer a::after {
     transform: translateX(-50%);
 }
 
-footer a:hover {
-    color: #cc8400;
-    transform: translateY(-1px);
-}
+
 
 footer a:hover::after {
     width: 100%;
