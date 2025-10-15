@@ -464,40 +464,6 @@ def send_email_summary_for_user(user: User) -> Dict[str, Any]:
             "user": user.email
         }
 
-def send_reply_email_for_user(action_items: List[Dict], user: User) -> bool:
-    """Send email using the reply function for a specific user"""
-    try:
-        # Generate HTML email content
-        html_content = generate_email_html(action_items, user.email)
-        
-        # Prepare email data
-        subject = f"Daily To Do List from MailMind for {datetime.now().strftime('%B %d, %Y')}"
-        
-        # Send email via reply function as HTML
-        result = reply(
-            user_email=user.email,
-            oauth_token=refresh(user),
-            to_email=user.email,
-            subject=subject,
-            body=html_content,
-            reply=False,
-            cc=None,
-            bcc=None,
-            provider=user.provider,
-            content_type='html'
-        )
-        
-        if result:
-            logger.info(f"Scheduled email sent successfully to {user.email}")
-            return True
-        else:
-            logger.error(f"Failed to send scheduled email to {user.email}")
-            return False
-            
-    except Exception as e:
-        logger.error(f"Error sending scheduled email to {user.email}: {str(e)}")
-        return False
-
 def check_and_send_emails():
     """Main function that runs every 15 minutes to check and send emails"""
     global flask_app
