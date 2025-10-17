@@ -56,9 +56,9 @@ import base64
 from google_auth_oauthlib.flow import Flow
 import markdown
 from flask_login import login_required, LoginManager, login_user, logout_user, current_user
-from models import User, Link, Unsubscribe, Todo
+from models import EmailAccount, Master, Link, Unsubscribe, Todo
 from functions.refresh_token import refresh
-from functions.users import get_last_login, get_user, update_last_login, create_user
+from functions.users import create_email, create_master
 from functions.linkify import linkify_text
 from functions.reply import reply
 from functions.get_one_action import get_an_action
@@ -70,7 +70,7 @@ import re
 import short_url
 import secrets
 import urllib.parse
-from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 import time
 import markdown    
 import copy
@@ -80,7 +80,7 @@ stripe.api_key = os.getenv("STRIPE_API_KEY")
 import logging 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-from flask_login import AnonymousUserMixin
+from flask_login import AnonymousUserMixin, login_user, logout_user
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
@@ -125,11 +125,65 @@ MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
 
 @login_manager.user_loader 
 def load_user(id):
-    return User.query.get(int(id))
+    return Master.query.get(int(id))
 
-@app.route("/login")
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    return render_template("login.html")
+    if request.method == "GET":
+        return render_template("login.html")
+    
+    if request.method == "POST":
+        data = request.get_json()
+        mode = data.get("mode")
+        username = data.get("username")
+        password = data.get("password")
+
+        # Validation
+        if not username or not password:
+            return jsonify({"success": False, "message": "All fields are required."}), 400
+
+        if mode == "register":
+            # Check if username exists
+            if Master.query.filter_by(username=username).first():
+                return jsonify({"success": False, "message": "Username already taken."}), 400
+            
+            # Validate password length
+            if len(password) < 6:
+                return jsonify({"success": False, "message": "Password must be at least 6 characters."}), 400
+            
+            try:
+                hashed_pw = generate_password_hash(password)
+                user = create_master(username, hashed_pw)
+                login_user(user)
+                return jsonify({"success": True, "message": "Account created successfully!", "redirect": url_for("portal")}), 201
+            except Exception as e:
+                return jsonify({"success": False, "message": "An error occurred during registration."}), 500
+
+        elif mode == "login":
+            user = Master.query.filter_by(username=username).first()
+            if user and check_password_hash(user.password, password):
+                login_user(user)
+                return jsonify({"success": True, "message": "Login successful!", "redirect": url_for("summary")}), 200
+            else:
+                return jsonify({"success": False, "message": "Invalid username or password."}), 401
+        
+        else:
+            return jsonify({"success": False, "message": "Invalid mode."}), 400
+
+@app.route("/check_username")
+def check_username():
+    username = request.args.get("username", "").strip()
+    if not username:
+        return jsonify({"exists": False}), 400
+    exists = Master.query.filter_by(username=username).first() is not None
+    return jsonify({"exists": exists}), 200
+
+@app.route("/portal")
+def portal():
+    if not current_user.subscribed:
+        return redirect(url_for("index"))
+    return render_template("portal.html", accounts=current_user.email_accounts)
+
 
 @app.route('/logout')
 @login_required
@@ -160,13 +214,13 @@ def code():
         temp_code = os.getenv("TEMP_CODE")
         print(code, temp_code)
         if str(code) == str(temp_code):
-            logger.info(f"TEMP CODE GRANTED TO {current_user.email}")
+            logger.info(f"TEMP CODE GRANTED TO {current_user.username}")
             current_user.subscribed = True
             current_user.temp = True
             db.session.commit()
             return render_template("code.html", message="Code valid. Subscription granted until launch. Click on To-Do List to load your to-do list!")
         elif str(code) == str(real_code) and str(real_code) != "DISABLED":
-            logger.info(f"CODE GRANTED TO {current_user.email}")
+            logger.info(f"CODE GRANTED TO {current_user.username}")
             current_user.subscribed = True
             db.session.commit()
             return render_template("code.html", message="Code valid. Subscription granted. Click on To-Do List to load your to-do list!")
@@ -210,17 +264,16 @@ def google_callback():
         headers={'Authorization': f"Bearer {credentials.token}"}
     )
     user_info = response.json()
-    session['user_email'] = user_info.get('email')
-    user = User.query.filter_by(email=session['user_email']).first()
+    user_email = user_info.get('email')
+    user = EmailAccount.query.filter_by(email=user_email).first()
     if not user:
-        user = create_user(session['user_email'], encrypt_token(credentials.refresh_token), provider="google")
+        user = create_email(user_email, encrypt_token(credentials.refresh_token), provider="google", master=current_user)
     else:
         user.oauth_token = encrypt_token(credentials.refresh_token)
         user.provider = "google"
     db.session.commit()
-    login_user(user, remember = True)
-    if user.subscribed:
-        if user.time and user.timezone:
+    if current_user.subscribed:
+        if current_user.time and current_user.timezone:
             return redirect(url_for("summary"))
         else:
             return redirect(url_for("set_time"))
@@ -298,22 +351,21 @@ def microsoft_callback():
         return f"Failed to get user info: {user_response.text}", 400
     
     user_info = user_response.json()
-    session['user_email'] = user_info.get('mail') or user_info.get('userPrincipalName')
+    user_email = user_info.get('mail') or user_info.get('userPrincipalName')
     
     # Handle user creation/update (similar to Google implementation)
-    user = User.query.filter_by(email=session['user_email']).first()
+    user = EmailAccount.query.filter_by(email=user_email).first()
     if not user:
-        user = create_user(session['user_email'], encrypt_token(token_info.get("refresh_token")), provider="microsoft")
+        user = create_email(user_email, encrypt_token(token_info.get("refresh_token")), provider="microsoft", master=current_user)
     else:
         user.oauth_token = encrypt_token(token_info.get("refresh_token"))
     
     db.session.commit()
-    login_user(user, remember=True)
     
     # Clean up session
     session.pop('oauth_state', None)
     
-    if user.time and user.timezone:
+    if current_user.time and current_user.timezone:
         return redirect(url_for("summary"))
     else:
         return redirect(url_for("set_time"))
@@ -372,7 +424,7 @@ def contact():
 def emails():
     if not current_user.subscribed:
         return render_template("subscribe.html")
-    access_token = refresh(current_user)
+
     
     # Handle refresh case - where we're adding new emails to existing ones
     if session.get('final_emails', False):
@@ -411,31 +463,32 @@ def emails():
         
         # Get new emails since last load
         print("Calling get_emails for refresh...")
-        new_emails = get_emails(current_user.provider, current_user.email, access_token, 
-                             after_date=after_date, since_time=since_time)
-        
-        print(f"Found {len(new_emails)} new emails in refresh")
-        
-        # Process unsubscribe links for new emails
-        if not SIMPLE:
-            process_unsubscribe_links(new_emails, current_user)
-        
-        # Add action items placeholder and merge with existing emails
         final_emails = []
-        for email in new_emails:
-            email["action_items"] = "Generating ..."
-            email["calendar"] = False
-            final_emails.append(email)
+        for email_account in current_user.email_accounts:
+            new_emails = get_emails(email_account.provider, email_account.email, refresh(email_account), 
+                                after_date=after_date, since_time=since_time)
             
-        emails = session.get("final_emails")
-        for email in emails:
-            if "meeting" in email["action_items"].lower() or "conference call" in email["action_items"].lower() or "calendar" in email["action_items"].lower():
-                email["calendar"] = True
-            else:
+            print(f"Found {len(new_emails)} new emails in refresh for {current_user}'s email: {email_account.email}")
+            
+            # Process unsubscribe links for new emails
+            if not SIMPLE:
+                process_unsubscribe_links(new_emails, email_account)
+            
+            # Add action items placeholder and merge with existing emails
+            for email in new_emails:
+                email["action_items"] = "Generating ..."
                 email["calendar"] = False
-            final_emails.append(email)
+                final_emails.append(email)
+                
+            emails = session.get("final_emails")
+            for email in emails:
+                if "meeting" in email["action_items"].lower() or "conference call" in email["action_items"].lower() or "calendar" in email["action_items"].lower():
+                    email["calendar"] = True
+                else:
+                    email["calendar"] = False
+                final_emails.append(email)
+                
             
-        
         session['final_emails'] = final_emails
         current_datetime = datetime.now(timezone.utc)
         session['last_load'] = current_datetime.isoformat()
@@ -447,29 +500,24 @@ def emails():
 
     # Get emails from exactly 24 hours ago (no parameters = use default 24h window)
     # This will fetch using an IMAP date filter 2 days back, then filter precisely in Python
-    emails = get_emails(current_user.provider, current_user.email, access_token)
-    
-    # Reverse order for newest first
-    emails = list(reversed(emails))
-    
-    # Process unsubscribe links
-    if not SIMPLE:
-        process_unsubscribe_links(emails, current_user)
-    
-    # Sort by priority and add action items placeholder
     final_emails = []
-    high_priority = [email for email in emails if email['from'] in current_user.high_priority] 
+    for email_account in current_user.email_accounts:
+        emails = get_emails(email_account.provider, email_account.email, refresh(email_account))
     
-    for email in high_priority:
-        email["action_items"] = "Generating ..."
-        final_emails.append(email)
+        # Reverse order for newest first
+        emails = list(reversed(emails))
         
-    for email in emails: 
-        if email not in final_emails: 
-            email["action_items"] = "Generating ..."
-            final_emails.append(email)
+        # Process unsubscribe links
+        if not SIMPLE:
+            process_unsubscribe_links(emails, current_user)
+
             
-    session["final_emails"] = final_emails
+        for email in emails: 
+            if email not in final_emails: 
+                email["action_items"] = "Generating ..."
+                final_emails.append(email)
+                
+        session["final_emails"] = final_emails
             
     return render_template('emails.html', emails=final_emails)
 
@@ -523,7 +571,7 @@ def get_one_action():
         calendar = True
     final_emails = session.get("final_emails")
     if action.lower() != "no action." and action.lower() != "no action" and action != "" and action is not None:
-        new_todo = Todo(user=current_user.id, item=action, done=False)
+        new_todo = Todo(master=current_user.id, item=action, done=False)
         db.session.add(new_todo)
         db.session.commit()
         todo_emails = session.get("todo_emails", [])
@@ -558,39 +606,8 @@ def remove_todo():
     
     return jsonify({"success": True})
 
-@app.route('/mark_high_priority', methods=["POST"])
-@login_required
-def mark_high_priority():
-    data = request.get_json()
-    sender = data.get("sender")
-    if not sender:
-        return jsonify({'success': False})
-    if current_user.high_priority is None:
-            current_user.high_priority = []
-    if sender not in current_user.high_priority:
-        updated_list = current_user.high_priority + [sender]  
-        current_user.high_priority = updated_list 
-        db.session.commit()
 
-    print(current_user.high_priority) 
 
-    return jsonify({'success': True})
-
-@app.route('/unmark_high_priority', methods=["POST"])
-@login_required 
-def unmark_high_priority():
-    data = request.get_json()
-    sender = data.get('sender')
-    if not sender:
-        return jsonify({'success': False})
-    if sender in current_user.high_priority:
-        updated_list = [s for s in current_user.high_priority if s != sender]  
-        current_user.high_priority = updated_list  
-        db.session.commit()
-
-    print(current_user.high_priority) 
-
-    return jsonify({'success': True})
 
 @app.route('/reply', methods=["POST"])
 @login_required
@@ -645,7 +662,6 @@ def summary():
     if not current_user.subscribed:
         return render_template("subscribe.html")
     
-    access_token = refresh(current_user)
     
     # Handle refresh case - where we're adding new emails to existing ones
     if session.get('final_emails', False):
@@ -684,72 +700,69 @@ def summary():
         
         # Get new emails since last load
         print("Calling get_emails for refresh in summary...")
-        new_emails = get_emails(current_user.provider, current_user.email, access_token, 
-                             after_date=after_date, since_time=since_time)
-        
-        print(f"Found {len(new_emails)} new emails in refresh")
-        
-        # Process unsubscribe links for new emails
-        if not SIMPLE:
-            process_unsubscribe_links(new_emails, current_user)
-        
-        # Add action items placeholder and merge with existing emails
         final_emails = []
-        for email in new_emails:
-            email["action_items"] = "Generating ..."
-            email["calendar"] = False
-            final_emails.append(email)
+        for email_account in current_user.email_accounts:
+            new_emails = get_emails(email_account.provider, email_account.email, refresh(email_account), 
+                                after_date=after_date, since_time=since_time)
             
-        emails = session.get("final_emails")
-        for email in emails:
-            # Check if action item already has calendar keywords
-            if email.get("action_items") and isinstance(email["action_items"], str):
-                if any(keyword in email["action_items"].lower() for keyword in ["meeting", "conference call", "calendar", "appointment", "call"]):
-                    email["calendar"] = True
+            print(f"Found {len(new_emails)} new emails in refresh")
+            
+            # Process unsubscribe links for new emails
+            if not SIMPLE:
+                process_unsubscribe_links(new_emails, email_account)
+            
+            # Add action items placeholder and merge with existing emails
+
+            for email in new_emails:
+                email["action_items"] = "Generating ..."
+                email["calendar"] = False
+                final_emails.append(email)
+                
+            emails = session.get("final_emails")
+            for email in emails:
+                # Check if action item already has calendar keywords
+                if email.get("action_items") and isinstance(email["action_items"], str):
+                    if any(keyword in email["action_items"].lower() for keyword in ["meeting", "conference call", "calendar", "appointment", "call"]):
+                        email["calendar"] = True
+                    else:
+                        email["calendar"] = False
                 else:
                     email["calendar"] = False
-            else:
-                email["calendar"] = False
-            final_emails.append(email)
-            
-        session['final_emails'] = final_emails
-        current_datetime = datetime.now(timezone.utc)
-        session['last_load'] = current_datetime.isoformat()
+                final_emails.append(email)
+                
+            session['final_emails'] = final_emails
+            current_datetime = datetime.now(timezone.utc)
+            session['last_load'] = current_datetime.isoformat()
         
     else:
         # Initial load - get emails from the last 24 hours
         current_datetime = datetime.now(timezone.utc)
         session['last_load'] = current_datetime.isoformat()
 
-        # Get emails from exactly 24 hours ago (no parameters = use default 24h window)
-        emails = get_emails(current_user.provider, current_user.email, access_token)
-        
-        # Reverse order for newest first
-        emails = list(reversed(emails))
-        
-        # Process unsubscribe links
-        if not SIMPLE:
-            process_unsubscribe_links(emails, current_user)
-        
-        # Sort by priority and add action items placeholder
         final_emails = []
-        high_priority = [email for email in emails if email['from'] in current_user.high_priority] 
-        
-        for email in high_priority:
-            email["action_items"] = "Generating ..."
-            email["calendar"] = False
-            final_emails.append(email)
+        # Get emails from exactly 24 hours ago (no parameters = use default 24h window)
+        for email_account in current_user.email_accounts:
+            emails = get_emails(email_account.provider, email_account.email, refresh(email_account))
             
-        for email in emails: 
-            if email not in final_emails: 
-                email["action_items"] = "Generating ..."
-                email["calendar"] = False
-                final_emails.append(email)
+            # Reverse order for newest first
+            emails = list(reversed(emails))
+            
+            # Process unsubscribe links
+            if not SIMPLE:
+                process_unsubscribe_links(emails, email_account)
+
+            
                 
-        session["final_emails"] = final_emails
-    
+            for email in emails: 
+                if email not in final_emails: 
+                    email["action_items"] = "Generating ..."
+                    email["calendar"] = False
+                    final_emails.append(email)
+                    
+            session["final_emails"] = final_emails
+        
     # Get existing todo emails from database
-    todos = Todo.query.filter_by(user=current_user.id, done=False).all()
+    todos = Todo.query.filter_by(master=current_user.id, done=False).all()
     
     # Create a map of existing todos by email content for faster lookup
     existing_todos = {}
@@ -838,11 +851,11 @@ def generate_pending_actions():
             # Add to database if it's a real action
             if action and action.lower() not in ["no action.", "no action", "no action required.", ""]:
                 # Check if this action already exists for this user
-                existing_todo = Todo.query.filter_by(user=current_user.id, item=action, done=False).first()
+                existing_todo = Todo.query.filter_by(master=current_user.id, item=action, done=False).first()
                 
                 if not existing_todo:
                     # Save to database
-                    new_todo = Todo(user=current_user.id, item=action, done=False)
+                    new_todo = Todo(master=current_user.id, item=action, done=False)
                     db.session.add(new_todo)
                     db.session.commit()
                     generated_count += 1
@@ -892,8 +905,8 @@ def create_checkout_session():
         if not current_user.stripe_customer_id:
             # Create new Stripe customer
             customer = stripe.Customer.create(
-                email=current_user.email,
-                name=current_user.name if hasattr(current_user, 'name') else None,
+                email=current_user.email_accounts[0].email,
+                name=current_user.username
             )
             # Save customer ID to user
             current_user.stripe_customer_id = customer.id
@@ -968,7 +981,7 @@ def webhook_received():
     # Helper function to find user by Stripe customer ID
     def find_user_by_customer_id(customer_id):
         print(customer_id)
-        return User.query.filter_by(stripe_customer_id=customer_id).first()
+        return Master.query.filter_by(stripe_customer_id=customer_id).first()
 
     if event_type == 'checkout.session.completed':
         print('🔔 Payment succeeded!')
@@ -977,7 +990,7 @@ def webhook_received():
         if user:
             user.subscribed = True
             db.session.commit()
-            print(f"User {user.email} subscription activated")
+            print(f"User {user.username} subscription activated")
 
     elif event_type == 'customer.subscription.trial_will_end':
         print('Subscription trial will end')

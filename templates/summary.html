@@ -92,31 +92,6 @@
                                     <p class="etext">{{email.body | linkify_text | safe}}</p>
                                 {% endif %}
                             </div>
-                            <div class="buttons">
-                                <button class="action reply">
-                                    Reply
-                                </button>
-                                <button class="action mark" data-sender="{{email.from}}" add="true">
-                                    {% if email.from in current_user.high_priority %}
-                                        Unmark Sender as High Priority
-                                    {% else %}
-                                        Mark Sender as High Priority
-                                    {% endif %}
-                                </button>
-                            </div>
-                            <div id="replydiv" class="replywrap replydiv">
-                                <h1 class="replyheader">Reply</h1>
-                                <form id="replyform" class="emailform">
-                                    <label for="cc" class="replylabel">CC: (please enter as list of emails seperated by commas)</label>
-                                    <input type="text" id="cc" name="cc" class="cc replyin">
-                                    <label for="bcc" class="replylabel">BCC: (please enter as list of emails seperated by commas)</label>
-                                    <input type="text" id="bcc" name="bcc" class="bcc replyin">    
-                                    <label for="body" class="replylabel">Body:</label> 
-                                    <input type="text" id="body" name="body" class="body replyin">          
-                                    <button type="submit" class="action replysubmit" id="replysubmit"
-                                    data-from="{{email.from}}" data-subject="{{email.subject}}">Submit</button>
-                                </form>
-                            </div>
                         </div>
                     {% endif %}
                 {% endfor %}

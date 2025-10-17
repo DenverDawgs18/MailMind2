@@ -81,16 +81,6 @@
                                 <p class="etext">{{email.body | linkify_text | safe}}</p>
                             {% endif %}
                         </div>
-                        <div class="buttons">
-                            <button class="action reply">
-                                Reply
-                            </button>
-                                {% if email.from in current_user.high_priority %}
-                                    <button class="action mark" data-sender="{{email.from}}" add="false">Unmark Sender as High Priority </button>
-                                {% else %}
-                                    <button class="action mark" data-sender="{{email.from}}" add="true">Mark Sender as High Priority </button>
-                                {% endif %}
-                        </div>
                         <div id="replydiv" class="replywrap replydiv">
                             <h1 class="replyheader">Reply</h1>
                             <form id="replyform" class="emailform">
@@ -112,22 +102,6 @@
     <footer>
         <a href="{{url_for('terms_and_privacy')}}">Terms of Use and Privacy Policy</a>
     </footer>
-    <dialog class="send">
-        <form id="cform" class="emailform">
-            <label for="cto" class="clabel">To:</label>
-            <input type="text" name="cto" id="cto" class="replyin">
-            <label for="csubject" class="clabel">Subject:</label>
-            <input type="text" name="csubject" id="csubject" class="replyin">
-            <label for="ccc" class="clabel">CC: (please enter as list of emails seperated by commas)</label>
-            <input type="text" id="ccc" name="ccc" class="replyin">
-            <label for="cbcc" class="clabel">BCC: (please enter as list of emails seperated by commas)</label>
-            <input type="text" id="cbcc" name="cbcc" class="replyin">    
-            <label for="cbody" class="clabel">Body:</label> 
-            <input type="text" id="cbody" name="cbody" class="replyin">          
-            <button type="submit" class="action" id="csubmit">Submit</button>
-        </form>
-    </dialog>
-    <button class="compose action">Compose</button>
     <script src="../static/emails.js"></script>
 </body>
 </html>

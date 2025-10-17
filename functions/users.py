@@ -1,25 +1,27 @@
-from app import User, db
+from app import EmailAccount, Master, db
 
-def create_user(email, oauth_token, provider):
-    user = User(
+
+def create_email(email, oauth_token, provider, master):
+    email_account = EmailAccount(
         email = email,
         oauth_token = oauth_token,
-        provider=provider,
-        subscribed = False,
-        time = None, 
-        timezone = None
+        provider = provider,
+        master = master,
+        
     )
-    db.session.add(user)
+    db.session.add(email_account)
     db.session.commit()
-    return user
-def update_last_login(email):
-    user = User.query.filter_by(email=email).first()
-    if user:
-        db.session.commit()
+    return email_account
 
-def get_user(email):
-    return User.query.filter_by(email=email).first()
-
-def get_last_login(email):
-    user = get_user(email)
-    return user.last_login_token
+def create_master(username, password):
+    new_master = Master(
+        username = username,
+        password = password, 
+        time = None, 
+        timezone = None,
+        subscribed= False,
+        
+    )
+    db.session.add(new_master)
+    db.session.commit()
+    return new_master

@@ -1,62 +1,62 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="../static/universal.css">
-    <link rel="stylesheet" href="../static/login.css">
-    <link rel="icon" type="image/x-icon" href="../static/imgs/MailMindTempLogo.ico">
-    <script>
-        !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init Ie Ts Ms Ee Es Rs capture Ge calculateEventProperties Os register register_once register_for_session unregister unregister_for_session js getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey canRenderSurveyAsync identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty Ds Fs createPersonProfile Ls Ps opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing Cs debug I As getPageViewId captureTraceFeedback captureTraceMetric".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
-        posthog.init('phc_yw3LGOFRhoDLPDGWNyyvDd2oHM3ezBGeXMn6XeyfgeJ', {
-            api_host: 'https://us.i.posthog.com',
-            defaults: '2025-05-24',
-            person_profiles: 'always',
-        })
-    </script>
-    <title>Log In</title>
-</head>
-<body>
-    {% if current_user.subscribed %}
-        <div class="navbar">
-            <a href="{{url_for('index')}}" class="home">Home</a>
-            <div class="navwrap">
-                <a href="{{url_for('emails')}}">Inbox</a>
-                <a href="{{url_for('summary')}}">To-Do List</a>
-                <a href="{{url_for('set_time')}}">Set Time</a>
-                <a href="{{url_for('contact')}}">Contact</a>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Login</title>
+        <link rel="stylesheet" href="../static/universal.css">
+        <link rel="stylesheet" href="../static/login.css">
+        <link rel="icon" type="image/x-icon" href="../static/imgs/MailMindTempLogo.ico">
+    </head>
+    <body>
+        {% if current_user.subscribed %}
+            <div class="navbar">
+                <a href="{{url_for('index')}}" class="home">Home</a>
+                <div class="navwrap">
+                    <a href="{{url_for('emails')}}">Inbox</a>
+                    <a href="{{url_for('summary')}}">To-Do List</a>
+                    <a href="{{url_for('set_time')}}">Set Time</a>
+                    <a href="{{url_for('contact')}}">Contact</a>
+                </div>
+                <div class="empty">
+                </div>
             </div>
-            <div class="empty">
+        {% else %}
+            <div class="navbar">
+                <a href="{{url_for('index')}}">Home</a>
+                <div class="navwrap">
+                    <a href="{{url_for('request_access')}}">Request Access</a>
+                    <a href="{{url_for('login')}}">Log In</a>
+                </div>
+            </div>
+        {% endif %}
+        <div class="main-content">
+            <div class="container">
+            <form id="auth-form">
+                <h1 id="form-title">Login</h1>
+                <input type="hidden" id="mode" value="login">
+
+                <input type="text" id="username" placeholder="Username" required>
+                <small id="username-feedback"></small>
+
+                <input type="password" id="password" placeholder="Password" required>
+
+                <button type="submit" id="submit-btn">Login</button>
+
+                <p class="toggle-text">
+                    Don't have an account?
+                    <a href="#" id="toggle-link" onclick="toggleMode(event)">Register here</a>
+                </p>
+
+                <div id="message-box"></div>
+            </form>
             </div>
         </div>
-    {% else %}
-        <div class="navbar">
-            <a href="{{url_for('index')}}">Home</a>
-            <div class="navwrap">
-                <a href="{{url_for('request_access')}}">Request Access</a>
-                <a href="{{url_for('login')}}">Log In</a>
-            </div>
-        </div>
-    {% endif %}
-    <div class="main-content">
-        <div class="container">
-            <h3 class="if">We are currently in the verification process with Google. At this current moment,
-                if you click log in with Google, you'll get a warning and to bypass it, simply click advanced and proceed
-                to MailMind. 
-            </h3>
-            {% if current_user.subscribed %}
-                <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Log In With Google</a></h1>
-                <h1 class="login"><a class="loginlink" href="{{url_for('microsoft_login')}}">Log In With Microsoft</a></h1>
-            {% else %}
-                <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Sign In With Google</a></h1>
-                <h1 class="login"><a class="loginlink" href="{{url_for('microsoft_login')}}">Sign In With Microsoft</a></h1>
-                <h3 class="if">You must log in to access the rest of the site (including the subscribe page). 
-                    Choose the email you'd like to use for the site (multi-inbox support soon!) </h3> 
-            {% endif %}
-        </div>
-    </div>
-    <footer>
-        <a href="{{url_for('terms_and_privacy')}}">Terms of Use and Privacy Policy</a>
-    </footer>
-</body>
+
+        <footer>
+            <a href="{{url_for('terms_and_privacy')}}">Terms of Use and Privacy Policy</a>
+        </footer>
+
+        <script src="../static/login.js"></script>
+    </body>
 </html>

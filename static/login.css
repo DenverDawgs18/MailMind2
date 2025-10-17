@@ -1,5 +1,3 @@
-
-
 .container {
     display: flex;
     flex-direction: column;
@@ -13,65 +11,133 @@
     gap: 30px;
 }
 
-.login {
-    font-size: 32px;
+#message-box {
+    padding: 20px 30px;
+    border-radius: 16px;
+    border: 2px solid transparent;
+    color: #f0f0f0;
+    font-size: 18px;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    animation: slideDown 0.5s ease-out;
+    display: none;
+    transition: all 0.3s ease;
+    min-height: 24px;
+}
+
+#message-box.show {
+    display: block;
+}
+
+#message-box.error {
+    background: rgba(255, 100, 100, 0.15);
+    border-color: rgba(255, 100, 100, 0.3);
+    box-shadow: 0 4px 12px rgba(255, 100, 100, 0.2);
+}
+
+#message-box.success {
+    background: rgba(100, 200, 100, 0.15);
+    border-color: rgba(100, 200, 100, 0.3);
+    box-shadow: 0 4px 12px rgba(100, 200, 100, 0.2);
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+form {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 50px;
+    border-radius: 20px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    width: 100%;
+    max-width: 500px;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+    position: relative;
+}
+
+form h1 {
+    font-size: 28px;
     font-weight: 600;
-    margin-bottom: 40px;
+    margin: 0;
     color: #e6d7a3;
     text-transform: uppercase;
     letter-spacing: 1px;
+    margin-bottom: 10px;
 }
 
-.loginlink {
-    display: inline-block;
-    padding: 20px 40px;
+input[type="text"],
+input[type="password"],
+input[type="hidden"] {
+    padding: 18px 24px;
+    font-size: 18px;
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    text-align: center;
+    font-weight: 500;
+    letter-spacing: 2px;
+    transition: all 0.3s ease;
+    outline: none;
+    backdrop-filter: blur(5px);
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus {
+    border-color: #cc8400;
+    background: rgba(204, 132, 0, 0.1);
+    box-shadow: 0 0 20px rgba(204, 132, 0, 0.3);
+    transform: translateY(-2px);
+}
+
+input[type="text"]::placeholder,
+input[type="password"]::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 1px;
+}
+
+button[type="submit"] {
+    padding: 18px 40px;
     background: linear-gradient(145deg, #514b7a, #5a5488);
     border: 3px solid black;
     border-radius: 50px;
-    box-shadow: 5px 5px darkorange, 8px 8px 15px rgba(0, 0, 0, 0.3);
+    box-shadow: 5px 5px #ff8c00, 8px 8px 15px rgba(0, 0, 0, 0.3);
     color: white;
-    text-decoration: none;
     font-weight: 600;
     font-size: 18px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    cursor: pointer;
     transition: all 0.3s ease;
     position: relative;
+    overflow: hidden;
 }
 
-.loginlink:hover {
+button[type="submit"]:hover {
     transform: translateY(-3px);
-    box-shadow: 7px 7px darkorange, 10px 10px 20px rgba(0, 0, 0, 0.4);
+    box-shadow: 7px 7px #ff8c00, 10px 10px 20px rgba(0, 0, 0, 0.4);
     background: linear-gradient(145deg, #5a5488, #514b7a);
     color: #e6d7a3;
 }
 
-.loginlink:active {
+button[type="submit"]:active {
     transform: translateY(-1px);
-    box-shadow: 3px 3px darkorange, 5px 5px 10px rgba(0, 0, 0, 0.3);
+    box-shadow: 3px 3px #ff8c00, 5px 5px 10px rgba(0, 0, 0, 0.3);
 }
 
-.if {
-    background: rgba(204, 132, 0, 0.15);
-    padding: 24px;
-    border-radius: 16px;
-    border: 2px solid rgba(204, 132, 0, 0.3);
-    color: #f0f0f0;
-    line-height: 1.6;
-    font-size: 16px;
-    font-weight: 400;
-    max-width: 600px;
-    margin: 0 auto;
-    box-shadow: 0 4px 12px rgba(204, 132, 0, 0.2);
-}
-
-/* Add some visual interest with a subtle animation */
-@keyframes float {
-    0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-10px); }
-}
-
-.loginlink::before {
+button[type="submit"]::before {
     content: '';
     position: absolute;
     top: -5px;
@@ -85,37 +151,76 @@
     transition: opacity 0.3s ease;
 }
 
-.loginlink:hover::before {
+button[type="submit"]:hover::before {
     opacity: 0.3;
     animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+}
+
+.toggle-text {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+    margin: 0;
+    transition: all 0.3s ease;
+}
+
+.toggle-text a {
+    color: #e6d7a3;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.toggle-text a:hover {
+    color: #cc8400;
+    text-decoration: underline;
+}
+
+small {
+    color: rgba(204, 132, 0, 0.8);
+    font-size: 12px;
+    margin-top: -10px;
 }
 
 /* Responsive design */
 @media (max-width: 600px) {
     .container {
-        padding: 30px 20px;
         gap: 20px;
     }
-    
-    .login {
-        font-size: 24px;
-        margin-bottom: 30px;
+
+    form {
+        padding: 30px 20px;
+        gap: 25px;
     }
-    
-    .loginlink {
+
+    form h1 {
+        font-size: 22px;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+        padding: 16px 20px;
+        font-size: 16px;
+    }
+
+    button[type="submit"] {
         padding: 16px 32px;
         font-size: 16px;
-        border-radius: 40px;
     }
-    
-    .if {
-        padding: 20px;
-        font-size: 14px;
-        margin: 0 10px;
+
+    #message-box {
+        padding: 16px 24px;
+        font-size: 16px;
+        margin: 0 10px 20px 10px;
     }
 }
 
-/* Add a subtle background pattern for extra visual interest */
+/* Add subtle background pattern */
 body::before {
     content: '';
     position: fixed;
@@ -128,4 +233,23 @@ body::before {
         radial-gradient(circle at 80% 20%, rgba(106, 90, 205, 0.1) 0%, transparent 50%);
     pointer-events: none;
     z-index: -1;
+}
+
+/* Add a subtle glow effect to the form */
+form::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    background: linear-gradient(45deg, rgba(204, 132, 0, 0.3), rgba(106, 90, 205, 0.3));
+    border-radius: 22px;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+form:hover::after {
+    opacity: 0.5;
 }

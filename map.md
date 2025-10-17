@@ -16,3 +16,10 @@ On the user's end, it looks like they sign in with google / outlook and then get
 
 Once we get this working can talk other steps like seperate tabs, how to handle it with the mailing lists, etc. 
 Have to get MVP working with this idea first
+
+
+Known problems I haven't thought through fully:
+Calendar
+High priority
+Reply / Send
+Stripe Email
