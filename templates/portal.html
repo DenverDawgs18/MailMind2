@@ -46,7 +46,10 @@
             </h3>
             <h1>Current Accounts:</h1>
             {% for account in current_user.email_accounts %}
-                <p>{{account}}</p>
+                <div class="acctwrap">
+                    <p>{{account}}</p>
+                    <h1 class="login" id="deleteacct"><p class="loginlink">Delete Account</p></h1>
+                </div>
             {% endfor %}
             <h1 class="add">Add an account by signing in</h1>
             <h1 class="login"><a class="loginlink" href="{{url_for('google_login')}}">Log In With Google</a></h1>

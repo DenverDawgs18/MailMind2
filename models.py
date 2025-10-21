@@ -26,7 +26,7 @@ class EmailAccount(db.Model):
     master = db.relationship('Master', backref=db.backref('email_accounts', cascade='all, delete-orphan'))
 
     def __repr__(self):
-        return f"<Email {self.email}>"
+        return f"{self.email}"
 
     
 class Link(db.Model):
