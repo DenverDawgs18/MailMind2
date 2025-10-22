@@ -1,7 +1,6 @@
 To Do List:
 
-Portal to nav
 Delete email accounts
 Tab view
-Time
-Index
+Calendar
+Email items to self w index

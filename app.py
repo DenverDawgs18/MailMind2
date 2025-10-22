@@ -461,7 +461,7 @@ def emails():
         # Get new emails since last load
         print("Calling get_emails for refresh...")
         final_emails = session.get("final_emails", [])
-        for email_account in current_user.email_accounts:
+        for index, email_account in current_user.email_accounts:
             new_emails = get_emails(email_account.provider, email_account.email, refresh(email_account), 
                                 after_date=after_date, since_time=since_time)
             
@@ -471,6 +471,7 @@ def emails():
             for email in new_emails:
                 email["action_items"] = "Generating ..."
                 email["calendar"] = False
+                email["index"] = index
                 final_emails.append(email)
 
             for email in final_emails:
@@ -506,9 +507,10 @@ def emails():
         # Process unsubscribe links
 
             
-        for email in emails: 
+        for index, email in enumerate(emails): 
             if email not in final_emails: 
                 email["action_items"] = "Generating ..."
+                email["index"] = index
                 final_emails.append(email)
                 
         session["final_emails"] = final_emails
@@ -654,7 +656,7 @@ def summary():
         # Get new emails since last load
         print("Calling get_emails for refresh in summary...")
         final_emails = session.get("final_emails", [])
-        for email_account in current_user.email_accounts:
+        for index, email_account in enumerate(current_user.email_accounts):
             new_emails = get_emails(email_account.provider, email_account.email, refresh(email_account), 
                                 after_date=after_date, since_time=since_time)
             
@@ -665,6 +667,7 @@ def summary():
             for email in new_emails:
                 email["action_items"] = "Generating ..."
                 email["calendar"] = False
+                email["index"] = index
                 final_emails.append(email)
 
             for email in final_emails:
@@ -688,7 +691,7 @@ def summary():
 
         final_emails = []
         # Get emails from exactly 24 hours ago (no parameters = use default 24h window)
-        for email_account in current_user.email_accounts:
+        for index, email_account in enumerate(current_user.email_accounts):
             emails = get_emails(email_account.provider, email_account.email, refresh(email_account))
             
             # Reverse order for newest first
@@ -702,6 +705,7 @@ def summary():
                 if email not in final_emails: 
                     email["action_items"] = "Generating ..."
                     email["calendar"] = False
+                    email["index"] = index
                     final_emails.append(email)
                     
             session["final_emails"] = final_emails
