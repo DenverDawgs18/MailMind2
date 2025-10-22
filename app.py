@@ -460,7 +460,7 @@ def emails():
         
         # Get new emails since last load
         print("Calling get_emails for refresh...")
-        final_emails = []
+        final_emails = session.get("final_emails", [])
         for email_account in current_user.email_accounts:
             new_emails = get_emails(email_account.provider, email_account.email, refresh(email_account), 
                                 after_date=after_date, since_time=since_time)
@@ -468,19 +468,20 @@ def emails():
             print(f"Found {len(new_emails)} new emails in refresh for {current_user}'s email: {email_account.email}")
             
             
-            # Add action items placeholder and merge with existing emails
             for email in new_emails:
                 email["action_items"] = "Generating ..."
                 email["calendar"] = False
                 final_emails.append(email)
-                
-            emails = session.get("final_emails")
-            for email in emails:
-                if "meeting" in email["action_items"].lower() or "conference call" in email["action_items"].lower() or "calendar" in email["action_items"].lower():
-                    email["calendar"] = True
+
+            for email in final_emails:
+                # Check if action item already has calendar keywords
+                if email.get("action_items") and isinstance(email["action_items"], str):
+                    if any(keyword in email["action_items"].lower() for keyword in ["meeting", "conference call", "calendar", "appointment", "call"]):
+                        email["calendar"] = True
+                    else:
+                        email["calendar"] = False
                 else:
                     email["calendar"] = False
-                final_emails.append(email)
                 
             
         session['final_emails'] = final_emails
@@ -501,6 +502,7 @@ def emails():
         # Reverse order for newest first
         emails = list(reversed(emails))
         
+        print("Length: ", len(emails))
         # Process unsubscribe links
 
             
@@ -651,7 +653,7 @@ def summary():
         
         # Get new emails since last load
         print("Calling get_emails for refresh in summary...")
-        final_emails = []
+        final_emails = session.get("final_emails", [])
         for email_account in current_user.email_accounts:
             new_emails = get_emails(email_account.provider, email_account.email, refresh(email_account), 
                                 after_date=after_date, since_time=since_time)
@@ -659,15 +661,13 @@ def summary():
             print(f"Found {len(new_emails)} new emails in refresh")
             
             
-            # Add action items placeholder and merge with existing emails
 
             for email in new_emails:
                 email["action_items"] = "Generating ..."
                 email["calendar"] = False
                 final_emails.append(email)
-                
-            emails = session.get("final_emails")
-            for email in emails:
+
+            for email in final_emails:
                 # Check if action item already has calendar keywords
                 if email.get("action_items") and isinstance(email["action_items"], str):
                     if any(keyword in email["action_items"].lower() for keyword in ["meeting", "conference call", "calendar", "appointment", "call"]):
@@ -676,7 +676,6 @@ def summary():
                         email["calendar"] = False
                 else:
                     email["calendar"] = False
-                final_emails.append(email)
                 
             session['final_emails'] = final_emails
             current_datetime = datetime.now(timezone.utc)
@@ -707,9 +706,10 @@ def summary():
                     
             session["final_emails"] = final_emails
         
+    print("out of if block")
     # Get existing todo emails from database
     todos = Todo.query.filter_by(master=current_user.id, done=False).all()
-    
+    print(len(todos))
     # Create a map of existing todos by email content for faster lookup
     existing_todos = {}
     for todo in todos:
