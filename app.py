@@ -182,6 +182,27 @@ def portal():
     return render_template("portal.html", accounts=current_user.email_accounts)
 
 
+@app.route("/delete_account", methods=["GET", "POST"])
+def delete_account():
+
+    try:
+        data = request.get_json()
+        id = data["id"]
+        account = EmailAccount.query.filter_by(id=id).first()
+        print(account)
+        db.session.delete(account)
+        db.session.commit()
+        return jsonify({"success": True}, 200)
+    
+    except Exception as e:
+        print(e)
+        return jsonify({"success": False}, 200)
+    
+
+
+
+
+
 @app.route('/logout')
 @login_required
 def logout():
@@ -766,6 +787,7 @@ def summary():
     
     return render_template('summary.html', emails=final_emails, text=text, 
                          pending_count=len(emails_needing_processing))
+
 
 
 @app.route('/generate_pending_actions', methods=['POST'])

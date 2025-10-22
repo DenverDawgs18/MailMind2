@@ -49,7 +49,7 @@
             {% for account in current_user.email_accounts %}
                 <div class="acctwrap">
                     <p>{{account}}</p>
-                    <h1 class="login" id="deleteacct"><p class="loginlink">Delete Account</p></h1>
+                    <h1 class="login deleteacct"><p class="loginlink" data-accountid="{{account.id}}">Unlink Account</p></h1>
                 </div>
             {% endfor %}
             <h1 class="add">Add an account by signing in</h1>
@@ -60,5 +60,6 @@
     <footer>
         <a href="{{url_for('terms_and_privacy')}}">Terms of Use and Privacy Policy</a>
     </footer>
+    <script src="../static/portal.js"></script>
 </body>
 </html>
