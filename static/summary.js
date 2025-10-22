@@ -123,9 +123,8 @@ async function processActionItemsSequentially() {
         }
         
         // Find the corresponding email data
-        const emailDiv = document.querySelector(`.email[data-id="${i}"]`);
+        const emailDiv = itemWrap.nextElementSibling;
         if (!emailDiv) continue;
-        console.log(emailDiv)
         
         const bodyElement = Array.from(emailDiv.querySelectorAll('.emailsub')).find(div => {
             const header = div.querySelector('h2.header');
@@ -158,45 +157,19 @@ async function processActionItemsSequentially() {
             const data = await response.json();
             
             // Update the item text
-            itemText.innerHTML = `• ${data.action_item}`;
-            
-            // Save to database if it's a real action item
             if (data.action_item && data.action_item.toLowerCase() !== "no action.") {
-                try {
-                    const saveResponse = await fetch("/save_todo_item", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({
-                            action_item: data.action_item,
-                            email_index: i
-                        })
-                    });
-                    
-                    if (saveResponse.ok) {
-                        const saveData = await saveResponse.json();
-                        if (saveData.success && saveData.todo_id) {
-                            // Update remove button with todo ID
-                            const removeBtn = itemWrap.querySelector('.remove');
-                            if (removeBtn) {
-                                removeBtn.setAttribute('data-todo-id', saveData.todo_id);
-                            }
-                        }
-                    }
-                } catch (saveError) {
-                    console.error("Error saving todo:", saveError);
-                }
+                itemText.innerHTML = `• ${data.action_item}`;
             }
             else{
-                itemWrap.remove();
+                itemWrap.remove()
             }
+
             
             // Add calendar functionality if needed
             if (data.calendar === true) {
                 const existingCalendarBtn = itemWrap.querySelector('.calendarbtn');
                 if (!existingCalendarBtn) {
-                    addCalendarButton(itemWrap);
+                    addCalendarButton(itemWrap, data.accounts);
                 }
             }
             
@@ -213,7 +186,7 @@ async function processActionItemsSequentially() {
 }
 
 // Add calendar button and form to an item
-function addCalendarButton(itemWrap) {
+function addCalendarButton(itemWrap, accounts) {
     const calendarBtn = document.createElement('button');
     calendarBtn.className = 'calendarbtn';
     calendarBtn.textContent = 'Add to Calendar';
@@ -253,8 +226,24 @@ function addCalendarButton(itemWrap) {
     const submitBtn = document.createElement('button');
     submitBtn.type = 'button';
     submitBtn.textContent = 'Submit';
+
+    const selectLabel = document.createElement("label");
+    selectLabel.setAttribute('for', 'account');
+    selectLabel.textContent = 'Account'
     
+    const select = document.createElement("select");
+    select.id = "account"
+    select.name = "account"
+
     // Append all elements to form
+    for (let i = 0; i < accounts.length; i++) {
+        let option = document.createElement("option");
+        option.value = accounts[i].id;
+        option.textContent = accounts[i].email;
+        select.appendChild(option);
+    }
+
+    calendarForm.appendChild(select);
     calendarForm.appendChild(nameLabel);
     calendarForm.appendChild(nameInput);
     calendarForm.appendChild(startLabel);
@@ -275,7 +264,7 @@ function addCalendarButton(itemWrap) {
     submitBtn.addEventListener('click', async function(e) {
         e.preventDefault();
         
-        if (!nameInput.value.trim() || !startInput.value || !endInput.value) {
+        if (!nameInput.value.trim() || !startInput.value || !endInput.value || !select.value) {
             updateStatusMessage('Please fill in all calendar fields', 'error');
             return;
         }
@@ -284,6 +273,7 @@ function addCalendarButton(itemWrap) {
         formData.append('name', nameInput.value);
         formData.append('start', startInput.value);
         formData.append('end', endInput.value);
+        formData.append('account', select.value)
         
         try {
             const response = await fetch('/add_to_calendar', {
@@ -303,6 +293,7 @@ function addCalendarButton(itemWrap) {
                 nameInput.value = '';
                 startInput.value = '';
                 endInput.value = '';
+                select.value = '';
             } else {
                 updateStatusMessage('Failed to add event to calendar', 'error');
             }
@@ -329,7 +320,6 @@ document.addEventListener('DOMContentLoaded', function() {
             break;
         }
     }
-    
     if (needsProcessing) {
         // Small delay to ensure page is fully loaded
         setTimeout(() => {
@@ -408,84 +398,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Reply functionality
-document.addEventListener('DOMContentLoaded', function() {
-    const reply_btns = document.querySelectorAll('.reply');
-    const reply_divs = document.querySelectorAll('.replydiv');
 
-    for (let i = 0; i < reply_btns.length; i++){
-        reply_btns[i].addEventListener('click', () => {
-            if (reply_btns[i].textContent === "Reply"){
-                reply_divs[i].classList.add('replycontain');
-                reply_divs[i].classList.remove('replywrap');
-                reply_btns[i].textContent = "Hide Reply";
-            } else {
-                reply_divs[i].classList.remove('replycontain');
-                reply_divs[i].classList.add('replywrap');
-                reply_btns[i].textContent = "Reply";
-            }
-        });
-    }
-});
 
-// Reply submission functionality
-document.addEventListener('DOMContentLoaded', function() {
-    const reply_smts = document.querySelectorAll('.replysubmit');
-    const bodys = document.querySelectorAll(".body");
-    const ccs = document.querySelectorAll(".cc");
-    const bccs = document.querySelectorAll('.bcc');
-
-    for (let i = 0; i < reply_smts.length; i++){
-        reply_smts[i].addEventListener('click', async (e) => {
-            e.preventDefault();
-            
-            const body = bodys[i].value;
-            const cc = ccs[i].value;
-            const bcc = bccs[i].value;
-            const subject = reply_smts[i].dataset.subject;
-            const from = reply_smts[i].dataset.from;
-            
-            if (!body.trim()) {
-                updateStatusMessage('Please enter a reply message', 'error');
-                return;
-            }
-            
-            try {
-                const response = await fetch("/reply", {
-                    method: "POST", 
-                    headers:{
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        from: from, 
-                        subject: subject,
-                        cc: cc, 
-                        bcc: bcc, 
-                        body: body
-                    })
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.success === true) {
-                    bodys[i].value = "";
-                    ccs[i].value = "";
-                    bccs[i].value = "";
-                    updateStatusMessage('Reply sent successfully', 'success');
-                } else {
-                    updateStatusMessage('Error sending reply', 'error');
-                }
-            } catch (error) {
-                console.error('Error sending reply:', error);
-                updateStatusMessage('Error sending reply', 'error');
-            }
-        });
-    }
-});
 
 // Calendar forms functionality for existing items
 function setupStaticCalendarForms() {
@@ -512,8 +426,9 @@ function setupStaticCalendarForms() {
                     const nameInput = calendar_form.querySelector('input[name="name"]');
                     const startInput = calendar_form.querySelector('input[name="start"]');
                     const endInput = calendar_form.querySelector('input[name="end"]');
+                    const select = calendar_form.querySelector("select")
                     
-                    if (!nameInput.value.trim() || !startInput.value || !endInput.value) {
+                    if (!nameInput.value.trim() || !startInput.value || !endInput.value || !select.value) {
                         updateStatusMessage('Please fill in all calendar fields', 'error');
                         return;
                     }
@@ -522,6 +437,7 @@ function setupStaticCalendarForms() {
                     formData.append('name', nameInput.value);
                     formData.append('start', startInput.value);
                     formData.append('end', endInput.value);
+                    formData.append('account', select.value);
                     
                     try {
                         const response = await fetch('/add_to_calendar', {
@@ -541,6 +457,7 @@ function setupStaticCalendarForms() {
                             nameInput.value = '';
                             startInput.value = '';
                             endInput.value = '';
+                            select.value = '';
                         } else {
                             updateStatusMessage('Failed to add event to calendar', 'error');
                         }

@@ -1,14 +1,13 @@
-from app import current_user
 import requests
 from functions.refresh_token import refresh
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from flask import jsonify
 
-def create_google_calendar_event(start_dt, end_dt, name):
+def create_google_calendar_event(start_dt, end_dt, name, account):
     """Create event in Google Calendar"""
     try:
-        access_token = refresh(current_user)
+        access_token = refresh(account)
         creds = Credentials(token=access_token)
         service = build("calendar", "v3", credentials=creds)
         
@@ -36,10 +35,10 @@ def create_google_calendar_event(start_dt, end_dt, name):
         print(f"Google Calendar API error: {str(e)}")
         return jsonify({"success": False, "error": "Failed to create Google calendar event"})
 
-def create_microsoft_calendar_event(start_dt, end_dt, name):
+def create_microsoft_calendar_event(start_dt, end_dt, name, account):
     """Create event in Microsoft Calendar (Outlook)"""
     try:
-        access_token = refresh(current_user)  # Assuming you have a Microsoft refresh function
+        access_token = refresh(account)  
         
         # Microsoft Graph API endpoint
         url = "https://graph.microsoft.com/v1.0/me/events"

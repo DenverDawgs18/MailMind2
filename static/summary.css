@@ -417,7 +417,7 @@ a:hover {
 }
 
 /* Calendar Form Inputs - Match reply input styling */
-.calendarform input {
+.calendarform input, select, option {
     border-radius: 50px;
     width: 100%;
     border: 2px solid rgba(204, 132, 0, 0.3);

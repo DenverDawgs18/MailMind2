@@ -184,7 +184,6 @@ def portal():
 
 @app.route("/delete_account", methods=["GET", "POST"])
 def delete_account():
-
     try:
         data = request.get_json()
         id = data["id"]
@@ -549,7 +548,8 @@ def add_to_calendar():
         start = request.form.get("start")
         end = request.form.get("end")
         name = request.form.get("name")
-        
+        account = EmailAccount.query.filter_by(id = int(request.form.get("account"))).first()
+
         if not start or not end or not name:
             return jsonify({"success": False, "error": "Missing required fields"})
         
@@ -560,10 +560,10 @@ def add_to_calendar():
             return jsonify({"success": False, "error": "End time must be after start time"})
         
         # Branch based on user's calendar provider
-        if current_user.provider == "google":
-            return create_google_calendar_event(start_dt, end_dt, name)
-        elif current_user.provider == "microsoft":
-            return create_microsoft_calendar_event(start_dt, end_dt, name)
+        if account.provider == "google":
+            return create_google_calendar_event(start_dt, end_dt, name, account)
+        elif account.provider == "microsoft":
+            return create_microsoft_calendar_event(start_dt, end_dt, name, account)
         else:
             return jsonify({"success": False, "error": "Unsupported calendar provider"})
             
@@ -603,7 +603,10 @@ def get_one_action():
 
     final_emails[index]["action_items"] = action
     session["final_emails"] = final_emails
-    return jsonify({"action_item": action, "calendar": calendar})
+    accounts = []
+    for account in current_user.email_accounts:
+        accounts.append({"id": account.id, "email": account.email})
+    return jsonify({"action_item": action, "calendar": calendar, "accounts": accounts})
 
 @app.route("/remove_todo", methods=["POST"])
 @login_required
@@ -785,7 +788,7 @@ def summary():
         else:
             text = f"Found {len(actionable_emails)} action items"
     
-    return render_template('summary.html', emails=final_emails, text=text, 
+    return render_template('summary.html', emails=final_emails, text=text, accounts = current_user.email_accounts, 
                          pending_count=len(emails_needing_processing))
 
 
