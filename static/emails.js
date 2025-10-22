@@ -142,32 +142,6 @@ c_smt.addEventListener('click', (e) => {
 
 
 
-/*
-let loadMoreButton = document.querySelector('.loadmore');
-
-loadMoreButton.addEventListener("click", () => {
-        fetch("/load_more", {
-            method: "POST",
-            headers: {
-                    "Content-Type": "application/json"
-            }
-        })
-        .then(response => response.json())  // Convert response to JSON
-        .then(data => {
-            if (data.html) {
-                const tempDiv = document.createElement("div"); // Temporary container
-                tempDiv.innerHTML = data.html;
-
-                // Append each email item individually for better control
-                while (tempDiv.firstChild) {
-                        emailList.appendChild(tempDiv.firstChild);
-                }
-            }
-        })
-        .catch(error => console.error("Error loading more emails:", error));
-        });
-*/
-
 let emailList = document.querySelector('.emails')
 
 let emails = emailList.children;
@@ -246,8 +220,25 @@ async function processEmailsSequentially(emails) {
                         const submitBtn = document.createElement("button");
                         submitBtn.type = "button";
                         submitBtn.textContent = "Submit";
+
+                        const selectLabel = document.createElement("label");
+                        selectLabel.setAttribute('for', 'account');
+                        selectLabel.textContent = 'Account'
+                        
+                        const select = document.createElement("select");
+                        select.id = "account"
+                        select.name = "account"
+
+                        for (let i = 0; i < accounts.length; i++) {
+                            let option = document.createElement("option");
+                            option.value = accounts[i].id;
+                            option.textContent = accounts[i].email;
+                            select.appendChild(option);
+                        }
                         
                         // Append all elements to form
+                        calendar_form.appendChild(selectLabel)
+                        calendar_form.appendChild(select)
                         calendar_form.appendChild(nameLabel);
                         calendar_form.appendChild(nameInput);
                         calendar_form.appendChild(startLabel);
@@ -263,6 +254,7 @@ async function processEmailsSequentially(emails) {
                             formData.append('name', nameInput.value);
                             formData.append('start', startInput.value);
                             formData.append('end', endInput.value);
+                            formData.append('account', select.value)
                             
                             try {
                                 const response = await fetch('/add_to_calendar', {
@@ -338,12 +330,14 @@ function setupStaticCalendarForms() {
                     const nameInput = calendar_form.querySelector('input[name="name"]');
                     const startInput = calendar_form.querySelector('input[name="start"]');
                     const endInput = calendar_form.querySelector('input[name="end"]');
+                    const select = calendar_form.querySelector('select');
                     
                     // Collect form data
                     const formData = new FormData();
                     formData.append('name', nameInput.value);
                     formData.append('start', startInput.value);
                     formData.append('end', endInput.value);
+                    formData.append('account', select.value)
                     
                     try {
                         const response = await fetch('/add_to_calendar', {

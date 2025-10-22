@@ -65,6 +65,11 @@
                                 {% if email.calendar %}
                                     <button class="calendarbtn">Add to Calendar</button>
                                     <form class="calendarform" style="display: none">
+                                        <select name="account" id="account">
+                                            {% for account in accounts %}
+                                                <option value="{{account.id}}">{{account}}</option>
+                                            {% endfor %}
+                                        </select>
                                         <label for="name">Name:</label>
                                         <input type="text" name="name" id="name">
                                         <label for="start">Start:</label>
