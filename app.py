@@ -481,17 +481,23 @@ def emails():
         # Get new emails since last load
         print("Calling get_emails for refresh...")
         final_emails = session.get("final_emails", [])
-        for index, email_account in current_user.email_accounts:
+        for email_account in current_user.email_accounts:
             new_emails = get_emails(email_account.provider, email_account.email, refresh(email_account), 
                                 after_date=after_date, since_time=since_time)
             
             print(f"Found {len(new_emails)} new emails in refresh for {current_user}'s email: {email_account.email}")
             
-            
+            first = True
             for email in new_emails:
                 email["action_items"] = "Generating ..."
                 email["calendar"] = False
-                email["index"] = index
+                email["email"] = email_account.email
+                if first:
+                    email["change"] = True
+                    first = False 
+                else:
+                    email["change"] = False
+
                 final_emails.append(email)
 
             for email in final_emails:
@@ -526,12 +532,18 @@ def emails():
         print("Length: ", len(emails))
         # Process unsubscribe links
 
-            
-        for index, email in enumerate(emails): 
+        first = True    
+        for email in emails: 
             if email not in final_emails: 
                 email["action_items"] = "Generating ..."
-                email["index"] = index
+                email["email"] = email_account.email
+                email["calendar"] = False
                 final_emails.append(email)
+                if first:
+                    email["change"] = True 
+                    first = False 
+                else:
+                    email["change"] = False
                 
         session["final_emails"] = final_emails
             
@@ -626,11 +638,6 @@ def remove_todo():
     
     return jsonify({"success": True})
 
-
-
-
-
-
 @app.route("/termsandprivacy")
 def terms_and_privacy():
     return render_template("termsandprivacy.html")
@@ -680,18 +687,24 @@ def summary():
         # Get new emails since last load
         print("Calling get_emails for refresh in summary...")
         final_emails = session.get("final_emails", [])
-        for index, email_account in enumerate(current_user.email_accounts):
+        for email_account in current_user.email_accounts:
             new_emails = get_emails(email_account.provider, email_account.email, refresh(email_account), 
                                 after_date=after_date, since_time=since_time)
             
             print(f"Found {len(new_emails)} new emails in refresh")
             
             
-
+            first = True 
             for email in new_emails:
                 email["action_items"] = "Generating ..."
                 email["calendar"] = False
-                email["index"] = index
+
+                email["email"] = email_account.email
+                if first:
+                    email["change"] = True 
+                    first = False 
+                else:
+                    email["change"] = False
                 final_emails.append(email)
 
             for email in final_emails:
@@ -724,12 +737,17 @@ def summary():
             # Process unsubscribe links
 
             
-                
+            first = True   
             for email in emails: 
                 if email not in final_emails: 
                     email["action_items"] = "Generating ..."
                     email["calendar"] = False
-                    email["index"] = index
+                    email["email"] = email_account.email
+                    if first:
+                        email["change"] = True 
+                        first = False 
+                    else:
+                        email["change"] = False
                     final_emails.append(email)
                     
             session["final_emails"] = final_emails

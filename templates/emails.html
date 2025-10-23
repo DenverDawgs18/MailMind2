@@ -43,6 +43,9 @@
         <div class="wrapper">
             <div class="emails">
                 {% for email in emails %}
+                    {% if email.change %}
+                        <div class="change"><p class="item">Action Items for {{email.email}}</p></div>
+                    {% endif %}
                     <div class="email" data-email-id="{{ email.id }}">
                         <div class="emailone emailsub">
                             <h2 class="header">From: </h2>

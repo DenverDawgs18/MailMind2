@@ -48,6 +48,9 @@
             {% endif %}
             <div class="items">
                 {% for email in emails %}
+                    {% if email.change %}
+                        <div class="itemwrap"><p class="item">Action Items for {{email.email}}</p></div>
+                    {% endif %}
                     {% if email.action_items and email.action_items != "No action." %}
                         <div class="itemwrap">
                             {% if email.action_items and email.action_items != "Generating ..." %}
