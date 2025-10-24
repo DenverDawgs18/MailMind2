@@ -254,7 +254,7 @@
     overflow: hidden;
 }
 
-.card::before, .specialcard::before {
+.card::before {
     content: '';
     position: absolute;
     top: -50%;
@@ -267,12 +267,12 @@
     opacity: 0;
 }
 
-.card:hover::before, .specialcard:hover::before {
+.card:hover::before {
     opacity: 1;
     transform: rotate(45deg) translate(50px, 50px);
 }
 
-.card:hover, .specialcard:hover {
+.card:hover {
     transform: translateY(-5px) scale(1.02);
     box-shadow: 7px 7px darkorange, 12px 12px 25px rgba(0, 0, 0, 0.4);
 }
@@ -284,16 +284,9 @@
     text-align: center;
 }
 
-.specialcard {
-    grid-column: 1/3;
-    grid-row: 2/4;
-    display: flex;
-    flex-direction: column;
-    gap: 25px;
-}
 
 .slight {
-    grid-row: 1/3;
+    grid-row: 1/2;
     grid-column: 3/4;
 }
 
@@ -304,7 +297,7 @@
     align-self: center;
 }
 
-.card:hover .cardimg, .specialcard:hover .cardimg {
+.card:hover .cardimg{
     transform: scale(1.1) rotate(5deg);
 }
 
@@ -323,11 +316,7 @@
     font-size: 16px;
 }
 
-.specialcardtop {
-    display: flex;
-    align-items: flex-start;
-    gap: 25px;
-}
+
 
 .cardwrapper {
     flex: 1;
@@ -394,22 +383,14 @@
     transform: translateY(0px);
 }
 
-/* Responsive Design */
-@media (max-width: 1200px) {
+@media (max-width: 1000px) {
     .cards {
-        grid-template-columns: repeat(2, 1fr);
-    }
-    
-    .specialcard {
-        grid-column: 1/3;
-        grid-row: auto;
-    }
-    
-    .slight {
-        grid-column: auto;
-        grid-row: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 25px; 
     }
 }
+
 
 @media (max-width: 768px) {
     .wrapper {
@@ -427,22 +408,11 @@
         align-items: center;
     }
     
-    .cards {
-        grid-template-columns: 1fr;
-        gap: 25px;
-    }
+
     
-    .specialcard {
-        grid-column: 1;
-        grid-row: auto;
-    }
+
     
-    .specialcardtop {
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-        gap: 15px;
-    }
+
     
     .newsletter-row {
         flex-direction: column;
@@ -482,7 +452,7 @@
         font-size: 16px;
     }
     
-    .card, .specialcard {
+    .card {
         padding: 20px;
     }
     
@@ -513,9 +483,7 @@
     animation: slideInUp 0.8s ease-out 1.6s both;
 }
 
-.specialcard {
-    animation: slideInUp 0.8s ease-out 1.8s both;
-}
+
 
 @keyframes slideInUp {
     from {

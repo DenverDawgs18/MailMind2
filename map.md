@@ -1,5 +1,5 @@
 To Do List:
 
-Index on summary and inbox
+
 Homepage
-Email items to self w index
+Email items to self w index / put this in prod
