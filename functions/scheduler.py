@@ -10,7 +10,7 @@ from flask import current_app
 from sqlalchemy import and_
 
 from app import db 
-from models import User, Unsubscribe, Link
+from models import Master, EmailAccount
 import re
 from functions.refresh_token import refresh 
 from functions.get_emails import get_emails 
@@ -124,6 +124,11 @@ def generate_email_html(action_items, user_email):
         </div>
 
         {% for email in action_items%}
+        {% if email.change %}
+        <div class="item">
+        <p class="action">Action items for {{email.email}}</p>
+        </div>
+        {% endif %}
         <div class="item">
         <p class="action">• {{ email.action_items | linkify_text }}</p>
         <p><strong>From:</strong> {{ email.from }}</p>
@@ -205,45 +210,6 @@ def send_reply_email_for_user(action_items, user):
         logger.error(f"Error sending email via reply function: {str(e)}")
         return False
     
-def process_unsubscribe_links(emails, user):
-    """Helper function to process unsubscribe links in emails"""
-    changes_made = False
-    
-    for email in emails:
-        unsubscribe_match = re.search(r"(?i)unsubscribe", email['body'])
-                 
-        if unsubscribe_match:
-            unsubscribe_pos = unsubscribe_match.start()
-            remaining_text = email['body'][unsubscribe_pos:]
-            link_match = re.search(r"\[LINK:\s*([^\]]+)\]", remaining_text)
-                         
-            if link_match:
-                code = link_match.group(1)
-                try:
-                    link_id = short_url.decode_url(code)
-                    link_obj = Link.query.filter_by(id=link_id).first()
-                                         
-                    if link_obj and link_obj.link:
-                        real_link = link_obj.link
-                        unsubj = Unsubscribe.query.filter_by(sender=email["from"]).first()
-                                                 
-                        if not unsubj:
-                            new_unsub = Unsubscribe(sender=email['from'], link=real_link, user=user.id)
-                            db.session.add(new_unsub)
-                            print(f"Added unsubscribe link for {email['from']}: {real_link}")
-                            changes_made = True
-                except Exception as e:
-                    print(f"Error processing unsubscribe link: {str(e)}")
-                    continue
-    
-    # Only commit if there were changes made
-    if changes_made:
-        try:
-            db.session.commit()
-            print("Successfully committed all unsubscribe link changes")
-        except Exception as e:
-            print(f"Error committing unsubscribe link changes: {str(e)}")
-            db.session.rollback()
 
 def init_scheduler(app):
     """Initialize the email scheduler"""
@@ -358,18 +324,17 @@ def is_time_match(user_time: str, current_time: datetime, timezone_str: str) -> 
         logger.error(f"Error checking time match for user time {user_time}, timezone {timezone_str}: {e}")
         return False
 
-def get_users_to_process() -> List[User]:
+def get_users_to_process() -> List[Master]:
     """Get users who should receive email summaries at current time"""
     current_time = datetime.now(pytz.UTC)
     users_to_process = []
     
     try:
         # Get all users with valid timezone and time settings
-        users = User.query.filter(
+        users = Master.query.filter(
             and_(
-                User.timezone.isnot(None),
-                User.time.isnot(None),
-                User.email.isnot(None)
+                Master.timezone.isnot(None),
+                Master.time.isnot(None),
             )
         ).all()
         
@@ -382,7 +347,7 @@ def get_users_to_process() -> List[User]:
             for user_time in user_times:
                 if is_time_match(user_time, current_time, user.timezone):
                     users_to_process.append(user)
-                    logger.info(f"User {user.email} scheduled for email summary at {user_time} ({user.timezone})")
+                    logger.info(f"User {user.name} scheduled for email summary at {user_time} ({user.timezone})")
                     break  # Only add user once even if multiple times match
                     
     except Exception as e:
@@ -390,74 +355,69 @@ def get_users_to_process() -> List[User]:
         
     return users_to_process
 
-def send_email_summary_for_user(user: User) -> Dict[str, Any]:
+def send_email_summary_for_user(user: Master) -> Dict[str, Any]:
     """Send email summary for a specific user (extracted from your /mail route)"""
     try:
-        # Get user's access token
-        access_token = refresh(user)
-        
-        # Get emails from last 24 hours
-        emails = get_emails(user.provider, user.email, access_token)
-        
-        if not emails:
-            return {
-                "success": False,
-                "message": "No emails found in the last 24 hours",
-                "user": user.email
-            }
-        
-        # Process emails for action items
-        emails = list(reversed(emails))  # Newest first
-        process_unsubscribe_links(emails, user)
-        
-        # Generate action items for all emails
         action_items = []
-        for email in emails:
-            try:
-                body = email.get("body", "")
-                if body:
-                    action = get_an_action(body)
-                    if action and action.lower() not in ["no action.", "no action", "no action required.", ""]:
-                        email["action_items"] = action
-                        email["calendar"] = is_calendar_worthy(action)
-                        action_items.append(email)
+        # Get user's access token
+        for account in user.email_accounts:
+            access_token = refresh(account)
+            
+            # Get emails from last 24 hours
+            emails = get_emails(account.provider, account.email, access_token)
+            first = True
+            for email in list(reversed(emails)):
+                try:
+                    body = email.get("body", "")
+                    if body:
+                        action = get_an_action(body)
+                        if action and action.lower() not in ["no action.", "no action", "no action required.", ""]:
+                            email["action_items"] = action
+                            email["calendar"] = is_calendar_worthy(action)
+                            email["email"] = account.email
+                            if first:
+                                email["change"] = True
+                                first = False 
+                            action_items.append(email)
+                        else:
+                            email["action_items"] = "No action"
+                            email["calendar"] = False
                     else:
                         email["action_items"] = "No action"
                         email["calendar"] = False
-                else:
-                    email["action_items"] = "No action"
+                except Exception as e:
+                    logger.error(f"Error generating action for email: {e}")
+                    email["action_items"] = "Error generating action"
                     email["calendar"] = False
-            except Exception as e:
-                logger.error(f"Error generating action for email: {e}")
-                email["action_items"] = "Error generating action"
-                email["calendar"] = False
+        
+
         
         # Send email summary
         if action_items:
-            email_sent = send_reply_email_for_user(action_items, user)
+            email_sent = send_reply_email_for_user(action_items, user.email_accounts[0])
             if email_sent:
                 return {
                     "success": True,
                     "message": f"Email summary sent with {len(action_items)} action items",
                     "action_count": len(action_items),
-                    "user": user.email
+                    "user": user.username
                 }
             else:
                 return {
                     "success": False,
                     "message": "Failed to send email summary",
-                    "user": user.email
+                    "user": user.username
                 }
         else:
             return {
                 "success": True,
                 "message": "No action items found to send",
                 "action_count": 0,
-                "user": user.email
+                "user": user.username
             }
             
     except Exception as e:
-        logger.error(f"Error in send_email_summary for user {user.email}: {str(e)}")
+        logger.error(f"Error in send_email_summary for user {user.username}: {str(e)}")
         return {
             "success": False,
             "message": "An error occurred while processing email summary",
