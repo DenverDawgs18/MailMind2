@@ -63,6 +63,7 @@ from functions.linkify import linkify_text
 from functions.get_one_action import get_an_action
 from functions.encryption import encrypt_token, decrypt_token
 from functions.get_emails import get_emails
+from functions.scheduler import check_and_send_emails
 import re
 import short_url
 import secrets
@@ -199,7 +200,10 @@ def delete_account():
     
 
 
-
+@app.route("/check")
+def check():
+    check_and_send_emails()
+    return render_template("index.html")
 
 
 @app.route('/logout')

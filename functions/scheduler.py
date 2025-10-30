@@ -6,7 +6,7 @@ import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
-from flask import current_app
+from app import app
 from sqlalchemy import and_
 
 from app import db 
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # Global scheduler instance
 scheduler = None
 # Store Flask app reference for context
-flask_app = None
+flask_app = app
 
 def generate_email_html(action_items, user_email):
     """Generate rich HTML email content"""
@@ -450,9 +450,9 @@ def check_and_send_emails():
                 try:
                     result = send_email_summary_for_user(user)
                     if result["success"]:
-                        logger.info(f"Successfully sent email summary to {user.email}: {result['message']}")
+                        logger.info(f"Successfully sent email summary to {user.username}: {result['message']}")
                     else:
-                        logger.warning(f"Failed to send email summary to {user.email}: {result['message']}")
+                        logger.warning(f"Failed to send email summary to {user.username}: {result['message']}")
                 except Exception as e:
                     logger.error(f"Error processing user {user.email}: {str(e)}")
                     

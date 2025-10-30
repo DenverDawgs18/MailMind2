@@ -35,7 +35,7 @@ body{
     width: 100%;
 }
 
-.itemwrap {
+.itemwrap, .emailwrap {
     background: linear-gradient(145deg, #514b7a, #5a5488);
     border: 2px solid rgba(0, 0, 0, 0.8);
     border-radius: 16px;
@@ -50,7 +50,7 @@ body{
     box-sizing: border-box;
 }
 
-.itemwrap:hover {
+.itemwrap:hover, .emailwrap:hover {
     transform: translateY(-2px);
     box-shadow: 5px 5px darkorange, 8px 8px 16px rgba(0, 0, 0, 0.4);
 }
@@ -288,7 +288,7 @@ a:hover {
     transform: scale(1.01);
 }
 /* Update itemwrap to accommodate the new structure */
-.itemwrap {
+.itemwrap, .emailwrap {
     background: linear-gradient(145deg, #514b7a, #5a5488);
     border: 2px solid rgba(0, 0, 0, 0.8);
     border-radius: 16px;
@@ -302,13 +302,13 @@ a:hover {
     box-sizing: border-box;
 }
 
-.itemwrap:hover {
+.itemwrap:hover, .emailwrap:hover {
     transform: translateY(-2px);
     box-shadow: 5px 5px darkorange, 8px 8px 16px rgba(0, 0, 0, 0.4);
 }
 
 /* Create a flex container for the item text and buttons */
-.itemwrap > .item {
+.itemwrap > .item, .emailwrap > .item {
     color: #f0f0f0;
     font-size: 16px;
     line-height: 1.6;
@@ -355,14 +355,14 @@ a:hover {
 }
 
 /* Create a button container for better layout */
-.itemwrap::after {
+.itemwrap::after, .emailwrap::after {
     content: '';
     display: block;
     width: 100%;
     order: 2;
 }
 
-.itemwrap {
+.itemwrap, .emailwrap {
     display: grid;
     grid-template-columns: 1fr auto auto auto;
     grid-template-rows: auto auto;
@@ -370,7 +370,7 @@ a:hover {
     align-items: center;
 }
 
-.itemwrap > .item {
+.itemwrap > .item, .emailwrap > .item {
     grid-column: 1 / -1;
     grid-row: 1;
 }
@@ -467,7 +467,7 @@ a:hover {
 
 /* Mobile Responsive Updates */
 @media (max-width: 600px) {
-    .itemwrap {
+    .itemwrap, .emailwrap {
         display: flex;
         flex-direction: column;
         align-items: flex-start;
@@ -475,7 +475,7 @@ a:hover {
         padding: 15px;
     }
     
-    .itemwrap > .item {
+    .itemwrap > .item, .emailwrap > .item {
         font-size: 14px;
         width: 100%;
         order: 1;

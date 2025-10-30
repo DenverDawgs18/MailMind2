@@ -63,91 +63,19 @@ for (let i = 0; i < reply_btns.length; i++){
 })
 }
 
-let reply_smts = document.querySelectorAll('.replysubmit');
-let bodys = document.querySelectorAll(".body");
-let ccs = document.querySelectorAll(".cc");
-let bccs = document.querySelectorAll('.bcc');
-for (let i = 0; i < reply_smts.length; i++){
-    reply_smts[i].addEventListener('click', (e) => {
-    e.preventDefault()
-    let body = bodys[i].value
-    let cc = ccs[i].value
-    let bcc = bccs[i].value
-    let subject = reply_smts[i].dataset.subject
-    let from = reply_smts[i].dataset.from
-    console.log(body, cc, bcc, subject, from)
-    fetch("/reply", {
-        method: "POST", 
-        headers:{
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({from: from, subject: subject,
-            cc: cc, bcc: bcc, body: body})
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success === true) {
-            bodys[i].value = ""
-            ccs[i].value = ""
-            bccs[i].value = ""
-            alert("reply sent successfully")
-        }
-    }
-        
-    )})
-}
-
-let compose = document.querySelector('.compose');
-let dialog = document.querySelector('dialog');
-let second_check = true;
-compose.addEventListener('click', () =>{
-    if (second_check){
-        dialog.show();
-        compose.textContent = "Hide";
-        second_check = false;
-    }
-    else{
-        dialog.close()
-        compose.textContent = "Compose"
-        second_check = true;
-    }
-})
-let c_smt = document.querySelector("#csubmit");
-c_smt.addEventListener('click', (e) => {
-    e.preventDefault();
-    let to = document.querySelector('#cto').value;
-    let body = document.querySelector('#cbody').value;
-    let cc = document.querySelector('#ccc').value;
-    let bcc = document.querySelector('#cbcc').value;
-    let subject = document.querySelector('#csubject').value;
-    fetch("/send", {
-        method: "POST", 
-        headers:{
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({to: to, subject: subject, 
-            body: body, cc: cc, bcc: bcc,})
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success === true) {
-            document.querySelector('#cbody').value = ""
-            document.querySelector('#cto').value = ""
-            document.querySelector('#csubject').value = ""
-            dialog.close()
-            alert("Email sent successfully")
-        }
-    })});
-
-
 
 
 let emailList = document.querySelector('.emails')
 
 let emails = emailList.children;
 async function processEmailsSequentially(emails) {
+    let minus = 0
     for (let j = 0; j < emails.length; j++) {
         const email = emails[j];
+        if (email.children[0].textContent.includes("Action Items for")) {
+            minus++
+            continue
+        }
         const email_children = email.children;
         let currentActionItemDiv = null;
         let body = null;
@@ -174,7 +102,7 @@ async function processEmailsSequentially(emails) {
                         headers: {
                             "Content-Type": "application/json"
                         },
-                        body: JSON.stringify({ body: body.textContent, index: j })
+                        body: JSON.stringify({ body: body.textContent, index: j - minus})
                     }); 
 
                     const data = await response.json();
