@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='time.css') }}">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
+    <title>Settings — MailMind</title>
+    <style>
+        .settings-wrapper { max-width: 720px; margin: 40px auto; padding: 0 20px; display: flex; flex-direction: column; gap: 32px; }
+        .card-block { background: rgba(58, 53, 96, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 24px; }
+        .card-block h2 { margin-top: 0; color: #e6d7a3; font-size: 1.3rem; }
+        .account-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .account-row:last-child { border-bottom: none; }
+        .account-email { color: #f0f0f0; }
+        .account-provider { color: #aaa; font-size: 0.85em; margin-left: 8px; }
+        .btn { display: inline-block; padding: 8px 14px; border-radius: 6px; font-weight: 600; text-decoration: none; border: none; cursor: pointer; font-size: 14px; }
+        .btn-primary { background: #cc8400; color: #171524; }
+        .btn-secondary { background: transparent; color: #e6d7a3; border: 1px solid #cc8400; }
+        .btn-danger { background: transparent; color: #ff8a8a; border: 1px solid #ff8a8a; }
+        .btn-primary-inline { background: #cc8400; color: #171524; }
+        .link-button-form { display: inline; }
+        .msg { padding: 10px 14px; border-radius: 6px; background: rgba(230, 215, 163, 0.15); color: #e6d7a3; margin-bottom: 16px; }
+        select, .time-checkboxes { width: 100%; padding: 8px; border-radius: 6px; background: #2b2540; color: #f0f0f0; border: 1px solid #4a4370; }
+        .time-checkboxes { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; padding: 12px; }
+        .time-checkboxes label { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+        .hint { color: #aaa; font-size: 0.9em; margin-top: 6px; }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <a href="{{ url_for('index') }}" class="home">MailMind</a>
+        <div class="navwrap">
+            <a href="{{ url_for('settings') }}">Settings</a>
+            <a href="{{ url_for('contact') }}">Contact</a>
+            <a href="{{ url_for('logout') }}">Log out</a>
+        </div>
+        <div class="empty"></div>
+    </div>
+
+    <div class="settings-wrapper">
+        <h1 style="color: #e6d7a3; margin: 0;">Settings</h1>
+
+        {% if message %}
+            <div class="msg">{{ message }}</div>
+        {% endif %}
+
+        <!-- Email accounts -->
+        <div class="card-block">
+            <h2>Connected email accounts</h2>
+            <p class="hint">
+                MailMind reads these inboxes and sends your daily digest from your
+                primary account ({{ current_user.primary_email }}).
+            </p>
+            {% for account in accounts %}
+                <div class="account-row">
+                    <div>
+                        <span class="account-email">{{ account.email }}</span>
+                        <span class="account-provider">{{ account.provider }}</span>
+                        {% if account.email == current_user.primary_email %}
+                            <span class="account-provider">(primary — login)</span>
+                        {% endif %}
+                    </div>
+                    {% if account.email != current_user.primary_email %}
+                        <button class="btn btn-danger delete-account-btn" data-id="{{ account.id }}">Remove</button>
+                    {% endif %}
+                </div>
+            {% endfor %}
+            <div style="margin-top: 16px; display: flex; gap: 10px;">
+                <a class="btn btn-secondary" href="{{ url_for('google_login') }}">+ Add Google account</a>
+                <a class="btn btn-secondary" href="{{ url_for('microsoft_login') }}">+ Add Microsoft account</a>
+            </div>
+        </div>
+
+        <!-- Delivery time -->
+        <div class="card-block">
+            <h2>When to send your digest</h2>
+            <form method="POST" action="{{ url_for('settings') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <label for="timezone">Timezone</label>
+                <select name="timezone" id="timezone" required>
+                    <option value="">Choose...</option>
+                    {% for value, label in timezones %}
+                        <option value="{{ value }}" {% if value == current_timezone %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+
+                <p style="margin-top: 20px; margin-bottom: 6px;">Delivery times (up to 3)</p>
+                <div class="time-checkboxes">
+                    {% for opt in time_options %}
+                        <label>
+                            <input type="checkbox" name="time" value="{{ opt }}"
+                                   {% if opt in current_times %}checked{% endif %}>
+                            {{ opt }}
+                        </label>
+                    {% endfor %}
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="margin-top: 20px;">Save</button>
+            </form>
+        </div>
+
+        <!-- Billing -->
+        <div class="card-block">
+            <h2>Subscription</h2>
+            <p>
+                Status:
+                {% if current_user.subscribed and current_user.temp %}
+                    <strong>Comped (beta)</strong>
+                {% elif current_user.subscribed %}
+                    <strong>Active</strong>
+                {% else %}
+                    <strong>Not subscribed</strong>
+                {% endif %}
+            </p>
+            {% if current_user.stripe_customer_id and not current_user.temp %}
+                <form method="POST" action="{{ url_for('customer_portal') }}" class="link-button-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-secondary">Manage billing</button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <footer>
+        <a href="{{ url_for('terms_and_privacy') }}">Terms of Use and Privacy Policy</a>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.delete-account-btn').forEach(function(btn) {
+                btn.addEventListener('click', async function() {
+                    if (!confirm('Remove this account? MailMind will stop reading it.')) return;
+                    const id = this.dataset.id;
+                    const form = new FormData();
+                    form.append('id', id);
+                    const res = await fetch("{{ url_for('delete_email_account') }}", {
+                        method: 'POST', body: form,
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert(data.error || 'Delete failed');
+                    }
+                });
+            });
+
+            // Prevent more than 3 time checkboxes from being ticked.
+            const timeBoxes = document.querySelectorAll('input[name="time"]');
+            timeBoxes.forEach(function(box) {
+                box.addEventListener('change', function() {
+                    const checked = document.querySelectorAll('input[name="time"]:checked');
+                    if (checked.length > 3) {
+                        this.checked = false;
+                        alert('Pick at most 3 delivery times.');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

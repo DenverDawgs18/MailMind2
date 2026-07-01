@@ -1,17 +1,31 @@
-import base64
-import hashlib
-import json
+"""
+MailMind is a productivity service, not an email client. This module wires up
+the tiny public surface:
+
+    /                      -- landing page + OAuth sign-in buttons
+    /google/login          -- kicks off Google OAuth (sign-in + link)
+    /google/callback
+    /microsoft/login       -- Microsoft OAuth
+    /microsoft/callback
+    /settings              -- the only page a normal subscriber ever visits
+    /settings/delete_account
+    /subscribe             -- shown when the user isn't subscribed
+    /create-checkout-session
+    /create-portal-session
+    /webhook               -- Stripe events
+    /code                  -- TEMP_CODE / CODE beta grant during testing
+    /contact
+    /termsandprivacy
+    /logout
+"""
 import logging
 import os
 import secrets
 import urllib.parse
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-import markdown
 import requests
 import stripe
-from dateutil import parser as date_parser
-from dateutil.tz import tzlocal
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from flask_login import (
     LoginManager,
@@ -27,16 +41,14 @@ from flask_wtf.csrf import CSRFProtect
 from google_auth_oauthlib.flow import Flow
 from redis import Redis
 from sqlalchemy.orm import DeclarativeBase
-from werkzeug.security import check_password_hash, generate_password_hash
 
-from functions.production import production, simple
+from functions.production import production
 
 # ---------------------------------------------------------------------------
 # Environment / configuration
 # ---------------------------------------------------------------------------
 
 PRODUCTION = production()
-SIMPLE = simple()
 
 if not PRODUCTION:
     from dotenv import load_dotenv
@@ -60,16 +72,13 @@ else:
     try:
         app.config.from_pyfile('config.py')
     except (FileNotFoundError, OSError):
-        # Local dev fallback so a fresh clone can run
         app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-do-not-use-in-prod")
 
-# Cookies
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 if PRODUCTION:
     app.config['SESSION_COOKIE_SECURE'] = True
 
-# Database
 if PRODUCTION:
     DATABASE_URL = os.getenv('DATABASE_URL')
     if not DATABASE_URL:
@@ -89,7 +98,7 @@ db = SQLAlchemy(model_class=Base)
 db.init_app(app)
 migrate = Migrate(app, db)
 
-# Sessions (server-side by default; tests use filesystem to avoid Redis dependency)
+# Sessions
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_USE_SIGNER"] = True
 
@@ -101,61 +110,54 @@ if _TESTING:
 else:
     app.config["SESSION_TYPE"] = "redis"
     if PRODUCTION:
-        redis_host = os.getenv("REDIS_HOST", "fly-mailmind-redis.upstash.io")
-        redis_port = int(os.getenv("REDIS_PORT", "6379"))
-        redis_password = os.getenv("REDIS_PASSWORD")
-        _redis_client = Redis(host=redis_host, port=redis_port, password=redis_password)
+        _redis_client = Redis(
+            host=os.getenv("REDIS_HOST", "fly-mailmind-redis.upstash.io"),
+            port=int(os.getenv("REDIS_PORT", "6379")),
+            password=os.getenv("REDIS_PASSWORD"),
+        )
     else:
         _redis_client = Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379)
     app.config["SESSION_REDIS"] = _redis_client
 
 Session(app)
 
-# CSRF
 csrf = CSRFProtect(app)
 
 
 @app.context_processor
 def inject_csrf():
-    """Expose a csrf-token meta tag helper for templates."""
     from flask_wtf.csrf import generate_csrf
     return {"csrf_token": generate_csrf}
 
 
-# Stripe
 stripe.api_key = os.getenv("STRIPE_API_KEY")
 
-# Login manager
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = "login"
+login_manager.login_view = "index"
 
+app._redis_client = _redis_client
 
 # ---------------------------------------------------------------------------
-# Imports that need `app`/`db` to already exist
+# Imports that need `app` / `db` first
 # ---------------------------------------------------------------------------
 
 from functions.encryption import encrypt_token  # noqa: E402
-from functions.get_emails import get_emails  # noqa: E402
-from functions.get_one_action import get_an_action  # noqa: E402
-from functions.linkify import linkify_text  # noqa: E402
 from functions.refresh_token import refresh  # noqa: E402
-from functions.scheduler import check_and_send_emails  # noqa: E402
 from functions.users import create_email, create_master  # noqa: E402
-from models import CachedEmail, EmailAccount, Master, Todo  # noqa: E402
+from models import EmailAccount, Master  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# OAuth configuration
+# OAuth
 # ---------------------------------------------------------------------------
 
 GOOGLE_SCOPES = [
     'https://mail.google.com/',
     'https://www.googleapis.com/auth/userinfo.email',
     'openid',
-    'https://www.googleapis.com/auth/calendar.calendars.readonly',
-    'https://www.googleapis.com/auth/calendar.events.owned',
 ]
 GOOGLE_REDIRECT_URI = f"{DOMAIN}/google/callback"
+
 google_client_config = {
     "web": {
         "client_id": os.getenv("GOOGLE_CLIENT_ID"),
@@ -169,14 +171,11 @@ google_client_config = {
 OUTLOOK_SCOPES = [
     'https://graph.microsoft.com/Mail.ReadWrite',
     'https://graph.microsoft.com/Mail.Send',
-    'https://graph.microsoft.com/Calendars.ReadWrite',
     'https://graph.microsoft.com/User.Read',
-    'openid',
-    'profile',
-    'email',
-    'offline_access',
+    'openid', 'profile', 'email', 'offline_access',
 ]
 OUTLOOK_REDIRECT_URI = f"{DOMAIN}/microsoft/callback"
+
 MICROSOFT_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
 MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
@@ -191,100 +190,14 @@ def load_user(id):
 
 
 # ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
-
-MIN_PASSWORD_LENGTH = 10
-
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "GET":
-        return render_template("login.html")
-
-    data = request.get_json(silent=True) or {}
-    mode = data.get("mode")
-    username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
-
-    if not username or not password:
-        return jsonify({"success": False, "message": "All fields are required."}), 400
-
-    if mode == "register":
-        if Master.query.filter_by(username=username).first():
-            return jsonify({"success": False, "message": "Username already taken."}), 400
-        if len(password) < MIN_PASSWORD_LENGTH:
-            return jsonify({
-                "success": False,
-                "message": f"Password must be at least {MIN_PASSWORD_LENGTH} characters.",
-            }), 400
-        try:
-            hashed_pw = generate_password_hash(password)
-            user = create_master(username, hashed_pw)
-            login_user(user)
-            return jsonify({
-                "success": True,
-                "message": "Account created successfully!",
-                "redirect": url_for("portal"),
-            }), 201
-        except Exception:
-            logger.exception("Registration failed")
-            return jsonify({"success": False, "message": "An error occurred during registration."}), 500
-
-    if mode == "login":
-        user = Master.query.filter_by(username=username).first()
-        if user and check_password_hash(user.password, password):
-            login_user(user)
-            return jsonify({
-                "success": True,
-                "message": "Login successful!",
-                "redirect": url_for("summary"),
-            }), 200
-        return jsonify({"success": False, "message": "Invalid username or password."}), 401
-
-    return jsonify({"success": False, "message": "Invalid mode."}), 400
-
-
-@app.route("/check_username")
-def check_username():
-    username = request.args.get("username", "").strip()
-    if not username:
-        return jsonify({"exists": False}), 400
-    exists = Master.query.filter_by(username=username).first() is not None
-    return jsonify({"exists": exists}), 200
-
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    return redirect(url_for('index'))
-
-
-@app.route("/sessionclear")
-@login_required
-def session_clear():
-    session.clear()
-    return redirect(url_for('index'))
-
-
-# ---------------------------------------------------------------------------
-# Marketing / static pages
+# Public pages
 # ---------------------------------------------------------------------------
 
 @app.route('/')
 def index():
+    if current_user.is_authenticated:
+        return redirect(url_for('settings'))
     return render_template('index.html')
-
-
-@app.route("/special")
-def special():
-    return render_template("index.html")
-
-
-@app.route("/request_access")
-def request_access():
-    return render_template("request_access.html")
 
 
 @app.route("/contact")
@@ -297,123 +210,47 @@ def terms_and_privacy():
     return render_template("termsandprivacy.html")
 
 
-@app.route("/beta")
-def beta():
-    return render_template("beta.html")
-
-
-# ---------------------------------------------------------------------------
-# Portal + account management
-# ---------------------------------------------------------------------------
-
-@app.route("/portal")
+@app.route('/logout')
 @login_required
-def portal():
-    if not current_user.subscribed:
-        return redirect(url_for("index"))
-    return render_template("portal.html", accounts=current_user.email_accounts)
-
-
-@app.route("/delete_account", methods=["POST"])
-@login_required
-def delete_account():
-    data = request.get_json(silent=True) or {}
-    try:
-        account_id = int(data.get("id"))
-    except (TypeError, ValueError):
-        return jsonify({"success": False, "error": "Invalid account id"}), 400
-
-    account = EmailAccount.query.filter_by(id=account_id, master_id=current_user.id).first()
-    if not account:
-        return jsonify({"success": False, "error": "Not found"}), 404
-
-    try:
-        db.session.delete(account)
-        db.session.commit()
-        return jsonify({"success": True}), 200
-    except Exception:
-        logger.exception("Failed to delete account %s", account_id)
-        db.session.rollback()
-        return jsonify({"success": False, "error": "Delete failed"}), 500
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
 
 
 # ---------------------------------------------------------------------------
-# Admin / debug (auth-gated so it can't be abused)
-# ---------------------------------------------------------------------------
-
-@app.route("/check")
-@login_required
-def check():
-    """Manually trigger a scheduler check; restricted to admins."""
-    admin_users = {u.strip() for u in os.getenv("MAILMIND_ADMINS", "").split(",") if u.strip()}
-    if current_user.username not in admin_users:
-        return jsonify({"success": False, "error": "Not authorized"}), 403
-    check_and_send_emails()
-    return jsonify({"success": True})
-
-
-# ---------------------------------------------------------------------------
-# Beta invite code
-# ---------------------------------------------------------------------------
-
-@app.route("/code", methods=["POST", "GET"])
-@login_required
-def code():
-    if request.method != "POST":
-        return render_template("code.html", message=False)
-
-    submitted = request.form.get("code")
-    real_code = os.getenv("CODE")
-    temp_code = os.getenv("TEMP_CODE")
-
-    if temp_code and str(submitted) == str(temp_code):
-        logger.info("TEMP CODE GRANTED TO %s", current_user.username)
-        current_user.subscribed = True
-        current_user.temp = True
-        db.session.commit()
-        return render_template("code.html", message="Code valid. Subscription granted until launch.")
-
-    if real_code and str(real_code) != "DISABLED" and str(submitted) == str(real_code):
-        logger.info("CODE GRANTED TO %s", current_user.username)
-        current_user.subscribed = True
-        db.session.commit()
-        return render_template("code.html", message="Code valid. Subscription granted.")
-
-    return render_template("code.html", message="Invalid code.")
-
-
-# ---------------------------------------------------------------------------
-# Google OAuth
+# OAuth: Google
 # ---------------------------------------------------------------------------
 
 @app.route("/google/login")
-@login_required
 def google_login():
+    """
+    Kick off Google OAuth. This is BOTH sign-in and account-linking:
+
+    - If the visitor isn't logged in yet, the callback creates or finds a
+      Master keyed by their Google email.
+    - If they are logged in, the callback attaches the (possibly different)
+      Google email as an additional EmailAccount on their existing Master.
+    """
     flow = Flow.from_client_config(
-        google_client_config, scopes=GOOGLE_SCOPES, redirect_uri=GOOGLE_REDIRECT_URI
+        google_client_config, scopes=GOOGLE_SCOPES, redirect_uri=GOOGLE_REDIRECT_URI,
     )
     state = secrets.token_urlsafe(32)
     session['google_oauth_state'] = state
     auth_url, _ = flow.authorization_url(
-        prompt="consent", access_type='offline', state=state
+        prompt="consent", access_type='offline', state=state,
     )
     return redirect(auth_url)
 
 
 @app.route('/google/callback')
-@login_required
 def google_callback():
     stored_state = session.pop('google_oauth_state', None)
-    received_state = request.args.get('state')
-    if not stored_state or stored_state != received_state:
-        logger.warning("Google OAuth state mismatch")
+    if not stored_state or stored_state != request.args.get('state'):
         return "Invalid state parameter", 400
 
     flow = Flow.from_client_config(
-        google_client_config,
-        scopes=GOOGLE_SCOPES,
-        redirect_uri=GOOGLE_REDIRECT_URI,
-        state=stored_state,
+        google_client_config, scopes=GOOGLE_SCOPES,
+        redirect_uri=GOOGLE_REDIRECT_URI, state=stored_state,
     )
 
     if PRODUCTION and request.url.startswith("http://"):
@@ -429,8 +266,7 @@ def google_callback():
 
     credentials = flow.credentials
     if not credentials.refresh_token:
-        logger.warning("Google returned no refresh_token; user must re-consent")
-        return "OAuth failed: missing refresh token", 400
+        return "OAuth failed: missing refresh token — try again and grant offline access", 400
 
     try:
         user_info = requests.get(
@@ -446,39 +282,14 @@ def google_callback():
     if not user_email:
         return "OAuth failed: no email in userinfo", 400
 
-    existing = EmailAccount.query.filter_by(email=user_email).first()
-    if existing and existing.master_id != current_user.id:
-        logger.warning(
-            "User %s tried to attach email %s already owned by %s",
-            current_user.id, user_email, existing.master_id,
-        )
-        return "This email is already linked to another account", 409
-
-    if not existing:
-        create_email(
-            user_email, encrypt_token(credentials.refresh_token),
-            provider="google", master=current_user,
-        )
-    else:
-        existing.oauth_token = encrypt_token(credentials.refresh_token)
-        existing.provider = "google"
-        db.session.commit()
-
-    _invalidate_email_cache_for_user(current_user.id)
-
-    if current_user.subscribed:
-        if current_user.time and current_user.timezone:
-            return redirect(url_for("summary"))
-        return redirect(url_for("set_time"))
-    return redirect(url_for("code"))
+    return _finish_oauth("google", user_email, credentials.refresh_token)
 
 
 # ---------------------------------------------------------------------------
-# Microsoft OAuth
+# OAuth: Microsoft
 # ---------------------------------------------------------------------------
 
 @app.route("/microsoft/login")
-@login_required
 def microsoft_login():
     state = secrets.token_urlsafe(32)
     session['microsoft_oauth_state'] = state
@@ -494,11 +305,9 @@ def microsoft_login():
 
 
 @app.route('/microsoft/callback')
-@login_required
 def microsoft_callback():
     stored_state = session.pop('microsoft_oauth_state', None)
-    received_state = request.args.get('state')
-    if not stored_state or stored_state != received_state:
+    if not stored_state or stored_state != request.args.get('state'):
         return "Invalid state parameter", 400
 
     auth_code = request.args.get('code')
@@ -514,10 +323,8 @@ def microsoft_callback():
         'scope': ' '.join(OUTLOOK_SCOPES),
     }
     token_response = requests.post(
-        MICROSOFT_TOKEN_URL,
-        data=token_data,
-        headers={'Content-Type': 'application/x-www-form-urlencoded'},
-        timeout=15,
+        MICROSOFT_TOKEN_URL, data=token_data,
+        headers={'Content-Type': 'application/x-www-form-urlencoded'}, timeout=15,
     )
     if token_response.status_code != 200:
         logger.error("Microsoft token exchange failed: %s", token_response.text)
@@ -526,10 +333,7 @@ def microsoft_callback():
     token_info = token_response.json()
     user_response = requests.get(
         MICROSOFT_USERINFO_URL,
-        headers={
-            'Authorization': f"Bearer {token_info['access_token']}",
-            'Content-Type': 'application/json',
-        },
+        headers={'Authorization': f"Bearer {token_info['access_token']}"},
         timeout=15,
     )
     if user_response.status_code != 200:
@@ -541,400 +345,167 @@ def microsoft_callback():
     if not user_email:
         return "OAuth failed: no email in userinfo", 400
 
-    existing = EmailAccount.query.filter_by(email=user_email).first()
-    if existing and existing.master_id != current_user.id:
-        return "This email is already linked to another account", 409
-
-    if not existing:
-        create_email(
-            user_email, encrypt_token(token_info.get("refresh_token")),
-            provider="microsoft", master=current_user,
-        )
-    else:
-        existing.oauth_token = encrypt_token(token_info.get("refresh_token"))
-        existing.provider = "microsoft"
-        db.session.commit()
-
-    _invalidate_email_cache_for_user(current_user.id)
-
-    if current_user.time and current_user.timezone:
-        return redirect(url_for("summary"))
-    return redirect(url_for("set_time"))
+    return _finish_oauth("microsoft", user_email, token_info.get("refresh_token"))
 
 
 # ---------------------------------------------------------------------------
-# Template filters
+# Shared OAuth resolution
 # ---------------------------------------------------------------------------
 
-@app.template_filter('markdown')
-def markdown_filter(text):
-    return markdown.markdown(text)
-
-
-@app.template_filter("remove_asterisks")
-def remove_asterisks(text):
-    if text is None:
-        return ""
-    return text.replace("*", "")
-
-
-app.jinja_env.filters['markdown'] = markdown_filter
-app.jinja_env.filters['linkify_text'] = linkify_text
-app.jinja_env.filters["remove_asterisks"] = remove_asterisks
-
-
-# ---------------------------------------------------------------------------
-# Email cache helpers (replaces stashing full email bodies in session)
-# ---------------------------------------------------------------------------
-
-CACHE_MAX_AGE = timedelta(hours=48)
-
-
-def _message_hash(sender: str, subject: str, utc: datetime) -> str:
-    ts = utc.astimezone(timezone.utc).isoformat() if utc else ""
-    digest = hashlib.sha256(
-        f"{sender or ''}|{subject or ''}|{ts}".encode("utf-8")
-    ).hexdigest()
-    return digest
-
-
-def _purge_stale_cache_rows():
-    cutoff = datetime.now(timezone.utc) - CACHE_MAX_AGE
-    CachedEmail.query.filter(CachedEmail.fetched_at < cutoff).delete()
-
-
-def _invalidate_email_cache_for_user(master_id: int):
-    CachedEmail.query.filter_by(master_id=master_id).delete()
-    db.session.commit()
-
-
-def _parse_last_load(value) -> datetime:
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-    if isinstance(value, str):
-        try:
-            parsed = date_parser.parse(value)
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-        except Exception:
-            logger.warning("Failed to parse last_load %r", value)
-    return datetime.now(timezone.utc)
-
-
-def _fetch_and_cache_emails(refresh_only: bool = False):
+def _finish_oauth(provider: str, user_email: str, refresh_token: str):
     """
-    Fetch emails for every account belonging to `current_user`, dedupe against
-    the CachedEmail table, and persist new rows. Returns the ordered list of
-    cached-email dicts for template rendering.
+    Land the OAuth flow: create-or-attach an EmailAccount, log the user in,
+    then send them to /settings (or to /code if they still need to unlock beta).
     """
-    _purge_stale_cache_rows()
+    if not refresh_token:
+        return "OAuth failed: missing refresh token", 400
 
-    now = datetime.now(timezone.utc)
-    after_date = since_time = None
-    if refresh_only:
-        last_load = _parse_last_load(session.get('last_load'))
-        after_date = last_load.strftime("%m-%d-%y")
-        since_time = last_load.strftime("%H:%M:%S")
+    encrypted = encrypt_token(refresh_token)
+    existing_account = EmailAccount.query.filter_by(email=user_email).first()
 
-    for account in current_user.email_accounts:
-        try:
-            new_emails = get_emails(
-                account.provider, account.email, refresh(account),
-                after_date=after_date, since_time=since_time,
-                master_id=current_user.id,
-            )
-        except Exception:
-            logger.exception("get_emails failed for %s", account.email)
-            continue
+    if current_user.is_authenticated:
+        # Adding an additional email account to an existing session.
+        if existing_account and existing_account.master_id != current_user.id:
+            return "This email is already linked to another MailMind account", 409
 
-        new_emails = list(reversed(new_emails))
-        first = True
-        for email in new_emails:
-            msg_hash = _message_hash(
-                email.get('from', ''), email.get('subject', ''), email.get('utc'),
-            )
-            existing = CachedEmail.query.filter_by(
-                master_id=current_user.id,
-                account_id=account.id,
-                message_hash=msg_hash,
-            ).first()
-            if existing:
-                continue
+        if existing_account:
+            existing_account.oauth_token = encrypted
+            existing_account.provider = provider
+        else:
+            create_email(user_email, encrypted, provider=provider, master=current_user)
 
-            row = CachedEmail(
-                master_id=current_user.id,
-                account_id=account.id,
-                account_email=account.email,
-                message_hash=msg_hash,
-                sender=email.get('from', ''),
-                subject=email.get('subject', ''),
-                body=email.get('body', ''),
-                received_utc=email.get('utc') or now,
-                action_items="Generating ...",
-                calendar=False,
-                is_first_of_account=first,
-            )
-            first = False
-            db.session.add(row)
-
-    try:
+        current_user.last_login = datetime.now(timezone.utc)
         db.session.commit()
-    except Exception:
-        logger.exception("Failed to commit cached emails")
-        db.session.rollback()
+        return redirect(url_for('settings'))
 
-    session['last_load'] = now.isoformat()
-    return _load_cached_emails()
+    # Not logged in yet — this OAuth *is* the sign-in.
+    master = Master.query.filter_by(primary_email=user_email).first()
+    if master is None and existing_account:
+        # An account with this email was linked before as a secondary — reuse
+        # its Master rather than creating a duplicate.
+        master = db.session.get(Master, existing_account.master_id)
 
+    if master is None:
+        master = create_master(user_email)
 
-def _load_cached_emails():
-    """Return cached emails for current_user as a list of template-friendly dicts."""
-    rows = (
-        CachedEmail.query
-        .filter_by(master_id=current_user.id)
-        .order_by(CachedEmail.account_id.asc(), CachedEmail.received_utc.desc())
-        .all()
-    )
-    result = []
-    for row in rows:
-        result.append({
-            "id": row.id,
-            "from": row.sender,
-            "subject": row.subject,
-            "body": row.body,
-            "email": row.account_email,
-            "utc": row.received_utc,
-            "action_items": row.action_items,
-            "calendar": row.calendar,
-            "change": row.is_first_of_account,
-            "todo_id": row.todo_id,
-        })
-    return result
+    if existing_account is None:
+        create_email(user_email, encrypted, provider=provider, master=master)
+    else:
+        existing_account.oauth_token = encrypted
+        existing_account.provider = provider
+
+    master.last_login = datetime.now(timezone.utc)
+    db.session.commit()
+    login_user(master)
+
+    if not master.subscribed:
+        return redirect(url_for('code'))
+    return redirect(url_for('settings'))
 
 
 # ---------------------------------------------------------------------------
-# Email views
+# Settings — the only routine page
 # ---------------------------------------------------------------------------
 
-@app.route('/emails')
+_TIMEZONES = [
+    ("America/New_York", "Eastern (US)"),
+    ("America/Chicago", "Central (US)"),
+    ("America/Denver", "Mountain (US)"),
+    ("America/Phoenix", "Arizona (US)"),
+    ("America/Los_Angeles", "Pacific (US)"),
+    ("America/Anchorage", "Alaska"),
+    ("Pacific/Honolulu", "Hawaii"),
+    ("Europe/London", "London"),
+    ("Europe/Paris", "Paris"),
+    ("Europe/Berlin", "Berlin"),
+    ("Europe/Athens", "Athens"),
+    ("Asia/Dubai", "Dubai"),
+    ("Asia/Kolkata", "India"),
+    ("Asia/Singapore", "Singapore"),
+    ("Asia/Tokyo", "Tokyo"),
+    ("Australia/Sydney", "Sydney"),
+    ("UTC", "UTC"),
+]
+
+_TIME_OPTIONS = [
+    f"{h}:{m:02d} {ampm}"
+    for ampm in ("AM", "PM")
+    for h in list(range(1, 13))
+    for m in (0, 15, 30, 45)
+]
+
+
+@app.route("/settings", methods=["GET", "POST"])
 @login_required
-def emails():
+def settings():
     if not current_user.subscribed:
-        return render_template("subscribe.html")
+        return redirect(url_for('subscribe'))
 
-    refresh_only = 'last_load' in session and CachedEmail.query.filter_by(
-        master_id=current_user.id
-    ).first() is not None
-    final_emails = _fetch_and_cache_emails(refresh_only=refresh_only)
-    return render_template('emails.html', emails=final_emails, accounts=current_user.email_accounts)
+    message = None
 
+    if request.method == "POST":
+        tz = request.form.get("timezone")
+        times = request.form.getlist("time")
 
-from functions.calendar import create_google_calendar_event, create_microsoft_calendar_event  # noqa: E402
-
-
-@app.route("/add_to_calendar", methods=["POST"])
-@login_required
-def add_to_calendar():
-    try:
-        start = request.form.get("start")
-        end = request.form.get("end")
-        name = request.form.get("name")
-        try:
-            account_id = int(request.form.get("account"))
-        except (TypeError, ValueError):
-            return jsonify({"success": False, "error": "Invalid account id"}), 400
-
-        account = EmailAccount.query.filter_by(id=account_id, master_id=current_user.id).first()
-        if not account:
-            return jsonify({"success": False, "error": "Account not found"}), 404
-
-        if not start or not end or not name:
-            return jsonify({"success": False, "error": "Missing required fields"}), 400
-
-        start_dt = datetime.strptime(start, "%Y-%m-%dT%H:%M").replace(tzinfo=tzlocal())
-        end_dt = datetime.strptime(end, "%Y-%m-%dT%H:%M").replace(tzinfo=tzlocal())
-        if end_dt <= start_dt:
-            return jsonify({"success": False, "error": "End time must be after start time"}), 400
-
-        if account.provider == "google":
-            return create_google_calendar_event(start_dt, end_dt, name, account)
-        if account.provider == "microsoft":
-            return create_microsoft_calendar_event(start_dt, end_dt, name, account)
-        return jsonify({"success": False, "error": "Unsupported calendar provider"}), 400
-    except ValueError:
-        return jsonify({"success": False, "error": "Invalid date format"}), 400
-    except Exception:
-        logger.exception("Calendar API error")
-        return jsonify({"success": False, "error": "Failed to create calendar event"}), 500
-
-
-@app.route("/get_one_action", methods=["POST"])
-@login_required
-def get_one_action():
-    data = request.get_json(silent=True) or {}
-    body = data.get("body") or ""
-    try:
-        index = int(data.get("index"))
-    except (TypeError, ValueError):
-        return jsonify({"success": False, "error": "Invalid index"}), 400
-
-    cached = _load_cached_emails()
-    if index < 0 or index >= len(cached):
-        return jsonify({"success": False, "error": "Email index out of range"}), 400
-    target = cached[index]
-
-    action = get_an_action(body)
-    calendar = any(
-        kw in action.lower() for kw in ["meeting", "conference call", "calendar", "appointment", "call"]
-    )
-
-    row = db.session.get(CachedEmail, target["id"])
-    if row is None:
-        return jsonify({"success": False, "error": "Email not found"}), 404
-
-    if action and action.lower() not in ("no action.", "no action", "no action required.", ""):
-        row.action_items = action
-        row.calendar = calendar
-        # Only add a Todo when we don't already have one for this email
-        if row.todo_id is None:
-            new_todo = Todo(master=current_user.id, item=action, done=False)
-            db.session.add(new_todo)
-            db.session.flush()
-            row.todo_id = new_todo.id
-    else:
-        row.action_items = "No action."
-        row.calendar = False
-        action = "No action."
-
-    db.session.commit()
-
-    accounts = [{"id": a.id, "email": a.email} for a in current_user.email_accounts]
-    return jsonify({"action_item": action, "calendar": calendar, "accounts": accounts})
-
-
-@app.route("/remove_todo", methods=["POST"])
-@login_required
-def remove_todo():
-    data = request.get_json(silent=True) or {}
-    try:
-        todo_id = int(data.get("id"))
-    except (TypeError, ValueError):
-        return jsonify({"success": False, "error": "Invalid id"}), 400
-
-    todo = Todo.query.filter_by(id=todo_id, master=current_user.id).first()
-    if not todo:
-        return jsonify({"success": False, "error": "Not found"}), 404
-
-    # Detach from any cached emails that reference it before deleting
-    CachedEmail.query.filter_by(master_id=current_user.id, todo_id=todo_id).update(
-        {"todo_id": None}
-    )
-    db.session.delete(todo)
-    db.session.commit()
-    return jsonify({"success": True})
-
-
-@app.route('/summary')
-@login_required
-def summary():
-    if not current_user.subscribed:
-        return render_template("subscribe.html")
-
-    refresh_only = 'last_load' in session and CachedEmail.query.filter_by(
-        master_id=current_user.id
-    ).first() is not None
-    final_emails = _fetch_and_cache_emails(refresh_only=refresh_only)
-
-    pending = [i for i, e in enumerate(final_emails) if e.get("action_items") == "Generating ..."]
-    if pending:
-        text = f"Processing {len(pending)} emails for action items..."
-    else:
-        actionable = [
-            e for e in final_emails
-            if e.get("action_items")
-            and e["action_items"] not in ("No action.", "Generating ...")
-        ]
-        text = (
-            f"Found {len(actionable)} action items"
-            if actionable else "No action items found from recent emails."
-        )
+        if not tz:
+            message = "Please select a timezone."
+        elif not times:
+            message = "Please select at least one time."
+        else:
+            current_user.timezone = tz
+            current_user.time = ",".join(times[:3])
+            db.session.commit()
+            message = "Settings saved."
 
     return render_template(
-        'summary.html',
-        emails=final_emails, text=text,
+        "settings.html",
+        message=message,
         accounts=current_user.email_accounts,
-        pending_count=len(pending),
+        current_times=(current_user.time or "").split(",") if current_user.time else [],
+        current_timezone=current_user.timezone or "",
+        timezones=_TIMEZONES,
+        time_options=_TIME_OPTIONS,
     )
 
 
-@app.route('/generate_pending_actions', methods=['POST'])
+@app.route("/settings/delete_account", methods=["POST"])
 @login_required
-def generate_pending_actions():
-    """Bulk-generate actions for cached emails that still say 'Generating ...'."""
-    rows = CachedEmail.query.filter_by(
-        master_id=current_user.id, action_items="Generating ..."
-    ).all()
-    if not rows:
-        return jsonify({"success": False, "message": "No emails found to process"})
+def delete_email_account():
+    try:
+        account_id = int(request.form.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "Invalid account id"}), 400
 
-    generated = 0
-    for row in rows:
-        body = row.body or ""
-        if not body:
-            row.action_items = "No action."
-            continue
+    account = EmailAccount.query.filter_by(id=account_id, master_id=current_user.id).first()
+    if not account:
+        return jsonify({"success": False, "error": "Not found"}), 404
 
-        try:
-            action = get_an_action(body)
-        except Exception:
-            logger.exception("get_an_action failed for cached email %s", row.id)
-            row.action_items = "Error generating action"
-            continue
+    if account.email == current_user.primary_email:
+        return jsonify({
+            "success": False,
+            "error": "Can't delete your primary email — this is your login. Log out first, or contact support.",
+        }), 400
 
-        row.action_items = action or "No action."
-        row.calendar = any(
-            kw in row.action_items.lower()
-            for kw in ["meeting", "conference call", "calendar", "appointment", "call"]
-        )
-
-        if action and action.lower() not in ("no action.", "no action", "no action required.", ""):
-            existing = Todo.query.filter_by(
-                master=current_user.id, item=action, done=False
-            ).first()
-            if not existing:
-                new_todo = Todo(master=current_user.id, item=action, done=False)
-                db.session.add(new_todo)
-                db.session.flush()
-                row.todo_id = new_todo.id
-                generated += 1
-            else:
-                row.todo_id = existing.id
-
-    db.session.commit()
-    return jsonify({
-        "success": True,
-        "generated_count": generated,
-        "message": f"Generated {generated} new action items",
-    })
+    try:
+        db.session.delete(account)
+        db.session.commit()
+        return jsonify({"success": True}), 200
+    except Exception:
+        logger.exception("Failed to delete account %s", account_id)
+        db.session.rollback()
+        return jsonify({"success": False, "error": "Delete failed"}), 500
 
 
 # ---------------------------------------------------------------------------
-# Subscriptions
+# Subscription
 # ---------------------------------------------------------------------------
 
 @app.route("/subscribe")
 @login_required
 def subscribe():
     if current_user.subscribed:
-        return redirect(url_for('index'))
+        return redirect(url_for('settings'))
     return render_template("subscribe.html")
-
-
-@app.route("/manage_subscription")
-@login_required
-def manage_subscription():
-    if not current_user.subscribed:
-        return render_template("subscribe.html")
-    return render_template("manage.html")
 
 
 @app.route('/create-checkout-session', methods=['POST'])
@@ -947,11 +518,9 @@ def create_checkout_session():
         )
 
         if not current_user.stripe_customer_id:
-            if not current_user.email_accounts:
-                return "Please link an email account first", 400
             customer = stripe.Customer.create(
-                email=current_user.email_accounts[0].email,
-                name=current_user.username,
+                email=current_user.primary_email,
+                name=current_user.primary_email,
             )
             current_user.stripe_customer_id = customer.id
             db.session.commit()
@@ -960,7 +529,7 @@ def create_checkout_session():
             customer=current_user.stripe_customer_id,
             line_items=[{'price': prices.data[0].id, 'quantity': 1}],
             mode='subscription',
-            success_url=DOMAIN + '/emails',
+            success_url=DOMAIN + url_for('settings'),
             cancel_url=DOMAIN,
             subscription_data={'trial_period_days': 7},
         )
@@ -978,7 +547,7 @@ def customer_portal():
             return "No subscription found", 400
         portal_session = stripe.billing_portal.Session.create(
             customer=current_user.stripe_customer_id,
-            return_url=DOMAIN,
+            return_url=DOMAIN + url_for('settings'),
         )
         return redirect(portal_session.url, code=303)
     except Exception:
@@ -991,7 +560,7 @@ def customer_portal():
 def webhook_received():
     webhook_secret = os.getenv("WEBHOOK_SECRET") if PRODUCTION else os.getenv("TEST_WEBHOOK")
     if not webhook_secret:
-        logger.error("Stripe webhook secret not configured; rejecting request")
+        logger.error("Stripe webhook secret not configured; rejecting")
         return "Webhook secret not configured", 500
 
     signature = request.headers.get('stripe-signature')
@@ -1008,89 +577,54 @@ def webhook_received():
 
     data_object = event['data']['object']
     event_type = event['type']
-    logger.info("Stripe event: %s", event_type)
-
-    def find_user(customer_id):
-        return Master.query.filter_by(stripe_customer_id=customer_id).first()
-
     customer_id = data_object.get('customer') if isinstance(data_object, dict) else None
+    user = Master.query.filter_by(stripe_customer_id=customer_id).first() if customer_id else None
 
-    if event_type == 'checkout.session.completed':
-        user = find_user(customer_id)
-        if user:
-            user.subscribed = True
-            db.session.commit()
-    elif event_type == 'customer.subscription.created':
-        user = find_user(customer_id)
-        if user:
-            user.subscribed = True
-            db.session.commit()
-    elif event_type == 'customer.subscription.updated':
-        user = find_user(customer_id)
-        if user:
-            user.subscribed = data_object.get('status') in ['active', 'trialing']
-            db.session.commit()
-    elif event_type == 'customer.subscription.deleted':
-        user = find_user(customer_id)
-        if user:
-            user.subscribed = False
-            db.session.commit()
+    if user and event_type in ('checkout.session.completed', 'customer.subscription.created'):
+        user.subscribed = True
+    elif user and event_type == 'customer.subscription.updated':
+        user.subscribed = data_object.get('status') in ('active', 'trialing')
+    elif user and event_type == 'customer.subscription.deleted':
+        user.subscribed = False
+
+    if user:
+        db.session.commit()
 
     return jsonify({'status': 'success'})
 
 
 # ---------------------------------------------------------------------------
-# Scheduling preferences
+# Beta grant (kept during testing)
 # ---------------------------------------------------------------------------
 
-@app.route("/set_time", methods=["POST", "GET"])
+@app.route("/code", methods=["POST", "GET"])
 @login_required
-def set_time():
-    if request.method == "POST":
-        try:
-            tz = request.form.get("timezone")
-            times = request.form.getlist("time")
+def code():
+    if request.method != "POST":
+        return render_template("code.html", message=None)
 
-            if not tz:
-                return render_template("time.html", message="Please select a timezone")
-            if not times:
-                return render_template("time.html", message="Please select at least one time")
+    submitted = request.form.get("code")
+    real_code = os.getenv("CODE")
+    temp_code = os.getenv("TEMP_CODE")
 
-            times = times[:3]
-            times_str = ",".join(times)
-            current_user.timezone = tz
-            current_user.time = times_str
-            db.session.commit()
+    if temp_code and str(submitted) == str(temp_code):
+        logger.info("TEMP CODE granted to %s", current_user.primary_email)
+        current_user.subscribed = True
+        current_user.temp = True
+        db.session.commit()
+        return redirect(url_for('settings'))
 
-            return render_template(
-                "time.html",
-                message=f"Successfully set time(s) to {times_str} and timezone to {tz}!",
-            )
-        except Exception:
-            logger.exception("Error setting time and timezone")
-            return render_template("time.html", message="Error setting time and timezone")
+    if real_code and str(real_code) != "DISABLED" and str(submitted) == str(real_code):
+        logger.info("CODE granted to %s", current_user.primary_email)
+        current_user.subscribed = True
+        db.session.commit()
+        return redirect(url_for('settings'))
 
-    time_val = current_user.time
-    tz_val = current_user.timezone
-    if time_val and tz_val:
-        message = f"Update your time(s) from {time_val} in timezone {tz_val}"
-    else:
-        message = "Set your time and timezone for your daily to-do list to be sent to you!"
-    return render_template("time.html", message=message)
+    return render_template("code.html", message="Invalid code.")
 
 
 # ---------------------------------------------------------------------------
-# CSRF exemptions for JSON endpoints that JS already calls (until the frontend
-# is updated to send X-CSRFToken headers).
+# CSRF exemptions for JSON API endpoints (until the frontend sends the header)
 # ---------------------------------------------------------------------------
 
-csrf.exempt(login)
-csrf.exempt(delete_account)
-csrf.exempt(add_to_calendar)
-csrf.exempt(get_one_action)
-csrf.exempt(remove_todo)
-csrf.exempt(generate_pending_actions)
-
-
-# Expose the redis client for functions/scheduler.py to reach.
-app._redis_client = _redis_client
+csrf.exempt(delete_email_account)

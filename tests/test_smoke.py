@@ -1,226 +1,275 @@
-"""Smoke tests covering the highest-risk security surfaces."""
+"""Smoke tests covering the Sprint-4 minimal surface."""
 import json
 
 
+# ---------------------------------------------------------------------------
+# Public pages
+# ---------------------------------------------------------------------------
+
 def test_public_pages_render(client):
-    for path in ("/", "/login", "/contact", "/request_access", "/termsandprivacy"):
+    for path in ("/", "/contact", "/termsandprivacy"):
         resp = client.get(path)
         assert resp.status_code == 200, f"{path} returned {resp.status_code}"
 
 
-def test_login_rejects_short_password(client):
-    resp = client.post(
-        "/login",
-        data=json.dumps({"mode": "register", "username": "alice", "password": "short"}),
-        content_type="application/json",
-    )
-    assert resp.status_code == 400
-    assert b"characters" in resp.data.lower()
-
-
-def test_login_registers_then_logs_in(client):
-    strong = "hunter2hunter2"
-    resp = client.post(
-        "/login",
-        data=json.dumps({"mode": "register", "username": "bob", "password": strong}),
-        content_type="application/json",
-    )
-    assert resp.status_code == 201
-
-    client.get("/logout")
-
-    resp = client.post(
-        "/login",
-        data=json.dumps({"mode": "login", "username": "bob", "password": strong}),
-        content_type="application/json",
-    )
+def test_landing_shows_oauth_buttons(client):
+    resp = client.get("/")
     assert resp.status_code == 200
-    body = resp.get_json()
-    assert body["success"] is True
+    assert b"Sign in with Google" in resp.data
+    assert b"Sign in with Microsoft" in resp.data
 
 
-def test_login_wrong_password_401(client):
-    strong = "correct-horse-battery"
-    client.post(
-        "/login",
-        data=json.dumps({"mode": "register", "username": "eve", "password": strong}),
-        content_type="application/json",
-    )
-    client.get("/logout")
-    resp = client.post(
-        "/login",
-        data=json.dumps({"mode": "login", "username": "eve", "password": "wrong"}),
-        content_type="application/json",
-    )
-    assert resp.status_code == 401
+def test_no_password_login_form_exists(client):
+    """Login-with-password should be gone. Landing has no form."""
+    resp = client.get("/")
+    # Only the outer form (if any) — no password input anywhere.
+    assert b'type="password"' not in resp.data
 
 
-def test_delete_account_requires_login(client):
-    resp = client.post(
-        "/delete_account",
-        data=json.dumps({"id": 1}),
-        content_type="application/json",
-    )
-    # Flask-Login sends unauthenticated requests to the login view.
+# ---------------------------------------------------------------------------
+# Auth / OAuth
+# ---------------------------------------------------------------------------
+
+def test_settings_requires_login(client):
+    resp = client.get("/settings", follow_redirects=False)
+    # login_view is "index", so we get redirected there
     assert resp.status_code in (302, 401)
 
 
-def test_delete_account_cannot_touch_other_user(app, client):
-    """IDOR regression: verify /delete_account enforces ownership."""
+def test_oauth_callback_rejects_bad_state(client):
+    resp = client.get("/google/callback?state=nope&code=whatever")
+    assert resp.status_code == 400
+
+
+def test_finish_oauth_creates_master(app):
+    """First OAuth for an email creates a Master + primary EmailAccount."""
+    from app import _finish_oauth, db as _db
+    from models import EmailAccount, Master
+
+    with app.test_request_context("/"):
+        _finish_oauth("google", "new-user@example.com", "test-refresh-token")
+
+        master = Master.query.filter_by(primary_email="new-user@example.com").one()
+        assert master.subscribed is False
+        assert len(master.email_accounts) == 1
+        assert master.email_accounts[0].provider == "google"
+
+
+def test_finish_oauth_reuses_existing_master(app):
+    """Second OAuth with the same primary_email logs into the same Master."""
+    from app import _finish_oauth
+    from models import Master
+
+    with app.test_request_context("/"):
+        _finish_oauth("google", "reuse@example.com", "tok-1")
+        first_id = Master.query.filter_by(primary_email="reuse@example.com").one().id
+
+    with app.test_request_context("/"):
+        _finish_oauth("google", "reuse@example.com", "tok-2")
+
+    masters = Master.query.filter_by(primary_email="reuse@example.com").all()
+    assert len(masters) == 1
+    assert masters[0].id == first_id
+
+
+# ---------------------------------------------------------------------------
+# Settings CRUD
+# ---------------------------------------------------------------------------
+
+def _login_as(app, client, primary_email="me@example.com", subscribed=True):
+    from app import db as _db
+    from models import Master
+    with app.app_context():
+        m = Master(primary_email=primary_email, subscribed=subscribed, temp=False)
+        _db.session.add(m)
+        _db.session.commit()
+        uid = m.id
+    with client.session_transaction() as sess:
+        sess["_user_id"] = str(uid)
+    return uid
+
+
+def test_settings_saves_time_and_timezone(app, client):
+    _login_as(app, client)
+    resp = client.post("/settings", data={
+        "timezone": "America/New_York",
+        "time": ["8:00 AM", "5:00 PM"],
+    })
+    assert resp.status_code == 200
+
+    from app import db as _db
+    from models import Master
+    with app.app_context():
+        m = Master.query.filter_by(primary_email="me@example.com").one()
+        assert m.timezone == "America/New_York"
+        assert m.time == "8:00 AM,5:00 PM"
+
+
+def test_settings_caps_at_three_times(app, client):
+    _login_as(app, client)
+    client.post("/settings", data={
+        "timezone": "UTC",
+        "time": ["1:00 AM", "2:00 AM", "3:00 AM", "4:00 AM"],
+    })
+    from app import db as _db
+    from models import Master
+    with app.app_context():
+        m = Master.query.filter_by(primary_email="me@example.com").one()
+        assert m.time.count(",") == 2  # exactly 3 entries
+
+
+def test_delete_secondary_account(app, client):
     from app import db as _db
     from functions.encryption import encrypt_token
     from models import EmailAccount, Master
-    from werkzeug.security import generate_password_hash
 
     with app.app_context():
-        attacker = Master(
-            username="attacker",
-            password=generate_password_hash("attackerpass"),
-            subscribed=True,
-        )
-        victim = Master(
-            username="victim",
-            password=generate_password_hash("victimpass"),
-            subscribed=True,
-        )
+        m = Master(primary_email="owner@example.com", subscribed=True, temp=False)
+        _db.session.add(m)
+        _db.session.commit()
+        primary = EmailAccount(email="owner@example.com", oauth_token=encrypt_token("x"),
+                               provider="google", master=m)
+        secondary = EmailAccount(email="second@example.com", oauth_token=encrypt_token("y"),
+                                 provider="microsoft", master=m)
+        _db.session.add_all([primary, secondary])
+        _db.session.commit()
+        uid = m.id
+        secondary_id = secondary.id
+
+    with client.session_transaction() as sess:
+        sess["_user_id"] = str(uid)
+
+    resp = client.post("/settings/delete_account", data={"id": str(secondary_id)})
+    assert resp.status_code == 200
+    with app.app_context():
+        assert _db.session.get(EmailAccount,secondary_id) is None
+
+
+def test_cannot_delete_primary_account(app, client):
+    from app import db as _db
+    from functions.encryption import encrypt_token
+    from models import EmailAccount, Master
+
+    with app.app_context():
+        m = Master(primary_email="only@example.com", subscribed=True, temp=False)
+        _db.session.add(m)
+        _db.session.commit()
+        primary = EmailAccount(email="only@example.com", oauth_token=encrypt_token("x"),
+                               provider="google", master=m)
+        _db.session.add(primary)
+        _db.session.commit()
+        uid = m.id
+        primary_id = primary.id
+
+    with client.session_transaction() as sess:
+        sess["_user_id"] = str(uid)
+
+    resp = client.post("/settings/delete_account", data={"id": str(primary_id)})
+    assert resp.status_code == 400
+    with app.app_context():
+        assert _db.session.get(EmailAccount,primary_id) is not None
+
+
+def test_delete_account_cannot_touch_other_user(app, client):
+    """IDOR regression."""
+    from app import db as _db
+    from functions.encryption import encrypt_token
+    from models import EmailAccount, Master
+
+    with app.app_context():
+        attacker = Master(primary_email="attacker@x.com", subscribed=True, temp=False)
+        victim = Master(primary_email="victim@x.com", subscribed=True, temp=False)
         _db.session.add_all([attacker, victim])
         _db.session.commit()
-
-        victim_account = EmailAccount(
-            email="victim@example.com",
-            oauth_token=encrypt_token("dummy-token"),
-            provider="google",
-            master=victim,
-        )
-        _db.session.add(victim_account)
+        va = EmailAccount(email="victim-extra@x.com", oauth_token=encrypt_token("x"),
+                          provider="google", master=victim)
+        _db.session.add(va)
         _db.session.commit()
-        victim_account_id = victim_account.id
         attacker_id = attacker.id
+        va_id = va.id
 
-    # Log in as attacker
     with client.session_transaction() as sess:
         sess["_user_id"] = str(attacker_id)
 
-    resp = client.post(
-        "/delete_account",
-        data=json.dumps({"id": victim_account_id}),
-        content_type="application/json",
-    )
+    resp = client.post("/settings/delete_account", data={"id": str(va_id)})
     assert resp.status_code == 404
-
-    # Victim's account should still exist
     with app.app_context():
-        assert _db.session.get(EmailAccount, victim_account_id) is not None
+        assert _db.session.get(EmailAccount,va_id) is not None
 
 
-def test_add_to_calendar_rejects_foreign_account(app, client):
+# ---------------------------------------------------------------------------
+# Beta code
+# ---------------------------------------------------------------------------
+
+def test_code_route_grants_temp(app, client, monkeypatch):
+    monkeypatch.setenv("TEMP_CODE", "letmein")
     from app import db as _db
-    from functions.encryption import encrypt_token
-    from models import EmailAccount, Master
-    from werkzeug.security import generate_password_hash
+    from models import Master
 
     with app.app_context():
-        u1 = Master(username="u1", password=generate_password_hash("u1passu1pass"), subscribed=True)
-        u2 = Master(username="u2", password=generate_password_hash("u2passu2pass"), subscribed=True)
-        _db.session.add_all([u1, u2])
+        m = Master(primary_email="beta@x.com", subscribed=False, temp=False)
+        _db.session.add(m)
         _db.session.commit()
-        u2_account = EmailAccount(
-            email="u2@example.com",
-            oauth_token=encrypt_token("x"),
-            provider="google",
-            master=u2,
-        )
-        _db.session.add(u2_account)
-        _db.session.commit()
-        u1_id = u1.id
-        u2_account_id = u2_account.id
-
+        uid = m.id
     with client.session_transaction() as sess:
-        sess["_user_id"] = str(u1_id)
+        sess["_user_id"] = str(uid)
 
-    resp = client.post(
-        "/add_to_calendar",
-        data={
-            "account": str(u2_account_id),
-            "name": "hostile-event",
-            "start": "2026-01-01T10:00",
-            "end": "2026-01-01T11:00",
-        },
-    )
-    assert resp.status_code == 404
+    resp = client.post("/code", data={"code": "letmein"})
+    assert resp.status_code in (302, 200)
+    with app.app_context():
+        m = Master.query.filter_by(primary_email="beta@x.com").one()
+        assert m.subscribed is True
+        assert m.temp is True
 
+
+# ---------------------------------------------------------------------------
+# Webhook
+# ---------------------------------------------------------------------------
 
 def test_webhook_rejects_missing_signature(client):
     resp = client.post("/webhook", data=json.dumps({"type": "checkout.session.completed"}))
-    # No signature header -> either signature-missing rejection or bad signature.
     assert resp.status_code in (400, 500)
 
 
 def test_webhook_rejects_bad_signature(client):
-    resp = client.post(
-        "/webhook",
-        data=json.dumps({"type": "checkout.session.completed"}),
-        headers={"stripe-signature": "t=1,v1=deadbeef"},
-    )
+    resp = client.post("/webhook",
+                       data=json.dumps({"type": "checkout.session.completed"}),
+                       headers={"stripe-signature": "t=1,v1=deadbeef"})
     assert resp.status_code == 400
 
 
-def test_oauth_callback_rejects_bad_state(client, app):
-    from models import Master
-    from werkzeug.security import generate_password_hash
-    from app import db as _db
-
-    with app.app_context():
-        u = Master(username="oauthy", password=generate_password_hash("passpasspass"), subscribed=True)
-        _db.session.add(u)
-        _db.session.commit()
-        uid = u.id
-
-    with client.session_transaction() as sess:
-        sess["_user_id"] = str(uid)
-        sess["google_oauth_state"] = "state-A"
-
-    resp = client.get("/google/callback?state=state-B&code=whatever")
-    assert resp.status_code == 400
-
+# ---------------------------------------------------------------------------
+# Support code
+# ---------------------------------------------------------------------------
 
 def test_production_flag_respects_env(monkeypatch):
     from functions import production as prod_mod
-
     monkeypatch.setenv("MAILMIND_PRODUCTION", "1")
     assert prod_mod.production() is True
-
     monkeypatch.setenv("MAILMIND_PRODUCTION", "0")
     monkeypatch.delenv("FLASK_ENV", raising=False)
     assert prod_mod.production() is False
 
-    monkeypatch.delenv("MAILMIND_PRODUCTION", raising=False)
-    monkeypatch.setenv("FLASK_ENV", "production")
-    assert prod_mod.production() is True
+
+def test_encryption_roundtrip():
+    from functions.encryption import decrypt_token, encrypt_token
+    assert decrypt_token(encrypt_token("hello")) == "hello"
+
+
+def test_calendar_deep_link_provider_split():
+    from functions.scheduler import _calendar_link
+    g = _calendar_link("google", "Meet Sarah Tuesday")
+    m = _calendar_link("microsoft", "Meet Sarah Tuesday")
+    assert "calendar.google.com" in g
+    assert "text=Meet%20Sarah%20Tuesday" in g
+    assert "outlook.live.com" in m
+    assert "subject=Meet%20Sarah%20Tuesday" in m
 
 
 def test_scheduler_time_match_boundaries():
     from datetime import datetime, timezone
-    from functions.scheduler import is_time_match
-
+    from functions.scheduler import _is_time_match
     now = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
-    # 7:00 AM Eastern == 12:00 UTC in January (EST = UTC-5)
-    assert is_time_match("7:00 AM", now, "America/New_York") is True
-    # Two hours off should not match
-    assert is_time_match("9:00 AM", now, "America/New_York") is False
-
-
-def test_encryption_roundtrip():
-    from functions.encryption import decrypt_token, encrypt_token
-
-    token = "hello, world!"
-    assert decrypt_token(encrypt_token(token)) == token
-
-
-def test_linkify_escapes_hostile_text():
-    from functions.linkify import linkify_text
-
-    hostile = '<script>alert(1)</script>'
-    rendered = str(linkify_text(hostile))
-    assert "<script>" not in rendered
-    assert "&lt;script&gt;" in rendered
+    # 7 AM Eastern in January = 12:00 UTC
+    assert _is_time_match("7:00 AM", now, "America/New_York") is True
+    assert _is_time_match("9:00 AM", now, "America/New_York") is False

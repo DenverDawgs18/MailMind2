@@ -1,7 +1,5 @@
 alembic==1.15.1
 APScheduler==3.11.0
-beautifulsoup4==4.13.3
-bleach==6.1.0
 cryptography==45.0.3
 Flask==3.1.0
 Flask-Login==0.6.3
@@ -10,7 +8,6 @@ Flask-Session==0.8.0
 Flask-SQLAlchemy==3.1.1
 Flask-WTF==1.2.1
 google-api-core==2.24.2
-google-api-python-client==2.164.0
 google-auth==2.38.0
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.1
@@ -21,7 +18,6 @@ httpx==0.28.1
 IMAPClient==3.0.1
 itsdangerous==2.2.0
 Jinja2==3.1.6
-Markdown==3.7
 MarkupSafe==3.0.2
 oauthlib==3.2.2
 openai==1.82.0
@@ -32,7 +28,6 @@ pytz==2025.1
 redis==5.2.1
 requests==2.32.3
 requests-oauthlib==2.0.0
-short_url==1.2.2
 SQLAlchemy==2.0.39
 stripe==12.1.0
 Werkzeug==3.1.3
