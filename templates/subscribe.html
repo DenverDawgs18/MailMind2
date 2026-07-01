@@ -49,6 +49,7 @@
                 </div>
             </div>
             <form class="form" id="checkout-form" action="/create-checkout-session" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                 <!-- Add a hidden field with the lookup_key of your Price -->
                 <input type="hidden" name="lookup_key" value="One_Month_of_MailMind-ae39e51" />
                 <label style="display:block; margin-bottom: 1em; font-size: 14px;">

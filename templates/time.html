@@ -43,6 +43,7 @@
         <div class="container">
             <h3 class="timemsg">{{message}}</h3>
             <form action="/set_time" method="post" class="timeform">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="dropdown-container">
                     <label for="timezone-select" class="time-label">Select Timezone:</label>
                     <select id="timezone-select" name="timezone" class="time-dropdown" required>

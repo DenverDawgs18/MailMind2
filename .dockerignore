@@ -1,30 +1,51 @@
-# flyctl launch added from .gitignore
-**\.venv
-**\secret.*
-**\.env
-**\config.py
-**\uploads
-**\enron_emails.csv
-**\test_enron.csv
-**\modified_enron_emails_cleaned.csv 
-**\labeled_enron.csv 
-**\Temp
-**\MailMindActionItems4
-**\MailMindActionItems5
-**\train.jsonl
-**\test.jsonl
+# VCS / editors
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
 
-# flyctl launch added from .venv\.gitignore
-.venv\**\*
+# Local venvs
+.venv
+venv
+env
 
-# flyctl launch added from .venv\Lib\site-packages\debugpy\_vendored\pydevd\_pydevd_frame_eval\.gitignore
-.venv\Lib\site-packages\debugpy\_vendored\pydevd\_pydevd_frame_eval\pydevd_frame_evaluator.*.so
-.venv\Lib\site-packages\debugpy\_vendored\pydevd\_pydevd_frame_eval\pydevd_frame_evaluator.*.pyd
-.venv\Lib\site-packages\debugpy\_vendored\pydevd\_pydevd_frame_eval\pydevd_frame_evaluator.pyx
+# Python build artifacts
+__pycache__
+**/__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
 
-# flyctl launch added from .venv\Lib\site-packages\debugpy\_vendored\pydevd\pydevd_attach_to_process\linux_and_mac\.gitignore
-.venv\Lib\site-packages\debugpy\_vendored\pydevd\pydevd_attach_to_process\linux_and_mac\attach_x86.dylib
-.venv\Lib\site-packages\debugpy\_vendored\pydevd\pydevd_attach_to_process\linux_and_mac\attach_x86_64.dylib
-.venv\Lib\site-packages\debugpy\_vendored\pydevd\pydevd_attach_to_process\linux_and_mac\attach_linux_x86.o
-.venv\Lib\site-packages\debugpy\_vendored\pydevd\pydevd_attach_to_process\linux_and_mac\attach_linux_x86_64.o
+# Secrets / local config
+.env
+config.py
+secret.*
+
+# Never bake the local SQLite DB into an image
+instance/
+*.sqlite
+*.db
+
+# Datasets, notebooks, models — none of this belongs in the runtime image
+research/
+old/
+enron_emails.csv
+test_enron.csv
+modified_enron_emails_cleaned.csv
+labeled_enron.csv
+Temp
+MailMindActionItems4
+MailMindActionItems5
+train.jsonl
+test.jsonl
+
+# Docs
+map.md
+
+# Fly runtime state
 fly.toml
