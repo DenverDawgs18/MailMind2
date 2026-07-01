@@ -1,209 +1,213 @@
-from flask import Flask, render_template, url_for, request, redirect, session, jsonify, send_file
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from sqlalchemy.orm import DeclarativeBase
-from datetime import datetime, timedelta, timezone, date
-from googleapiclient.discovery import build
-from google.oauth2.credentials import Credentials
+"""
+MailMind is a productivity service, not an email client. This module wires up
+the tiny public surface:
+
+    /                      -- landing page + OAuth sign-in buttons
+    /google/login          -- kicks off Google OAuth (sign-in + link)
+    /google/callback
+    /microsoft/login       -- Microsoft OAuth
+    /microsoft/callback
+    /settings              -- the only page a normal subscriber ever visits
+    /settings/delete_account
+    /subscribe             -- shown when the user isn't subscribed
+    /create-checkout-session
+    /create-portal-session
+    /webhook               -- Stripe events
+    /code                  -- TEMP_CODE / CODE beta grant during testing
+    /contact
+    /termsandprivacy
+    /logout
+"""
+import logging
 import os
-from functions.production import production, simple
+import secrets
+import urllib.parse
+from datetime import datetime, timezone
+
+import requests
+import stripe
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from flask_login import (
+    LoginManager,
+    current_user,
+    login_required,
+    login_user,
+    logout_user,
+)
+from flask_migrate import Migrate
+from flask_session import Session
+from flask_sqlalchemy import SQLAlchemy
+from flask_wtf.csrf import CSRFProtect
+from google_auth_oauthlib.flow import Flow
+from redis import Redis
+from sqlalchemy.orm import DeclarativeBase
+
+from functions.production import production
+
+# ---------------------------------------------------------------------------
+# Environment / configuration
+# ---------------------------------------------------------------------------
+
 PRODUCTION = production()
-SIMPLE = simple()
+
 if not PRODUCTION:
     from dotenv import load_dotenv
     load_dotenv()
-    DOMAIN = "http://localhost:5000"
+    DOMAIN = os.getenv("DOMAIN", "http://localhost:5000")
 else:
     DOMAIN = os.getenv("DOMAIN", "https://mailmind.fly.dev")
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__, static_url_path='/static')
+
+# Secret key
 if PRODUCTION:
-    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
+    secret_key = os.getenv("SECRET_KEY")
+    if not secret_key:
+        raise RuntimeError("SECRET_KEY env var is required in production")
+    app.config["SECRET_KEY"] = secret_key
 else:
-    app.config.from_pyfile('config.py')
+    try:
+        app.config.from_pyfile('config.py')
+    except (FileNotFoundError, OSError):
+        app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-do-not-use-in-prod")
+
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 if PRODUCTION:
-    app.config['SESSION_COOKIE_SECURE'] = True  
-    app.config['SESSION_COOKIE_HTTPONLY'] = True
-    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_SECURE'] = True
+
+if PRODUCTION:
     DATABASE_URL = os.getenv('DATABASE_URL')
-    if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL env var is required in production")
+    if DATABASE_URL.startswith('postgres://'):
         DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
-        print(f"Fixed DATABASE_URL scheme: {DATABASE_URL[:50]}...")
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 else:
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///database.db"
+
+
 class Base(DeclarativeBase):
     pass
+
+
 db = SQLAlchemy(model_class=Base)
 db.init_app(app)
 migrate = Migrate(app, db)
-from flask_session import Session
-from redis import Redis
-app.config["SESSION_TYPE"] = "redis"
+
+# Sessions
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_USE_SIGNER"] = True
-if PRODUCTION:
-    app.config["SESSION_REDIS"] = Redis(
-    host='fly-mailmind-redis.upstash.io',
-    port=6379,
-    password=os.getenv("REDIS_PASSWORD")
-    )
+
+_TESTING = os.getenv("MAILMIND_TEST", "").strip() in ("1", "true", "yes")
+
+if _TESTING:
+    app.config["SESSION_TYPE"] = "filesystem"
+    _redis_client = None
 else:
-    app.config["SESSION_REDIS"] = Redis(host="localhost", port=6379)
+    app.config["SESSION_TYPE"] = "redis"
+    if PRODUCTION:
+        _redis_client = Redis(
+            host=os.getenv("REDIS_HOST", "fly-mailmind-redis.upstash.io"),
+            port=int(os.getenv("REDIS_PORT", "6379")),
+            password=os.getenv("REDIS_PASSWORD"),
+        )
+    else:
+        _redis_client = Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379)
+    app.config["SESSION_REDIS"] = _redis_client
+
 Session(app)
-import requests
-import json
-import base64
-from google_auth_oauthlib.flow import Flow
-import markdown
-from flask_login import login_required, LoginManager, login_user, logout_user, current_user
-from models import EmailAccount, Master, Link, Unsubscribe, Todo
-from functions.refresh_token import refresh
-from functions.users import create_email, create_master
-from functions.linkify import linkify_text
-from functions.get_one_action import get_an_action
-from functions.encryption import encrypt_token, decrypt_token
-from functions.get_emails import get_emails
-from functions.scheduler import check_and_send_emails
-import re
-import short_url
-import secrets
-import urllib.parse
-from werkzeug.security import generate_password_hash, check_password_hash
-import time
-import markdown    
-import copy
-from dateutil import parser
-import stripe 
+
+csrf = CSRFProtect(app)
+
+
+@app.context_processor
+def inject_csrf():
+    from flask_wtf.csrf import generate_csrf
+    return {"csrf_token": generate_csrf}
+
+
 stripe.api_key = os.getenv("STRIPE_API_KEY")
-import logging 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-from flask_login import AnonymousUserMixin, login_user, logout_user
+
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = "login"
-with app.app_context():
-    db.create_all()
+login_manager.login_view = "index"
 
-GOOGLE_SCOPES = ['https://mail.google.com/', 
-                 'https://www.googleapis.com/auth/userinfo.email', 
-                 'openid',
-                 'https://www.googleapis.com/auth/calendar.calendars.readonly',
-                'https://www.googleapis.com/auth/calendar.events.owned',
-                 ]
+app._redis_client = _redis_client
+
+# ---------------------------------------------------------------------------
+# Imports that need `app` / `db` first
+# ---------------------------------------------------------------------------
+
+from functions.encryption import encrypt_token  # noqa: E402
+from functions.refresh_token import refresh  # noqa: E402
+from functions.users import create_email, create_master  # noqa: E402
+from models import EmailAccount, Master  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# OAuth
+# ---------------------------------------------------------------------------
+
+GOOGLE_SCOPES = [
+    'https://mail.google.com/',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'openid',
+]
 GOOGLE_REDIRECT_URI = f"{DOMAIN}/google/callback"
 
-client_config = {
+google_client_config = {
     "web": {
         "client_id": os.getenv("GOOGLE_CLIENT_ID"),
         "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
-        "redirect_uris": "GOOGLE_REDIRECT_URI",
+        "redirect_uris": [GOOGLE_REDIRECT_URI],
     }
 }
 
 OUTLOOK_SCOPES = [
     'https://graph.microsoft.com/Mail.ReadWrite',
-    'https://graph.microsoft.com/Mail.Send', 
-    'https://graph.microsoft.com/Calendars.ReadWrite',
+    'https://graph.microsoft.com/Mail.Send',
     'https://graph.microsoft.com/User.Read',
-    'openid',
-    'profile',
-    'email',
-    'offline_access',
+    'openid', 'profile', 'email', 'offline_access',
 ]
-
 OUTLOOK_REDIRECT_URI = f"{DOMAIN}/microsoft/callback"
 
-# Microsoft Graph endpoints
 MICROSOFT_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
 MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
 
-@login_manager.user_loader 
+
+@login_manager.user_loader
 def load_user(id):
-    return Master.query.get(int(id))
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "GET":
-        return render_template("login.html")
-    
-    if request.method == "POST":
-        data = request.get_json()
-        mode = data.get("mode")
-        username = data.get("username")
-        password = data.get("password")
-
-        # Validation
-        if not username or not password:
-            return jsonify({"success": False, "message": "All fields are required."}), 400
-
-        if mode == "register":
-            # Check if username exists
-            if Master.query.filter_by(username=username).first():
-                return jsonify({"success": False, "message": "Username already taken."}), 400
-            
-            # Validate password length
-            if len(password) < 6:
-                return jsonify({"success": False, "message": "Password must be at least 6 characters."}), 400
-            
-            try:
-                hashed_pw = generate_password_hash(password)
-                user = create_master(username, hashed_pw)
-                login_user(user)
-                return jsonify({"success": True, "message": "Account created successfully!", "redirect": url_for("portal")}), 201
-            except Exception as e:
-                return jsonify({"success": False, "message": "An error occurred during registration."}), 500
-
-        elif mode == "login":
-            user = Master.query.filter_by(username=username).first()
-            if user and check_password_hash(user.password, password):
-                login_user(user)
-                return jsonify({"success": True, "message": "Login successful!", "redirect": url_for("summary")}), 200
-            else:
-                return jsonify({"success": False, "message": "Invalid username or password."}), 401
-        
-        else:
-            return jsonify({"success": False, "message": "Invalid mode."}), 400
-
-@app.route("/check_username")
-def check_username():
-    username = request.args.get("username", "").strip()
-    if not username:
-        return jsonify({"exists": False}), 400
-    exists = Master.query.filter_by(username=username).first() is not None
-    return jsonify({"exists": exists}), 200
-
-@app.route("/portal")
-def portal():
-    if not current_user.subscribed:
-        return redirect(url_for("index"))
-    return render_template("portal.html", accounts=current_user.email_accounts)
-
-
-@app.route("/delete_account", methods=["GET", "POST"])
-def delete_account():
     try:
-        data = request.get_json()
-        id = data["id"]
-        account = EmailAccount.query.filter_by(id=id).first()
-        print(account)
-        db.session.delete(account)
-        db.session.commit()
-        return jsonify({"success": True}, 200)
-    
-    except Exception as e:
-        print(e)
-        return jsonify({"success": False}, 200)
-    
+        return db.session.get(Master, int(id))
+    except (TypeError, ValueError):
+        return None
 
 
-@app.route("/check")
-def check():
-    check_and_send_emails()
-    return render_template("index.html")
+# ---------------------------------------------------------------------------
+# Public pages
+# ---------------------------------------------------------------------------
+
+@app.route('/')
+def index():
+    if current_user.is_authenticated:
+        return redirect(url_for('settings'))
+    return render_template('index.html')
+
+
+@app.route("/contact")
+def contact():
+    return render_template("contact.html")
+
+
+@app.route("/termsandprivacy")
+def terms_and_privacy():
+    return render_template("termsandprivacy.html")
 
 
 @app.route('/logout')
@@ -212,681 +216,296 @@ def logout():
     logout_user()
     return redirect(url_for('index'))
 
-@app.route('/')
-def index():
-    return render_template('index.html')
 
-@app.route("/special")
-def special():
-    return render_template("index.html")
-
-
-@app.route("/code", methods=["POST", "GET"])
-@login_required
-def code():
-    if request.method == "POST":
-        code = request.form.get("code")
-        if PRODUCTION:
-            real_code = os.getenv("CODE")
-        else:
-            from dotenv import load_dotenv 
-            load_dotenv()
-        real_code = os.getenv("CODE")
-        temp_code = os.getenv("TEMP_CODE")
-        print(code, temp_code)
-        if str(code) == str(temp_code):
-            logger.info(f"TEMP CODE GRANTED TO {current_user.username}")
-            current_user.subscribed = True
-            current_user.temp = True
-            db.session.commit()
-            return render_template("code.html", message="Code valid. Subscription granted until launch. Click on To-Do List to load your to-do list!")
-        elif str(code) == str(real_code) and str(real_code) != "DISABLED":
-            logger.info(f"CODE GRANTED TO {current_user.username}")
-            current_user.subscribed = True
-            db.session.commit()
-            return render_template("code.html", message="Code valid. Subscription granted. Click on To-Do List to load your to-do list!")
-        else:
-            return render_template("code.html", message="Invalid code.")
-
-    return render_template("code.html", message=False)
+# ---------------------------------------------------------------------------
+# OAuth: Google
+# ---------------------------------------------------------------------------
 
 @app.route("/google/login")
 def google_login():
+    """
+    Kick off Google OAuth. This is BOTH sign-in and account-linking:
+
+    - If the visitor isn't logged in yet, the callback creates or finds a
+      Master keyed by their Google email.
+    - If they are logged in, the callback attaches the (possibly different)
+      Google email as an additional EmailAccount on their existing Master.
+    """
     flow = Flow.from_client_config(
-        client_config,
-        scopes=GOOGLE_SCOPES,
-        redirect_uri=GOOGLE_REDIRECT_URI
+        google_client_config, scopes=GOOGLE_SCOPES, redirect_uri=GOOGLE_REDIRECT_URI,
     )
-    auth_url, _ = flow.authorization_url(prompt="consent", access_type='offline')
-    
+    state = secrets.token_urlsafe(32)
+    session['google_oauth_state'] = state
+    auth_url, _ = flow.authorization_url(
+        prompt="consent", access_type='offline', state=state,
+    )
     return redirect(auth_url)
+
 
 @app.route('/google/callback')
 def google_callback():
+    stored_state = session.pop('google_oauth_state', None)
+    if not stored_state or stored_state != request.args.get('state'):
+        return "Invalid state parameter", 400
+
     flow = Flow.from_client_config(
-        client_config,
-        scopes=GOOGLE_SCOPES,
-        redirect_uri=GOOGLE_REDIRECT_URI,
+        google_client_config, scopes=GOOGLE_SCOPES,
+        redirect_uri=GOOGLE_REDIRECT_URI, state=stored_state,
     )
-    authorization_response = request.url.replace("http", "https")
-    flow.fetch_token(authorization_response = authorization_response)
+
+    if PRODUCTION and request.url.startswith("http://"):
+        authorization_response = "https://" + request.url[len("http://"):]
+    else:
+        authorization_response = request.url
+
+    try:
+        flow.fetch_token(authorization_response=authorization_response)
+    except Exception:
+        logger.exception("Google OAuth token exchange failed")
+        return "OAuth failed", 400
+
     credentials = flow.credentials
-    session["google_credentials"] = {
-        "token": credentials.token,
-        "refresh_token": credentials.refresh_token,
-        "token_uri": credentials.token_uri,
-        "client_id": credentials.client_id,
-        "client_secret": credentials.client_secret,
-        "scopes": credentials.scopes
-    }
-    userinfo_endpoint = 'https://www.googleapis.com/oauth2/v2/userinfo'
-    response = requests.get(
-        userinfo_endpoint,
-        headers={'Authorization': f"Bearer {credentials.token}"}
-    )
-    user_info = response.json()
+    if not credentials.refresh_token:
+        return "OAuth failed: missing refresh token — try again and grant offline access", 400
+
+    try:
+        user_info = requests.get(
+            'https://www.googleapis.com/oauth2/v2/userinfo',
+            headers={'Authorization': f"Bearer {credentials.token}"},
+            timeout=15,
+        ).json()
+    except Exception:
+        logger.exception("Google userinfo lookup failed")
+        return "OAuth failed", 400
+
     user_email = user_info.get('email')
-    user = EmailAccount.query.filter_by(email=user_email).first()
-    if not user:
-        user = create_email(user_email, encrypt_token(credentials.refresh_token), provider="google", master=current_user)
-    else:
-        user.oauth_token = encrypt_token(credentials.refresh_token)
-        user.provider = "google"
-    db.session.commit()
-    if current_user.subscribed:
-        if current_user.time and current_user.timezone:
-            return redirect(url_for("summary"))
-        else:
-            return redirect(url_for("set_time"))
-    else:
-        return redirect(url_for("code"))
+    if not user_email:
+        return "OAuth failed: no email in userinfo", 400
+
+    return _finish_oauth("google", user_email, credentials.refresh_token)
+
+
+# ---------------------------------------------------------------------------
+# OAuth: Microsoft
+# ---------------------------------------------------------------------------
 
 @app.route("/microsoft/login")
 def microsoft_login():
-    # Generate state parameter for security
     state = secrets.token_urlsafe(32)
-    session['oauth_state'] = state
-    
-    # Build authorization URL
+    session['microsoft_oauth_state'] = state
     auth_params = {
         'client_id': os.getenv("MICROSOFT_CLIENT_ID"),
         'response_type': 'code',
         'redirect_uri': OUTLOOK_REDIRECT_URI,
         'scope': ' '.join(OUTLOOK_SCOPES),
         'state': state,
-        'response_mode': 'query'
+        'response_mode': 'query',
     }
-    
-    auth_url = MICROSOFT_AUTH_URL + '?' + urllib.parse.urlencode(auth_params)
-    return redirect(auth_url)
+    return redirect(MICROSOFT_AUTH_URL + '?' + urllib.parse.urlencode(auth_params))
+
 
 @app.route('/microsoft/callback')
 def microsoft_callback():
-    # Verify state parameter
-    if request.args.get('state') != session.get('oauth_state'):
+    stored_state = session.pop('microsoft_oauth_state', None)
+    if not stored_state or stored_state != request.args.get('state'):
         return "Invalid state parameter", 400
-    
-    # Get authorization code
+
     auth_code = request.args.get('code')
     if not auth_code:
         return "Authorization code not found", 400
-    
-    # Exchange code for tokens
+
     token_data = {
         'client_id': os.getenv("MICROSOFT_CLIENT_ID"),
         'client_secret': os.getenv("MICROSOFT_CLIENT_SECRET"),
         'code': auth_code,
         'redirect_uri': OUTLOOK_REDIRECT_URI,
         'grant_type': 'authorization_code',
-        'scope': ' '.join(OUTLOOK_SCOPES)
+        'scope': ' '.join(OUTLOOK_SCOPES),
     }
-    
     token_response = requests.post(
-        MICROSOFT_TOKEN_URL,
-        data=token_data,
-        headers={'Content-Type': 'application/x-www-form-urlencoded'}
+        MICROSOFT_TOKEN_URL, data=token_data,
+        headers={'Content-Type': 'application/x-www-form-urlencoded'}, timeout=15,
     )
-    
     if token_response.status_code != 200:
-        return f"Token exchange failed: {token_response.text}", 400
-    
+        logger.error("Microsoft token exchange failed: %s", token_response.text)
+        return "Token exchange failed", 400
+
     token_info = token_response.json()
-    
-    # Store credentials in session
-    session["microsoft_credentials"] = {
-        "access_token": token_info.get("access_token"),
-        "refresh_token": token_info.get("refresh_token"),
-        "token_type": token_info.get("token_type", "Bearer"),
-        "expires_in": token_info.get("expires_in"),
-        "scope": token_info.get("scope")
-    }
-    
-    # Get user info from Microsoft Graph
-    headers = {
-        'Authorization': f"Bearer {token_info['access_token']}",
-        'Content-Type': 'application/json'
-    }
-    user_response = requests.get(MICROSOFT_USERINFO_URL, headers=headers)
-    
+    user_response = requests.get(
+        MICROSOFT_USERINFO_URL,
+        headers={'Authorization': f"Bearer {token_info['access_token']}"},
+        timeout=15,
+    )
     if user_response.status_code != 200:
-        return f"Failed to get user info: {user_response.text}", 400
-    
+        logger.error("Microsoft userinfo lookup failed: %s", user_response.text)
+        return "Failed to get user info", 400
+
     user_info = user_response.json()
     user_email = user_info.get('mail') or user_info.get('userPrincipalName')
-    
-    # Handle user creation/update (similar to Google implementation)
-    user = EmailAccount.query.filter_by(email=user_email).first()
-    if not user:
-        user = create_email(user_email, encrypt_token(token_info.get("refresh_token")), provider="microsoft", master=current_user)
-    else:
-        user.oauth_token = encrypt_token(token_info.get("refresh_token"))
-    
-    db.session.commit()
-    
-    # Clean up session
-    session.pop('oauth_state', None)
-    
-    if current_user.time and current_user.timezone:
-        return redirect(url_for("summary"))
-    else:
-        return redirect(url_for("set_time"))
+    if not user_email:
+        return "OAuth failed: no email in userinfo", 400
 
-# Helper function to refresh Outlook tokens
-def refresh_outlook_token(refresh_token):
-    """Refresh an expired Outlook access token"""
-    token_data = {
-        'client_id': os.getenv("MICROSOFT_CLIENT_ID"),
-        'client_secret': os.getenv("MICROSOFT_CLIENT_SECRET"),
-        'refresh_token': refresh_token,
-        'grant_type': 'refresh_token',
-        'scope': ' '.join(OUTLOOK_SCOPES)
-    }
-    
-    response = requests.post(
-        MICROSOFT_TOKEN_URL,
-        data=token_data,
-        headers={'Content-Type': 'application/x-www-form-urlencoded'}
-    )
-    
-    if response.status_code == 200:
-        return response.json()
-    else:
-        raise Exception(f"Token refresh failed: {response.text}")
+    return _finish_oauth("microsoft", user_email, token_info.get("refresh_token"))
 
 
+# ---------------------------------------------------------------------------
+# Shared OAuth resolution
+# ---------------------------------------------------------------------------
 
-@app.template_filter('markdown')
-def markdown_filter(text):
-    return markdown.markdown(text)
+def _finish_oauth(provider: str, user_email: str, refresh_token: str):
+    """
+    Land the OAuth flow: create-or-attach an EmailAccount, log the user in,
+    then send them to /settings (or to /code if they still need to unlock beta).
+    """
+    if not refresh_token:
+        return "OAuth failed: missing refresh token", 400
 
-@app.template_filter("remove_asterisks")
-def remove_asterisks(text):
-    return text.replace("*", "")
+    encrypted = encrypt_token(refresh_token)
+    existing_account = EmailAccount.query.filter_by(email=user_email).first()
 
-app.jinja_env.filters['markdown'] = markdown_filter
-app.jinja_env.filters['linkify_text'] = linkify_text
-app.jinja_env.filters["remove_asterisks"] = remove_asterisks
+    if current_user.is_authenticated:
+        # Adding an additional email account to an existing session.
+        if existing_account and existing_account.master_id != current_user.id:
+            return "This email is already linked to another MailMind account", 409
 
-@app.route("/sessionclear")
-def session_clear():
-    session.clear()
-    return render_template("index.html")
-
-@app.route("/request_access")
-def request_access():
-    return render_template("request_access.html")
-
-@app.route("/contact")
-def contact():
-    return render_template("contact.html")
-
-@app.route('/emails')
-@login_required
-def emails():
-    if not current_user.subscribed:
-        return render_template("subscribe.html")
-
-    
-    # Handle refresh case - where we're adding new emails to existing ones
-    if session.get('final_emails', False):
-        print('refresh')
-        
-        # Get the last load time from session
-        if 'last_load' in session:
-            last_load_val = session.get('last_load')
-            print(f"Raw last_load from session: {last_load_val}")
-            
-            # Parse the last_load value
-            if isinstance(last_load_val, str):
-                try:
-                    last_load = parser.parse(last_load_val)
-                    # Ensure it has timezone info
-                    if last_load.tzinfo is None:
-                        last_load = last_load.replace(tzinfo=timezone.utc)
-                except Exception as e:
-                    print(f"Error parsing date: {str(e)}")
-                    last_load = datetime.now(timezone.utc)
-            elif isinstance(last_load_val, datetime):
-                last_load = last_load_val
-                # Ensure it has timezone info
-                if last_load.tzinfo is None:
-                    last_load = last_load.replace(tzinfo=timezone.utc)
-            else:
-                print(f"Unexpected type for last_load: {type(last_load_val)}")
-                last_load = datetime.now(timezone.utc)
+        if existing_account:
+            existing_account.oauth_token = encrypted
+            existing_account.provider = provider
         else:
-            last_load = datetime.now(timezone.utc)
-            print(f"No last_load in session, using current time: {last_load}")
-        
-        # Format date and time for get_emails
-        after_date = last_load.strftime("%m-%d-%y")
-        since_time = last_load.strftime("%H:%M:%S")
-        
-        # Get new emails since last load
-        print("Calling get_emails for refresh...")
-        final_emails = session.get("final_emails", [])
-        for email_account in current_user.email_accounts:
-            new_emails = get_emails(email_account.provider, email_account.email, refresh(email_account), 
-                                after_date=after_date, since_time=since_time)
-            
-            print(f"Found {len(new_emails)} new emails in refresh for {current_user}'s email: {email_account.email}")
-            
-            first = True
-            for email in new_emails:
-                email["action_items"] = "Generating ..."
-                email["calendar"] = False
-                email["email"] = email_account.email
-                if first:
-                    email["change"] = True
-                    first = False 
-                else:
-                    email["change"] = False
+            create_email(user_email, encrypted, provider=provider, master=current_user)
 
-                final_emails.append(email)
-
-            for email in final_emails:
-                # Check if action item already has calendar keywords
-                if email.get("action_items") and isinstance(email["action_items"], str):
-                    if any(keyword in email["action_items"].lower() for keyword in ["meeting", "conference call", "calendar", "appointment", "call"]):
-                        email["calendar"] = True
-                    else:
-                        email["calendar"] = False
-                else:
-                    email["calendar"] = False
-                
-            
-        session['final_emails'] = final_emails
-        current_datetime = datetime.now(timezone.utc)
-        session['last_load'] = current_datetime.isoformat()
-        return render_template('emails.html', emails=final_emails)
-
-    # Initial load - get emails from the last 24 hours
-    current_datetime = datetime.now(timezone.utc)
-    session['last_load'] = current_datetime.isoformat()
-
-    # Get emails from exactly 24 hours ago (no parameters = use default 24h window)
-    # This will fetch using an IMAP date filter 2 days back, then filter precisely in Python
-    final_emails = []
-    for email_account in current_user.email_accounts:
-        emails = get_emails(email_account.provider, email_account.email, refresh(email_account))
-    
-        # Reverse order for newest first
-        emails = list(reversed(emails))
-        
-        print("Length: ", len(emails))
-        # Process unsubscribe links
-
-        first = True    
-        for email in emails: 
-            if email not in final_emails: 
-                email["action_items"] = "Generating ..."
-                email["email"] = email_account.email
-                email["calendar"] = False
-                final_emails.append(email)
-                if first:
-                    email["change"] = True 
-                    first = False 
-                else:
-                    email["change"] = False
-                
-        session["final_emails"] = final_emails
-            
-    return render_template('emails.html', emails=final_emails)
-
-from dateutil.tz import tzlocal  
-
-from functions.calendar import create_google_calendar_event, create_microsoft_calendar_event
-
-@app.route("/add_to_calendar", methods=["POST"])
-@login_required
-def add_to_calendar():
-    try:
-        start = request.form.get("start")
-        end = request.form.get("end")
-        name = request.form.get("name")
-        account = EmailAccount.query.filter_by(id = int(request.form.get("account"))).first()
-
-        if not start or not end or not name:
-            return jsonify({"success": False, "error": "Missing required fields"})
-        
-        start_dt = datetime.strptime(start, "%Y-%m-%dT%H:%M").replace(tzinfo=tzlocal())
-        end_dt = datetime.strptime(end, "%Y-%m-%dT%H:%M").replace(tzinfo=tzlocal())
-
-        if end_dt <= start_dt:
-            return jsonify({"success": False, "error": "End time must be after start time"})
-        
-        # Branch based on user's calendar provider
-        if account.provider == "google":
-            return create_google_calendar_event(start_dt, end_dt, name, account)
-        elif account.provider == "microsoft":
-            return create_microsoft_calendar_event(start_dt, end_dt, name, account)
-        else:
-            return jsonify({"success": False, "error": "Unsupported calendar provider"})
-            
-    except ValueError as e:
-        return jsonify({"success": False, "error": "Invalid date format"})
-    except Exception as e:
-        print(f"Calendar API error: {str(e)}")
-        return jsonify({"success": False, "error": "Failed to create calendar event"})
-
-
-@app.route("/get_one_action", methods=["POST"])
-@login_required 
-def get_one_action():
-    data = request.get_json()
-    body = data.get("body")
-    index = int(data.get("index"))
-    print(index)
-    calendar = False
-    action = get_an_action(body)
-    print(action)
-    if "meeting" in action.lower() or "conference call" in action.lower() or "calendar" in action.lower():
-        calendar = True
-    final_emails = session.get("final_emails")
-    if action.lower() != "no action." and action.lower() != "no action" and action != "" and action is not None:
-        new_todo = Todo(master=current_user.id, item=action, done=False)
-        db.session.add(new_todo)
+        current_user.last_login = datetime.now(timezone.utc)
         db.session.commit()
-        todo_emails = session.get("todo_emails", [])
-        todo_email = final_emails[index]
-        todo_email.pop("action_items", None)
-        todo_email["todo"] = action
-        todo_email["id"] = new_todo.id 
-        todo_emails.append(todo_email)
-        session["todo_emails"] = todo_emails
+        return redirect(url_for('settings'))
+
+    # Not logged in yet — this OAuth *is* the sign-in.
+    master = Master.query.filter_by(primary_email=user_email).first()
+    if master is None and existing_account:
+        # An account with this email was linked before as a secondary — reuse
+        # its Master rather than creating a duplicate.
+        master = db.session.get(Master, existing_account.master_id)
+
+    if master is None:
+        master = create_master(user_email)
+
+    if existing_account is None:
+        create_email(user_email, encrypted, provider=provider, master=master)
     else:
-        action = "No action."
+        existing_account.oauth_token = encrypted
+        existing_account.provider = provider
 
-    final_emails[index]["action_items"] = action
-    session["final_emails"] = final_emails
-    accounts = []
-    for account in current_user.email_accounts:
-        accounts.append({"id": account.id, "email": account.email})
-    return jsonify({"action_item": action, "calendar": calendar, "accounts": accounts})
-
-@app.route("/remove_todo", methods=["POST"])
-@login_required
-def remove_todo():
-    data = request.get_json()
-    todo_id = int(data.get("id"))  
-    
-    todo_emails = session.get("todo_emails", [])
-    if todo_emails:
-        todo = Todo.query.filter_by(id=todo_id).first()
-        if todo:
-            db.session.delete(todo)
-            db.session.commit()
-        
-        todo_emails = [email for email in todo_emails if email["id"] != todo_id]
-        session["todo_emails"] = todo_emails
-    
-    return jsonify({"success": True})
-
-@app.route("/termsandprivacy")
-def terms_and_privacy():
-    return render_template("termsandprivacy.html")
-
-@app.route('/summary')
-@login_required
-def summary():
-    if not current_user.subscribed:
-        return render_template("subscribe.html")
-    
-    
-    # Handle refresh case - where we're adding new emails to existing ones
-    if session.get('final_emails', False):
-        print('refresh in summary')
-        
-        # Get the last load time from session
-        if 'last_load' in session:
-            last_load_val = session.get('last_load')
-            print(f"Raw last_load from session: {last_load_val}")
-            
-            # Parse the last_load value
-            if isinstance(last_load_val, str):
-                try:
-                    last_load = parser.parse(last_load_val)
-                    # Ensure it has timezone info
-                    if last_load.tzinfo is None:
-                        last_load = last_load.replace(tzinfo=timezone.utc)
-                except Exception as e:
-                    print(f"Error parsing date: {str(e)}")
-                    last_load = datetime.now(timezone.utc)
-            elif isinstance(last_load_val, datetime):
-                last_load = last_load_val
-                # Ensure it has timezone info
-                if last_load.tzinfo is None:
-                    last_load = last_load.replace(tzinfo=timezone.utc)
-            else:
-                print(f"Unexpected type for last_load: {type(last_load_val)}")
-                last_load = datetime.now(timezone.utc)
-        else:
-            last_load = datetime.now(timezone.utc)
-            print(f"No last_load in session, using current time: {last_load}")
-        
-        # Format date and time for get_emails
-        after_date = last_load.strftime("%m-%d-%y")
-        since_time = last_load.strftime("%H:%M:%S")
-        
-        # Get new emails since last load
-        print("Calling get_emails for refresh in summary...")
-        final_emails = session.get("final_emails", [])
-        for email_account in current_user.email_accounts:
-            new_emails = get_emails(email_account.provider, email_account.email, refresh(email_account), 
-                                after_date=after_date, since_time=since_time)
-            
-            print(f"Found {len(new_emails)} new emails in refresh")
-            
-            
-            first = True 
-            for email in new_emails:
-                email["action_items"] = "Generating ..."
-                email["calendar"] = False
-
-                email["email"] = email_account.email
-                if first:
-                    email["change"] = True 
-                    first = False 
-                else:
-                    email["change"] = False
-                final_emails.append(email)
-
-            for email in final_emails:
-                # Check if action item already has calendar keywords
-                if email.get("action_items") and isinstance(email["action_items"], str):
-                    if any(keyword in email["action_items"].lower() for keyword in ["meeting", "conference call", "calendar", "appointment", "call"]):
-                        email["calendar"] = True
-                    else:
-                        email["calendar"] = False
-                else:
-                    email["calendar"] = False
-                
-            session['final_emails'] = final_emails
-            current_datetime = datetime.now(timezone.utc)
-            session['last_load'] = current_datetime.isoformat()
-        
-    else:
-        # Initial load - get emails from the last 24 hours
-        current_datetime = datetime.now(timezone.utc)
-        session['last_load'] = current_datetime.isoformat()
-
-        final_emails = []
-        # Get emails from exactly 24 hours ago (no parameters = use default 24h window)
-        for index, email_account in enumerate(current_user.email_accounts):
-            emails = get_emails(email_account.provider, email_account.email, refresh(email_account))
-            
-            # Reverse order for newest first
-            emails = list(reversed(emails))
-            
-            # Process unsubscribe links
-
-            
-            first = True   
-            for email in emails: 
-                if email not in final_emails: 
-                    email["action_items"] = "Generating ..."
-                    email["calendar"] = False
-                    email["email"] = email_account.email
-                    if first:
-                        email["change"] = True 
-                        first = False 
-                    else:
-                        email["change"] = False
-                    final_emails.append(email)
-                    
-            session["final_emails"] = final_emails
-        
-    print("out of if block")
-    # Get existing todo emails from database
-    todos = Todo.query.filter_by(master=current_user.id, done=False).all()
-    print(len(todos))
-    # Create a map of existing todos by email content for faster lookup
-    existing_todos = {}
-    for todo in todos:
-        # Try to find matching email in final_emails
-        for email in final_emails:
-            if email.get("action_items") == todo.item:
-                existing_todos[id(email)] = {
-                    'todo': todo.item,
-                    'id': todo.id,
-                    'calendar': any(keyword in todo.item.lower() for keyword in ["meeting", "conference call", "calendar", "appointment", "call"])
-                }
-                # Update the email with the saved action item
-                email["action_items"] = todo.item
-                email["calendar"] = existing_todos[id(email)]['calendar']
-                break
-    
-    # Clean up orphaned todos (todos that don't match any current emails)
-    for todo in todos:
-        found_match = False
-        for email in final_emails:
-            if email.get("action_items") == todo.item:
-                found_match = True
-                break
-        if not found_match:
-            db.session.delete(todo)
+    master.last_login = datetime.now(timezone.utc)
     db.session.commit()
-    
-    # Count emails that still need processing
-    emails_needing_processing = []
-    for i, email in enumerate(final_emails):
-        if email.get("action_items") == "Generating ..." or not email.get("action_items"):
-            emails_needing_processing.append({
-                'index': i,
-                'email': email
-            })
-    
-    # Set appropriate message
-    if emails_needing_processing:
-        text = f"Processing {len(emails_needing_processing)} emails for action items..."
-    else:
-        # Filter emails that have actual action items (not just "No action.")
-        actionable_emails = [email for email in final_emails 
-                           if email.get("action_items") and 
-                           email["action_items"] != "No action." and
-                           email["action_items"] != "Generating ..."]
-        if not actionable_emails:
-            text = "No action items found from recent emails."
-        else:
-            text = f"Found {len(actionable_emails)} action items"
-    
-    return render_template('summary.html', emails=final_emails, text=text, accounts = current_user.email_accounts, 
-                         pending_count=len(emails_needing_processing))
+    login_user(master)
+
+    if not master.subscribed:
+        return redirect(url_for('code'))
+    return redirect(url_for('settings'))
 
 
+# ---------------------------------------------------------------------------
+# Settings — the only routine page
+# ---------------------------------------------------------------------------
 
-@app.route('/generate_pending_actions', methods=['POST'])
+_TIMEZONES = [
+    ("America/New_York", "Eastern (US)"),
+    ("America/Chicago", "Central (US)"),
+    ("America/Denver", "Mountain (US)"),
+    ("America/Phoenix", "Arizona (US)"),
+    ("America/Los_Angeles", "Pacific (US)"),
+    ("America/Anchorage", "Alaska"),
+    ("Pacific/Honolulu", "Hawaii"),
+    ("Europe/London", "London"),
+    ("Europe/Paris", "Paris"),
+    ("Europe/Berlin", "Berlin"),
+    ("Europe/Athens", "Athens"),
+    ("Asia/Dubai", "Dubai"),
+    ("Asia/Kolkata", "India"),
+    ("Asia/Singapore", "Singapore"),
+    ("Asia/Tokyo", "Tokyo"),
+    ("Australia/Sydney", "Sydney"),
+    ("UTC", "UTC"),
+]
+
+_TIME_OPTIONS = [
+    f"{h}:{m:02d} {ampm}"
+    for ampm in ("AM", "PM")
+    for h in list(range(1, 13))
+    for m in (0, 15, 30, 45)
+]
+
+
+@app.route("/settings", methods=["GET", "POST"])
 @login_required
-def generate_pending_actions():
-    """Generate action items for emails that don't have them yet"""
-    final_emails = session.get("final_emails", [])
-    if not final_emails:
+def settings():
+    if not current_user.subscribed:
+        return redirect(url_for('subscribe'))
+
+    message = None
+
+    if request.method == "POST":
+        tz = request.form.get("timezone")
+        times = request.form.getlist("time")
+
+        if not tz:
+            message = "Please select a timezone."
+        elif not times:
+            message = "Please select at least one time."
+        else:
+            current_user.timezone = tz
+            current_user.time = ",".join(times[:3])
+            db.session.commit()
+            message = "Settings saved."
+
+    return render_template(
+        "settings.html",
+        message=message,
+        accounts=current_user.email_accounts,
+        current_times=(current_user.time or "").split(",") if current_user.time else [],
+        current_timezone=current_user.timezone or "",
+        timezones=_TIMEZONES,
+        time_options=_TIME_OPTIONS,
+    )
+
+
+@app.route("/settings/delete_account", methods=["POST"])
+@login_required
+def delete_email_account():
+    try:
+        account_id = int(request.form.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "Invalid account id"}), 400
+
+    account = EmailAccount.query.filter_by(id=account_id, master_id=current_user.id).first()
+    if not account:
+        return jsonify({"success": False, "error": "Not found"}), 404
+
+    if account.email == current_user.primary_email:
         return jsonify({
             "success": False,
-            "message": "No emaiils found to process"
-        })
-    
-    generated_count = 0
-    
-    for index, email in enumerate(final_emails):
-        # Skip if already has action items
-        if email.get("action_items") and email.get("action_items") != "Generating ...":
-            continue
-            
-        try:
-            # Get action item for this email
-            body = email.get("body", "")
-            if not body:
-                final_emails[index]["action_items"] = "No action"
-                continue
-                
-            action = get_an_action(body)  # Your existing function
-            
-            # Update the email with action item
-            final_emails[index]["action_items"] = action
-            
-            # Add to database if it's a real action
-            if action and action.lower() not in ["no action.", "no action", "no action required.", ""]:
-                # Check if this action already exists for this user
-                existing_todo = Todo.query.filter_by(master=current_user.id, item=action, done=False).first()
-                
-                if not existing_todo:
-                    # Save to database
-                    new_todo = Todo(master=current_user.id, item=action, done=False)
-                    db.session.add(new_todo)
-                    db.session.commit()
-                    generated_count += 1
-                    
-        except Exception as e:
-            print(f"Error generating action for email {index}: {e}")
-            final_emails[index]["action_items"] = "Error generating action"
-            continue
-    
-    # Update session
-    session["final_emails"] = final_emails
-    
-    return jsonify({
-        "success": True,
-        "generated_count": generated_count,
-        "message": f"Generated {generated_count} new action items"
-    })
+            "error": "Can't delete your primary email — this is your login. Log out first, or contact support.",
+        }), 400
+
+    try:
+        db.session.delete(account)
+        db.session.commit()
+        return jsonify({"success": True}), 200
+    except Exception:
+        logger.exception("Failed to delete account %s", account_id)
+        db.session.rollback()
+        return jsonify({"success": False, "error": "Delete failed"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Subscription
+# ---------------------------------------------------------------------------
 
 @app.route("/subscribe")
 @login_required
 def subscribe():
-    if type(current_user) == AnonymousUserMixin:
-        print("redirecting")
-        return redirect(url_for('login'))
     if current_user.subscribed:
-        return redirect(url_for('index'))
+        return redirect(url_for('settings'))
     return render_template("subscribe.html")
- 
-
-@app.route("/manage_subscription")
-def manage_subscription():
-    if not current_user.subscribed:
-        return render_template("subscribe.html")
-    return render_template("manage.html")
 
 
 @app.route('/create-checkout-session', methods=['POST'])
@@ -895,185 +514,117 @@ def create_checkout_session():
     try:
         prices = stripe.Price.list(
             lookup_keys=[request.form['lookup_key']],
-            expand=['data.product']
+            expand=['data.product'],
         )
 
-        # Create or get Stripe customer for current user
         if not current_user.stripe_customer_id:
-            # Create new Stripe customer
             customer = stripe.Customer.create(
-                email=current_user.email_accounts[0].email,
-                name=current_user.username
+                email=current_user.primary_email,
+                name=current_user.primary_email,
             )
-            # Save customer ID to user
             current_user.stripe_customer_id = customer.id
             db.session.commit()
 
         checkout_session = stripe.checkout.Session.create(
-            customer=current_user.stripe_customer_id,  # Link to existing customer
-            line_items=[
-                {
-                    'price': prices.data[0].id,
-                    'quantity': 1,
-                },
-            ],
+            customer=current_user.stripe_customer_id,
+            line_items=[{'price': prices.data[0].id, 'quantity': 1}],
             mode='subscription',
-            success_url=DOMAIN + '/emails',
+            success_url=DOMAIN + url_for('settings'),
             cancel_url=DOMAIN,
-            subscription_data={
-                'trial_period_days': 7
-            },
+            subscription_data={'trial_period_days': 7},
         )
         return redirect(checkout_session.url, code=303)
-    except Exception as e:
-        print(e)
+    except Exception:
+        logger.exception("Checkout session creation failed")
         return "Server error", 500
-    
-@login_required
+
+
 @app.route('/create-portal-session', methods=['POST'])
+@login_required
 def customer_portal():
     try:
-        # Use the customer ID from the current user's database record
         if not current_user.stripe_customer_id:
             return "No subscription found", 400
-            
-        return_url = DOMAIN
-
-        portalSession = stripe.billing_portal.Session.create(
+        portal_session = stripe.billing_portal.Session.create(
             customer=current_user.stripe_customer_id,
-            return_url=return_url,
+            return_url=DOMAIN + url_for('settings'),
         )
-        return redirect(portalSession.url, code=303)
-    except Exception as e:
-        print(f"Portal session error: {e}")
+        return redirect(portal_session.url, code=303)
+    except Exception:
+        logger.exception("Portal session creation failed")
         return "Server error", 500
 
+
 @app.route('/webhook', methods=['POST'])
+@csrf.exempt
 def webhook_received():
-    if PRODUCTION:
-        webhook_secret = os.getenv("WEBHOOK_SECRET")
-    else:
-        webhook_secret = os.getenv("TEST_WEBHOOK")
-    
-    if webhook_secret:
-        signature = request.headers.get('stripe-signature')
-        try:
-            event = stripe.Webhook.construct_event(
-                payload=request.data, 
-                sig_header=signature, 
-                secret=webhook_secret
-            )
-        except Exception as e:
-            print(f"Webhook signature verification failed: {e}")
-            return "Bad signature", 400
-    else:
-        event = json.loads(request.data)
+    webhook_secret = os.getenv("WEBHOOK_SECRET") if PRODUCTION else os.getenv("TEST_WEBHOOK")
+    if not webhook_secret:
+        logger.error("Stripe webhook secret not configured; rejecting")
+        return "Webhook secret not configured", 500
 
-    data = event['data']
+    signature = request.headers.get('stripe-signature')
+    if not signature:
+        return "Missing signature", 400
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload=request.data, sig_header=signature, secret=webhook_secret,
+        )
+    except (ValueError, stripe.error.SignatureVerificationError):
+        logger.warning("Stripe webhook signature verification failed")
+        return "Bad signature", 400
+
+    data_object = event['data']['object']
     event_type = event['type']
-    data_object = data['object']
+    customer_id = data_object.get('customer') if isinstance(data_object, dict) else None
+    user = Master.query.filter_by(stripe_customer_id=customer_id).first() if customer_id else None
 
-    print(f"EVENT: {event_type}")
+    if user and event_type in ('checkout.session.completed', 'customer.subscription.created'):
+        user.subscribed = True
+    elif user and event_type == 'customer.subscription.updated':
+        user.subscribed = data_object.get('status') in ('active', 'trialing')
+    elif user and event_type == 'customer.subscription.deleted':
+        user.subscribed = False
 
-    # Helper function to find user by Stripe customer ID
-    def find_user_by_customer_id(customer_id):
-        print(customer_id)
-        return Master.query.filter_by(stripe_customer_id=customer_id).first()
-
-    if event_type == 'checkout.session.completed':
-        print('🔔 Payment succeeded!')
-        customer_id = data_object.get('customer')
-        user = find_user_by_customer_id(customer_id)
-        if user:
-            user.subscribed = True
-            db.session.commit()
-            print(f"User {user.username} subscription activated")
-
-    elif event_type == 'customer.subscription.trial_will_end':
-        print('Subscription trial will end')
-        customer_id = data_object.get('customer')
-        user = find_user_by_customer_id(customer_id)
-        if user:
-            print(f"Trial ending for user {user.email}")
-
-    elif event_type == 'customer.subscription.created':
-        print(f'Subscription created {event["id"]}')
-        customer_id = data_object.get('customer')
-        user = find_user_by_customer_id(customer_id)
-        if user:
-            user.subscribed = True
-            db.session.commit()
-            print(f"Subscription created for user {user.email}")
-
-    elif event_type == 'customer.subscription.updated':
-        print(f'Subscription updated {event["id"]}')
-        customer_id = data_object.get('customer')
-        user = find_user_by_customer_id(customer_id)
-        if user:
-            # Check subscription status
-            subscription_status = data_object.get('status')
-            user.subscribed = subscription_status in ['active', 'trialing']
-            db.session.commit()
-            print(f"Subscription updated for user {user.email}, status: {subscription_status}")
-
-    elif event_type == 'customer.subscription.deleted':
-        print(f'Subscription canceled {event["id"]}')
-        customer_id = data_object.get('customer')
-        user = find_user_by_customer_id(customer_id)
-        if user:
-            user.subscribed = False
-            db.session.commit()
-            print(f"Subscription canceled for user {user.email}")
+    if user:
+        db.session.commit()
 
     return jsonify({'status': 'success'})
 
 
+# ---------------------------------------------------------------------------
+# Beta grant (kept during testing)
+# ---------------------------------------------------------------------------
 
-@app.route("/set_time", methods=["POST", "GET"])
+@app.route("/code", methods=["POST", "GET"])
 @login_required
-def set_time():
-    if request.method == "POST":
-        try:
-            # Get form data
-            timezone = request.form.get("timezone")
-            times = request.form.getlist("time")  # getlist for multiple selections
-            
-            # Validate that both timezone and at least one time are provided
-            if not timezone:
-                return render_template("time.html", message="Please select a timezone")
-            
-            if not times or len(times) == 0:
-                return render_template("time.html", message="Please select at least one time")
-            
-            # Limit to maximum 3 times (additional safety check)
-            if len(times) > 3:
-                times = times[:3]
-            
-            # Store as comma-separated string
-            times_str = ",".join(times)
-            
-            # Update user attributes
-            current_user.timezone = timezone
-            current_user.time = times_str
-            
-            db.session.commit()
-            
-            return render_template("time.html", message= f"Successfully set time(s) to {times_str} and timezone to {timezone}!")
-            
-        except Exception as e:
-            return render_template("time.html", message= f"Error setting time and timezone")
-    else:
-        time = current_user.time 
-        timezone = current_user.timezone 
-        if time and timezone:
-            return render_template("time.html", message= f"Update your time(s) from {time} in timezone {timezone}")
-        else:
-            return render_template("time.html", message="Set your time and timezone for your daily to-do list to be sent to you!")
-    
-@app.route("/beta")
-def beta():
-    return render_template("beta.html")
+def code():
+    if request.method != "POST":
+        return render_template("code.html", message=None)
+
+    submitted = request.form.get("code")
+    real_code = os.getenv("CODE")
+    temp_code = os.getenv("TEMP_CODE")
+
+    if temp_code and str(submitted) == str(temp_code):
+        logger.info("TEMP CODE granted to %s", current_user.primary_email)
+        current_user.subscribed = True
+        current_user.temp = True
+        db.session.commit()
+        return redirect(url_for('settings'))
+
+    if real_code and str(real_code) != "DISABLED" and str(submitted) == str(real_code):
+        logger.info("CODE granted to %s", current_user.primary_email)
+        current_user.subscribed = True
+        db.session.commit()
+        return redirect(url_for('settings'))
+
+    return render_template("code.html", message="Invalid code.")
 
 
+# ---------------------------------------------------------------------------
+# CSRF exemptions for JSON API endpoints (until the frontend sends the header)
+# ---------------------------------------------------------------------------
 
-
+csrf.exempt(delete_email_account)

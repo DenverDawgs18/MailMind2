@@ -11,11 +11,7 @@ if not PRODUCTION:
     from dotenv import load_dotenv
     load_dotenv(override=True)
 
-client = client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-)
-
-print(client.organization)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 system_prompt = """
 You are an expert email assistant specializing in action item extraction. 

@@ -1,48 +1,46 @@
-from app import db 
-from datetime import datetime, timezone 
+from datetime import datetime, timezone
+
 from flask_login import UserMixin
-from sqlalchemy.dialects.postgresql import JSON
-from sqlalchemy.types import Text
+
+from app import db
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
+
 
 class Master(db.Model, UserMixin):
-    id = db.Column(db.Integer, primary_key = True)
-    username = db.Column(db.Text())
-    password = db.Column(db.Text())
-    stripe_customer_id = db.Column(db.String(), unique=True, default = None)
-    last_login = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    """
+    A MailMind account. There is no username/password — the account IS the
+    primary email verified by Google or Microsoft OAuth. Additional email
+    accounts get attached via the same OAuth flows.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    primary_email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    stripe_customer_id = db.Column(db.String(), unique=True, default=None)
+    last_login = db.Column(
+        db.DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
     time = db.Column(db.Text())
-    temp = db.Column(db.Boolean, default=False)
-    subscribed = db.Column(db.Boolean)
     timezone = db.Column(db.Text())
+    subscribed = db.Column(db.Boolean, default=False, nullable=False)
+    # Whether this account was comped via TEMP_CODE during beta.
+    temp = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=_utcnow)
 
 
 class EmailAccount(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    oauth_token = db.Column(db.Text(), nullable=False)
-    high_priority = db.Column(JSON, default=list)
-    provider = db.Column(db.Text())
-    master_id = db.Column(db.Integer, db.ForeignKey('master.id', ondelete='CASCADE'), nullable=False)
-    master = db.relationship('Master', backref=db.backref('email_accounts', cascade='all, delete-orphan'))
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    oauth_token = db.Column(db.Text(), nullable=False)  # encrypted refresh token
+    provider = db.Column(db.String(32), nullable=False)  # "google" or "microsoft"
+    master_id = db.Column(
+        db.Integer, db.ForeignKey('master.id', ondelete='CASCADE'), nullable=False
+    )
+    master = db.relationship(
+        'Master', backref=db.backref('email_accounts', cascade='all, delete-orphan')
+    )
 
     def __repr__(self):
-        return f"{self.email}"
-
-    
-class Link(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    link = db.Column(db.Text())  
-    short = db.Column(db.String(1000), nullable=True)
-
-class Unsubscribe(db.Model):
-    id = db.Column(db.Integer, primary_key = True)
-    link = db.Column(db.Text())
-    user = db.Column(db.ForeignKey("master.id"))
-    sender = db.Column(db.String(1000))
-
-class Todo(db.Model):
-    id = db.Column(db.Integer, primary_key = True)
-    item = db.Column(db.Text())
-    master = db.Column(db.ForeignKey("master.id"))
-    done = db.Column(db.Boolean, default=False)
-    
+        return self.email

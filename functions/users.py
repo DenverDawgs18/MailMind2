@@ -1,27 +1,21 @@
-from app import EmailAccount, Master, db
+from app import db
+from models import EmailAccount, Master
 
 
 def create_email(email, oauth_token, provider, master):
-    email_account = EmailAccount(
-        email = email,
-        oauth_token = oauth_token,
-        provider = provider,
-        master = master,
-        
+    account = EmailAccount(
+        email=email,
+        oauth_token=oauth_token,
+        provider=provider,
+        master=master,
     )
-    db.session.add(email_account)
+    db.session.add(account)
     db.session.commit()
-    return email_account
+    return account
 
-def create_master(username, password):
-    new_master = Master(
-        username = username,
-        password = password, 
-        time = None, 
-        timezone = None,
-        subscribed= False,
-        
-    )
-    db.session.add(new_master)
+
+def create_master(primary_email: str):
+    master = Master(primary_email=primary_email, subscribed=False, temp=False)
+    db.session.add(master)
     db.session.commit()
-    return new_master
+    return master

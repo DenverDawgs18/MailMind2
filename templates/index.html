@@ -3,93 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="../static/universal.css">
-    <link rel="stylesheet" href="../static/index.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">
     <meta name="google-site-verification" content="bvGZgZ2rn-5Nz7flQHwTl779qpJhdXLk3ztmwAY8ZZ8" />
-    <link rel="icon" type="image/x-icon" href="../static/imgs/MailMindTempLogo.ico">
-    <script>
-        !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init Ie Ts Ms Ee Es Rs capture Ge calculateEventProperties Os register register_once register_for_session unregister unregister_for_session js getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey canRenderSurveyAsync identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty Ds Fs createPersonProfile Ls Ps opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing Cs debug I As getPageViewId captureTraceFeedback captureTraceMetric".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
-        posthog.init('phc_yw3LGOFRhoDLPDGWNyyvDd2oHM3ezBGeXMn6XeyfgeJ', {
-            api_host: 'https://us.i.posthog.com',
-            defaults: '2025-05-24',
-            person_profiles: 'always',
-        })
-    </script>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
     <title>MailMind</title>
 </head>
 <body>
-    {% if current_user.subscribed %}
-        <div class="navbar">
-            <a href="{{url_for('index')}}" class="home">Home</a>
-            <div class="navwrap">
-                <a href="{{url_for('emails')}}">Inbox</a>
-                <a href="{{url_for('summary')}}">To-Do List</a>
-                <a href="{{url_for('set_time')}}">Set Time</a>
-                <a href="{{url_for('portal')}}">Portal</a>
-                <a href="{{url_for('contact')}}">Contact</a>
-            </div>
-            <div class="empty">
-            </div>
+    <div class="navbar">
+        <a href="{{ url_for('index') }}" class="home">MailMind</a>
+        <div class="navwrap">
+            <a href="{{ url_for('contact') }}">Contact</a>
+            <a href="{{ url_for('terms_and_privacy') }}">Terms &amp; Privacy</a>
         </div>
-    {% else %}
-        <div class="navbar">
-            <a href="{{url_for('index')}}">Home</a>
-            <div class="navwrap">
-                <a href="{{url_for('request_access')}}">Request Access</a>
-                <a href="{{url_for('login')}}">Log In</a>
-            </div>
-        </div>
-    {% endif %}
+        <div class="empty"></div>
+    </div>
+
     <div class="wrapper">
         <div class="hero">
             <div class="herocontainer">
-                <h1 class="smarter">The Smarter Way to Email</h1>
-                <h1 class="turn">Turn your inbox into a <span class="todo">to-do list</span>, 
-                    powered by custom-built AI</h1>
-                {% if current_user.subscribed %}
-                    <h3 class="try"><a class="trylink" href="{{url_for('emails')}}">Load your list →</a></h3>
-                {% else %}
-                    <h3 class="try"><a class="trylink" href="{{url_for('request_access')}}">Join the Beta →</a></h3>
-                {% endif %}
+                <h1 class="smarter">Your inbox, as a to-do list.</h1>
+                <h1 class="turn">Every morning, MailMind emails you the <span class="todo">action items</span>
+                    hiding in the last 24 hours of your inbox.</h1>
+
+                <div style="display:flex;flex-direction:column;gap:12px;align-items:flex-start;margin-top:20px;">
+                    <a href="{{ url_for('google_login') }}"
+                       style="display:inline-block;padding:14px 22px;background:#fff;color:#171524;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.3);">
+                        Sign in with Google
+                    </a>
+                    <a href="{{ url_for('microsoft_login') }}"
+                       style="display:inline-block;padding:14px 22px;background:#0067b8;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.3);">
+                        Sign in with Microsoft
+                    </a>
+                    <p style="color:#aaa;font-size:13px;margin-top:6px;">
+                        Sign-in creates your account. No password required.
+                    </p>
+                </div>
             </div>
             <div class="email-ui">
                 <div class="action-item">
-                    🔔 Follow up with Sarah about the proposal
+                    Follow up with Sarah about the proposal
                 </div>
                 <div class="email-preview">
                     <div class="sender">From: sarah@client.com</div>
                     <div class="subject">Subject: Proposal Feedback</div>
                     <p class="email">
-                    Hey! Just wanted to follow up on the proposal I sent last week. Let
-                    me know if you have any questions or if you'd like to jump on a call. -Sarah
+                        Hey! Just wanted to follow up on the proposal I sent last week.
+                        Let me know if you have any questions or if you'd like to jump on a call. -Sarah
                     </p>
                 </div>
             </div>
         </div>
+
         <div class="cards">
             <div class="card">
-                <img src="../static/imgs/to-do-svgrepo-com.svg" class="cardimg" alt="">
-                <h2 class="cardheader">Inbox -> To-Do List</h2>
-                <p class="carddescription">Your last 24 hours of emails summarized into actionable to-dos,
-                    delivered to your inbox automatically.
+                <img src="{{ url_for('static', filename='imgs/to-do-svgrepo-com.svg') }}" class="cardimg" alt="">
+                <h2 class="cardheader">Delivered, not viewed</h2>
+                <p class="carddescription">
+                    Your daily to-do list arrives in your inbox at the time you pick.
+                    Nothing to log into.
                 </p>
             </div>
             <div class="card">
-                <img src="../static/imgs/list-1540-svgrepo-com.svg" class="cardimg" alt="">
-                <h2 class="cardheader">List vs. Inbox</h2>
-                <p class="carddescription">See your action items in your inbox or as a list, in one click</p>
+                <img src="{{ url_for('static', filename='imgs/list-1540-svgrepo-com.svg') }}" class="cardimg" alt="">
+                <h2 class="cardheader">Custom AI</h2>
+                <p class="carddescription">
+                    A fine-tuned model reads your emails and pulls out the concrete
+                    asks — no marketing noise, no notifications, no fluff.
+                </p>
             </div>
             <div class="card slight">
-                <img src="../static/imgs/files-svgrepo-com.svg" class="cardimg" alt="">
-                <h2 class="cardheader">Multiple Inboxes</h2>
+                <img src="{{ url_for('static', filename='imgs/files-svgrepo-com.svg') }}" class="cardimg" alt="">
+                <h2 class="cardheader">Multiple inboxes</h2>
                 <p class="carddescription">
-                    Multiple emails, automatically collected into one to-do list. Stop switching between inboxes, just look at one list.
+                    Link as many Google or Outlook accounts as you have. One digest,
+                    one list, one inbox to check.
                 </p>
             </div>
         </div>
     </div>
     <footer>
-        <a href="{{url_for('terms_and_privacy')}}">Terms of Use and Privacy Policy</a>
+        <a href="{{ url_for('terms_and_privacy') }}">Terms of Use and Privacy Policy</a>
     </footer>
 </body>
 </html>

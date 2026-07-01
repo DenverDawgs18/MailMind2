@@ -1,4 +1,4 @@
-# fly.toml app configuration file generated for mailmind on 2025-06-04T21:50:51-04:00
+# fly.toml app configuration file for mailmind
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
@@ -11,9 +11,7 @@ primary_region = "ord"
 [env]
   PORT = "8080"
   FLASK_ENV = "production"
-  DISPLAY = ":99"
-  CHROME_BIN = "/usr/bin/google-chrome"
-  CHROMEDRIVER_PATH = "/usr/local/bin/chromedriver"
+  MAILMIND_PRODUCTION = "1"
 
 [http_service]
   internal_port = 8080
@@ -22,7 +20,6 @@ primary_region = "ord"
   auto_start_machines = true
   min_machines_running = 0
   processes = ["app"]
-  timeout = 300  
 
   [[http_service.checks]]
     interval = "10s"
@@ -33,7 +30,7 @@ primary_region = "ord"
     timeout = "2s"
 
 [processes]
-  app = "gunicorn app:app"
+  app = "gunicorn --bind 0.0.0.0:8080 --workers 2 --threads 4 --worker-class gthread --timeout 300 --keep-alive 65 app:app"
   scheduler = "python scheduler_run.py"
 
 [http_service.concurrency]
@@ -45,4 +42,3 @@ primary_region = "ord"
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
-  

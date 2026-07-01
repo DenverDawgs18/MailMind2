@@ -1,476 +1,448 @@
-# scheduler.py
+"""
+Daily digest scheduler.
+
+Every 15 minutes we scan all subscribed users, check if the current time
+matches one of their configured send times (±7.5 min), and if so:
+
+1. Fetch the last 24 hours of email from each linked account.
+2. Ask the fine-tuned model for the action item, if any.
+3. Render an HTML digest with per-item calendar deep-links.
+4. Send it via SMTP XOAUTH2 as the user's own primary account.
+
+There is no in-app rendering path; this module is the only consumer of the
+email-fetch and action-extraction functions.
+"""
+import base64
+import email.utils
 import logging
-from datetime import datetime, timedelta
-from typing import List, Dict, Any
+import re
+import smtplib
+import socket
+import ssl
+import urllib.parse
+from datetime import datetime, timezone
+from email.header import Header
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from typing import Any, Dict, List, Optional
+
 import pytz
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.executors.pool import ThreadPoolExecutor
-from app import app
+from jinja2 import Environment
+from markupsafe import escape
 from sqlalchemy import and_
 
-from app import db 
-from models import Master, EmailAccount
-import re
-from functions.refresh_token import refresh 
-from functions.get_emails import get_emails 
-from functions.get_one_action import get_an_action 
-from functions.reply import reply
-from functions.linkify import linkify_text
-import short_url 
-
+from app import app, db
+from functions.get_emails import get_emails
+from functions.get_one_action import get_an_action
+from functions.refresh_token import refresh
+from models import EmailAccount, Master
 
 logger = logging.getLogger(__name__)
 
-# Global scheduler instance
 scheduler = None
-# Store Flask app reference for context
 flask_app = app
 
-def generate_email_html(action_items, user_email):
-    """Generate rich HTML email content"""
-    
-    # HTML email template matching your summary page style
-    html_template = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-    <meta charset="UTF-8" />
-    <title>MailMind Daily Summary</title>
-    <style>
-        body {
-        background: #171524;
-        color: #f0f0f0;
-        font-family: Inter, system-ui, sans-serif;
-        margin: 0;
-        padding: 20px;
-        }
-        .container {
-        max-width: 600px;
-        margin: 0 auto;
-        background: linear-gradient(145deg, #514b7a, #5a5488);
-        border: 2px solid black;
-        border-radius: 20px;
-        padding: 30px;
-        box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
-        }
-        h1 {
-        text-align: center;
-        font-size: 24px;
-        color: #e6d7a3;
-        margin-bottom: 10px;
-        }
-        .top-link {
-        text-align: center;
-        margin-bottom: 20px;
-        }
-        .top-link a {
-        color: #cc8400;
-        font-weight: bold;
-        text-decoration: none;
-        font-size: 14px;
-        }
-        .summary-info {
-        text-align: center;
-        font-size: 14px;
-        margin-bottom: 30px;
-        color: #f0f0f0;
-        }
-        .item {
-        background: #3a3560;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-left: 4px solid #cc8400;
-        border-radius: 12px;
-        padding: 15px 20px;
-        margin-bottom: 20px;
-        }
-        .item p {
-        margin: 4px 0;
-        font-size: 14px;
-        }
-        .item .action {
-        color: #e6d7a3;
-        font-weight: 600;
-        }
-        .footer {
-        text-align: center;
-        font-size: 12px;
-        color: #ccc;
-        margin-top: 30px;
-        }
-        p {
-        color: white;
-        }
-        .footer a {
-        text-decoration: none;
-        color: darkorange;
-        }
-        .footer a:hover {
-        color: #e6d7a3;
-        }
-    </style>
-    </head>
-    <body>
-    <div class="container">
-        <h1>📬 Your Daily To Do List</h1>
+try:
+    from app import _redis_client  # type: ignore
+except Exception:
+    _redis_client = None
 
-        <div class="top-link">
-        <a href="https://mailmind.fly.dev/summary">View Full List →</a>
-        </div>
+_LOCK_TTL_SECONDS = 60 * 30
 
-        <div class="summary-info">
-        <p>{{ action_count }} action items • {{ current_date }}</p>
-        <p>{{ user_email }}</p>
-        </div>
 
-        {% for email in action_items%}
-        {% if email.change %}
-        <div class="item">
-        <p class="action">Action items for {{email.email}}</p>
-        </div>
-        {% endif %}
-        <div class="item">
-        <p class="action">• {{ email.action_items | linkify_text }}</p>
-        <p><strong>From:</strong> {{ email.from }}</p>
-        <p><strong>Subject:</strong> {{ email.subject }}</p>
-        </div>
-        {% endfor %}
+class _LocalLock:
+    """Fallback single-process lock when Redis isn't available."""
 
-        <div class="footer">
-        <p>
-            Sent by <a href="https://mailmind.fly.dev">MailMind</a> • 
-            <a href="mailto:pautomas55@gmail.com">Support</a> 
-        </p>
-        <p style="color:#888;font-size:10px;">MailMind ID: {{ uuid }}</p>
-        </div>
-    </div>
-    </body>
-    </html>
+    def __init__(self):
+        import threading
+        self._held: dict = {}
+        self._mutex = threading.Lock()
 
+    def acquire(self, key: str) -> bool:
+        with self._mutex:
+            if key in self._held:
+                return False
+            self._held[key] = True
+            return True
+
+    def release(self, key: str) -> None:
+        with self._mutex:
+            self._held.pop(key, None)
+
+
+_local_lock = _LocalLock()
+
+
+def _acquire_send_lock(user_id: int) -> bool:
+    key = f"mailmind:send-lock:{user_id}"
+    if _redis_client is not None:
+        try:
+            return bool(_redis_client.set(key, "1", nx=True, ex=_LOCK_TTL_SECONDS))
+        except Exception as exc:
+            logger.warning("Redis lock failure, falling back to local: %s", exc)
+    return _local_lock.acquire(key)
+
+
+def _release_send_lock(user_id: int) -> None:
+    key = f"mailmind:send-lock:{user_id}"
+    if _redis_client is not None:
+        try:
+            _redis_client.delete(key)
+            return
+        except Exception as exc:
+            logger.warning("Redis lock release failed: %s", exc)
+    _local_lock.release(key)
+
+
+# ---------------------------------------------------------------------------
+# Calendar deep-links
+# ---------------------------------------------------------------------------
+
+_CALENDAR_KEYWORDS = ["meeting", "conference call", "calendar", "appointment", "call", "schedule", "event"]
+
+
+def _is_calendar_worthy(action_text: str) -> bool:
+    return any(k in action_text.lower() for k in _CALENDAR_KEYWORDS)
+
+
+def _calendar_link(provider: str, title: str) -> str:
     """
-    
-    # Render the template with data
-    from jinja2 import Template, Environment
-    
-    # Create Jinja2 environment with custom filter
-    env = Environment()
-    
-    # Register the linkify_text filter (assuming it's available in your app context)
-    # If you need to import it, add: from your_module import linkify_text
-    env.filters['linkify_text'] = linkify_text
-    
-    template = env.from_string(html_template)
-    
-    from uuid import uuid4
+    Return a URL that opens the user's calendar with a pre-filled event.
 
+    Neither Google nor Outlook require auth for these deep-links — the user is
+    already signed in in their browser.
+    """
+    title_q = urllib.parse.quote(title[:200])
+    if provider and provider.lower() == "microsoft":
+        return (
+            "https://outlook.live.com/calendar/0/deeplink/compose"
+            f"?subject={title_q}&path=/calendar/action/compose&rru=addevent"
+        )
+    return f"https://calendar.google.com/calendar/render?action=TEMPLATE&text={title_q}"
+
+
+# ---------------------------------------------------------------------------
+# Digest HTML
+# ---------------------------------------------------------------------------
+
+_DIGEST_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MailMind Daily Summary</title>
+</head>
+<body style="background:#171524;color:#f0f0f0;font-family:Inter,system-ui,sans-serif;margin:0;padding:20px;">
+  <div style="max-width:600px;margin:0 auto;background:linear-gradient(145deg,#514b7a,#5a5488);border:2px solid black;border-radius:20px;padding:30px;box-shadow:4px 4px 10px rgba(0,0,0,0.4);">
+    <h1 style="text-align:center;font-size:24px;color:#e6d7a3;margin-bottom:10px;">Your Daily To-Do List</h1>
+    <div style="text-align:center;font-size:14px;margin-bottom:30px;color:#f0f0f0;">
+      <p>{{ action_count }} action item{{ 's' if action_count != 1 else '' }} - {{ current_date }}</p>
+      <p>{{ primary_email }}</p>
+    </div>
+
+    {% for item in items %}
+      {% if item.divider %}
+      <div style="background:#3a3560;border:1px solid rgba(255,255,255,0.1);border-left:4px solid #cc8400;border-radius:12px;padding:15px 20px;margin-bottom:20px;">
+        <p style="color:#e6d7a3;font-weight:600;margin:0;">Action items from {{ item.account_email }}</p>
+      </div>
+      {% else %}
+      <div style="background:#3a3560;border:1px solid rgba(255,255,255,0.1);border-left:4px solid #cc8400;border-radius:12px;padding:15px 20px;margin-bottom:20px;">
+        <p style="color:#e6d7a3;font-weight:600;margin:4px 0;">- {{ item.action }}</p>
+        <p style="color:white;margin:4px 0;font-size:14px;"><strong>From:</strong> {{ item['from'] }}</p>
+        <p style="color:white;margin:4px 0;font-size:14px;"><strong>Subject:</strong> {{ item.subject }}</p>
+        {% if item.calendar_url %}
+        <p style="margin:8px 0 0 0;">
+          <a href="{{ item.calendar_url }}"
+             style="display:inline-block;padding:6px 12px;background:#cc8400;color:#171524;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">
+            Add to calendar
+          </a>
+        </p>
+        {% endif %}
+      </div>
+      {% endif %}
+    {% endfor %}
+
+    <div style="text-align:center;font-size:12px;color:#ccc;margin-top:30px;">
+      <p>
+        Sent by <a href="{{ site_url }}" style="text-decoration:none;color:darkorange;">MailMind</a> -
+        <a href="mailto:pautomas55@gmail.com" style="text-decoration:none;color:darkorange;">Support</a> -
+        <a href="{{ site_url }}/settings" style="text-decoration:none;color:darkorange;">Settings</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+
+def _render_digest(items: List[dict], primary_email: str, site_url: str) -> str:
+    env = Environment(autoescape=True)
+    template = env.from_string(_DIGEST_TEMPLATE)
+    action_count = sum(1 for i in items if not i.get('divider'))
     return template.render(
-        action_items=action_items,
-        user_email=user_email,
+        items=items,
+        primary_email=primary_email,
         current_date=datetime.now().strftime('%B %d, %Y'),
-        action_count=len(action_items),
-        uuid=str(uuid4())
+        action_count=action_count,
+        site_url=site_url,
     )
 
-def is_calendar_worthy(action_text):
-    """Check if action item is calendar-worthy"""
-    calendar_keywords = ["meeting", "conference call", "calendar", "appointment", "call", "schedule", "event"]
-    return any(keyword in action_text.lower() for keyword in calendar_keywords)
 
-def send_reply_email_for_user(action_items, user):
-    """Send email using the reply function"""
-    try:
-        # Generate HTML email content
-        html_content = generate_email_html(action_items, user.email)
-        
-        # Prepare email data
-        subject = f"Daily To Do List from MailMind for {datetime.now().strftime('%B %d, %Y')}"
-        
-        # Send email via reply function as HTML
-        result = reply(
-            user_email=user.email,
-            oauth_token=refresh(user),
-            to_email=user.email,
-            subject=subject,
-            body=html_content,
-            reply=False,
-            cc=None,
-            bcc=None,
-            provider=user.provider,  # Pass the provider from user object
-            content_type='html'
-        )
-        
-        if result:  # Assuming reply function returns True on success
-            logger.info(f"Email sent successfully to {user.email}")
-            return True
-        else:
-            logger.error(f"Failed to send email using reply function")
-            return False
-            
-    except Exception as e:
-        logger.error(f"Error sending email via reply function: {str(e)}")
+# ---------------------------------------------------------------------------
+# SMTP send (folded in from the old functions/reply.py)
+# ---------------------------------------------------------------------------
+
+_SMTP_HOSTS = {
+    "google": ("smtp.gmail.com", 587),
+    "gmail": ("smtp.gmail.com", 587),
+    "microsoft": ("smtp.office365.com", 587),
+}
+
+
+def _clean_address(addr: str) -> Optional[str]:
+    if not addr:
+        return None
+    m = re.search(r'<(.*?)>', addr)
+    return m.group(1) if m else addr
+
+
+def _send_html_email(sender_email: str, access_token: str, provider: str,
+                     subject: str, html_body: str) -> bool:
+    smtp_host, smtp_port = _SMTP_HOSTS.get((provider or "").lower(), _SMTP_HOSTS["google"])
+
+    clean_to = _clean_address(sender_email)
+    if not clean_to:
+        logger.error("Invalid sender email %r", sender_email)
         return False
-    
+
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['To'] = clean_to
+    msg['Subject'] = Header(subject, 'utf-8')
+    msg['Date'] = email.utils.formatdate(localtime=True)
+    msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+
+    auth_string = f"user={sender_email}\x01auth=Bearer {access_token}\x01\x01"
+    auth_b64 = base64.b64encode(auth_string.encode()).decode()
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+            server.ehlo_or_helo_if_needed()
+            if server.has_extn('STARTTLS'):
+                server.starttls(context=ssl.create_default_context())
+                server.ehlo()
+            server.docmd("AUTH", "XOAUTH2 " + auth_b64)
+            server.send_message(msg)
+        return True
+    except (smtplib.SMTPException, socket.error, ssl.SSLError) as exc:
+        logger.exception("SMTP send failed to %s: %s", clean_to, exc)
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Scheduler lifecycle
+# ---------------------------------------------------------------------------
 
 def init_scheduler(app):
-    """Initialize the email scheduler"""
     global scheduler, flask_app
-    
-    # Store Flask app reference for context
     flask_app = app
-    
-    # Configure scheduler
-    executors = {
-        'default': ThreadPoolExecutor(max_workers=5)
-    }
-    
-    job_defaults = {
-        'coalesce': False,
-        'max_instances': 3,
-        'misfire_grace_time': 300  # 5 minutes
-    }
-    
-    scheduler = BackgroundScheduler(
-        executors=executors,
-        job_defaults=job_defaults,
-        timezone='UTC'
-    )
-    
-    # Add the recurring job that runs every 15 minutes
+
+    executors = {'default': ThreadPoolExecutor(max_workers=5)}
+    job_defaults = {'coalesce': False, 'max_instances': 1, 'misfire_grace_time': 300}
+
+    scheduler = BackgroundScheduler(executors=executors, job_defaults=job_defaults, timezone='UTC')
     scheduler.add_job(
         func=check_and_send_emails,
         trigger=CronTrigger(minute='0,15,30,45'),
         id='email_summary_checker',
         name='Check for users to send email summaries',
-        replace_existing=True
+        replace_existing=True,
     )
-    
-    # Start the scheduler
     scheduler.start()
     logger.info("Email scheduler started")
-    
-    # Register shutdown handler
+
     import atexit
     atexit.register(shutdown_scheduler)
-    
     return scheduler
 
+
 def shutdown_scheduler():
-    """Shutdown the scheduler"""
     global scheduler
     if scheduler:
         scheduler.shutdown()
         logger.info("Email scheduler stopped")
 
-def parse_user_times(time_string: str) -> List[str]:
-    """Parse comma-separated times from user.time field"""
-    if not time_string:
-        return []
-    
-    times = []
-    for time_str in time_string.split(','):
-        time_str = time_str.strip()
-        if time_str:
-            times.append(time_str)
-    return times
-
-def convert_to_24hour(time_str: str) -> str:
-    """Convert 12-hour format to 24-hour format"""
-    try:
-        # Parse the time string
-        time_obj = datetime.strptime(time_str, '%I:%M %p').time()
-        return time_obj.strftime('%H:%M')
-    except ValueError:
-        try:
-            # Try without space before AM/PM
-            time_obj = datetime.strptime(time_str, '%I:%M%p').time()
-            return time_obj.strftime('%H:%M')
-        except ValueError:
-            logger.error(f"Could not parse time string: {time_str}")
-            return None
-
-def is_time_match(user_time: str, current_time: datetime, timezone_str: str) -> bool:
-    """Check if current time matches user's scheduled time within 15-minute window"""
-    try:
-        # Get user's timezone
-        user_timezone = pytz.timezone(timezone_str)
-        
-        # Convert current UTC time to user's timezone
-        current_local = current_time.astimezone(user_timezone)
-        
-        # Convert user's time to 24-hour format
-        user_time_24 = convert_to_24hour(user_time)
-        if not user_time_24:
-            return False
-        
-        # Parse user's time
-        user_hour, user_minute = map(int, user_time_24.split(':'))
-        
-        # Create target time for today in user's timezone
-        target_time = current_local.replace(
-            hour=user_hour,
-            minute=user_minute,
-            second=0,
-            microsecond=0
-        )
-        
-        # Check if current time is within 15 minutes of target time
-        time_diff = abs((current_local - target_time).total_seconds())
-        
-        # 15 minutes = 900 seconds
-        # We use a slightly larger window to account for scheduler timing variations
-        return time_diff <= 450
-        
-    except Exception as e:
-        logger.error(f"Error checking time match for user time {user_time}, timezone {timezone_str}: {e}")
-        return False
-
-def get_users_to_process() -> List[Master]:
-    """Get users who should receive email summaries at current time"""
-    current_time = datetime.now(pytz.UTC)
-    users_to_process = []
-    
-    try:
-        # Get all users with valid timezone and time settings
-        users = Master.query.filter(
-            and_(
-                Master.timezone.isnot(None),
-                Master.time.isnot(None),
-            )
-        ).all()
-        
-        for user in users:
-            if not user.timezone or not user.time:
-                continue
-                
-            user_times = parse_user_times(user.time)
-            
-            for user_time in user_times:
-                if is_time_match(user_time, current_time, user.timezone):
-                    users_to_process.append(user)
-                    logger.info(f"User {user.name} scheduled for email summary at {user_time} ({user.timezone})")
-                    break  # Only add user once even if multiple times match
-                    
-    except Exception as e:
-        logger.error(f"Error getting users to process: {e}")
-        
-    return users_to_process
-
-def send_email_summary_for_user(user: Master) -> Dict[str, Any]:
-    """Send email summary for a specific user (extracted from your /mail route)"""
-    try:
-        action_items = []
-        # Get user's access token
-        for account in user.email_accounts:
-            access_token = refresh(account)
-            
-            # Get emails from last 24 hours
-            emails = get_emails(account.provider, account.email, access_token)
-            first = True
-            for email in list(reversed(emails)):
-                try:
-                    body = email.get("body", "")
-                    if body:
-                        action = get_an_action(body)
-                        if action and action.lower() not in ["no action.", "no action", "no action required.", ""]:
-                            email["action_items"] = action
-                            email["calendar"] = is_calendar_worthy(action)
-                            email["email"] = account.email
-                            if first:
-                                email["change"] = True
-                                first = False 
-                            action_items.append(email)
-                        else:
-                            email["action_items"] = "No action"
-                            email["calendar"] = False
-                    else:
-                        email["action_items"] = "No action"
-                        email["calendar"] = False
-                except Exception as e:
-                    logger.error(f"Error generating action for email: {e}")
-                    email["action_items"] = "Error generating action"
-                    email["calendar"] = False
-        
-
-        
-        # Send email summary
-        if action_items:
-            email_sent = send_reply_email_for_user(action_items, user.email_accounts[0])
-            if email_sent:
-                return {
-                    "success": True,
-                    "message": f"Email summary sent with {len(action_items)} action items",
-                    "action_count": len(action_items),
-                    "user": user.username
-                }
-            else:
-                return {
-                    "success": False,
-                    "message": "Failed to send email summary",
-                    "user": user.username
-                }
-        else:
-            return {
-                "success": True,
-                "message": "No action items found to send",
-                "action_count": 0,
-                "user": user.username
-            }
-            
-    except Exception as e:
-        logger.error(f"Error in send_email_summary for user {user.username}: {str(e)}")
-        return {
-            "success": False,
-            "message": "An error occurred while processing email summary",
-            "user": user.email
-        }
-
-def check_and_send_emails():
-    """Main function that runs every 15 minutes to check and send emails"""
-    global flask_app
-    
-    logger.info("Checking for users to send email summaries..., running check_and_send_emails()")
-    
-    # Use the stored Flask app reference for context
-    if not flask_app:
-        logger.error("Flask app not available for scheduler context")
-        return
-    
-    with flask_app.app_context():
-        try:
-            users_to_process = get_users_to_process()
-            
-            if not users_to_process:
-                logger.info("No users scheduled for email summaries at this time")
-                return
-            
-            logger.info(f"Processing {len(users_to_process)} users for email summaries")
-            
-            # Process each user
-            for user in users_to_process:
-                try:
-                    result = send_email_summary_for_user(user)
-                    if result["success"]:
-                        logger.info(f"Successfully sent email summary to {user.username}: {result['message']}")
-                    else:
-                        logger.warning(f"Failed to send email summary to {user.username}: {result['message']}")
-                except Exception as e:
-                    logger.error(f"Error processing user {user.email}: {str(e)}")
-                    
-        except Exception as e:
-            logger.error(f"Error in check_and_send_emails: {str(e)}")
-
-# Helper functions for manual testing/admin
-def trigger_email_check():
-    """Manually trigger email check (for testing/admin purposes)"""
-    check_and_send_emails()
 
 def get_scheduler_status():
-    """Get scheduler status"""
     global scheduler
     if scheduler:
-        jobs = scheduler.get_jobs()
         return {
             "scheduler_running": scheduler.running,
-            "jobs": [{"id": job.id, "name": job.name, "next_run": str(job.next_run_time)} for job in jobs]
+            "jobs": [
+                {"id": j.id, "name": j.name, "next_run": str(j.next_run_time)}
+                for j in scheduler.get_jobs()
+            ],
         }
     return {"scheduler_running": False, "jobs": []}
+
+
+# ---------------------------------------------------------------------------
+# Time matching
+# ---------------------------------------------------------------------------
+
+def _parse_user_times(time_string: str) -> List[str]:
+    if not time_string:
+        return []
+    return [t.strip() for t in time_string.split(',') if t.strip()]
+
+
+def _convert_to_24hour(time_str: str) -> Optional[str]:
+    for fmt in ('%I:%M %p', '%I:%M%p'):
+        try:
+            return datetime.strptime(time_str, fmt).time().strftime('%H:%M')
+        except ValueError:
+            continue
+    logger.error("Could not parse time string: %s", time_str)
+    return None
+
+
+def _is_time_match(user_time: str, current_time: datetime, timezone_str: str) -> bool:
+    try:
+        user_tz = pytz.timezone(timezone_str)
+        current_local = current_time.astimezone(user_tz)
+        parsed = _convert_to_24hour(user_time)
+        if not parsed:
+            return False
+        hour, minute = map(int, parsed.split(':'))
+        target = current_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        return abs((current_local - target).total_seconds()) <= 450
+    except Exception as exc:
+        logger.error("time match failed for %s / %s: %s", user_time, timezone_str, exc)
+        return False
+
+
+def _users_to_process() -> List[Master]:
+    now = datetime.now(pytz.UTC)
+    users = Master.query.filter(
+        and_(
+            Master.timezone.isnot(None),
+            Master.time.isnot(None),
+            Master.subscribed.is_(True),
+        )
+    ).all()
+
+    result = []
+    for user in users:
+        if not user.timezone or not user.time:
+            continue
+        for user_time in _parse_user_times(user.time):
+            if _is_time_match(user_time, now, user.timezone):
+                result.append(user)
+                logger.info("User %s (%s) queued for %s (%s)",
+                            user.id, user.primary_email, user_time, user.timezone)
+                break
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Digest generation + send per user
+# ---------------------------------------------------------------------------
+
+def send_email_summary_for_user(user: Master, site_url: str) -> Dict[str, Any]:
+    if not _acquire_send_lock(user.id):
+        return {"success": True, "message": "lock held", "user": user.primary_email}
+
+    try:
+        items: List[dict] = []
+
+        for account in user.email_accounts:
+            try:
+                access_token = refresh(account)
+                emails = get_emails(account.provider, account.email, access_token)
+            except Exception as exc:
+                logger.exception("Fetch failed for %s / %s: %s",
+                                 user.primary_email, account.email, exc)
+                continue
+
+            first = True
+            for msg in reversed(emails):
+                body = msg.get("body", "")
+                if not body:
+                    continue
+                try:
+                    action = get_an_action(body)
+                except Exception as exc:
+                    logger.exception("get_an_action failed: %s", exc)
+                    continue
+
+                if not action or action.lower() in ("no action.", "no action", "no action required.", ""):
+                    continue
+
+                if first:
+                    items.append({"divider": True, "account_email": account.email})
+                    first = False
+
+                items.append({
+                    "divider": False,
+                    "action": action,
+                    "from": msg.get("from", ""),
+                    "subject": msg.get("subject", ""),
+                    "calendar_url": (
+                        _calendar_link(account.provider, action)
+                        if _is_calendar_worthy(action) else None
+                    ),
+                })
+
+        action_count = sum(1 for i in items if not i.get("divider"))
+        if action_count == 0:
+            return {"success": True, "message": "no action items", "user": user.primary_email}
+
+        # Send from the user's primary account.
+        primary = next(
+            (a for a in user.email_accounts if a.email == user.primary_email),
+            user.email_accounts[0] if user.email_accounts else None,
+        )
+        if primary is None:
+            return {"success": False, "message": "no email account", "user": user.primary_email}
+
+        html = _render_digest(items, user.primary_email, site_url)
+        subject = f"Daily To-Do List from MailMind for {datetime.now().strftime('%B %d, %Y')}"
+        access_token = refresh(primary)
+        sent = _send_html_email(primary.email, access_token, primary.provider, subject, html)
+        if sent:
+            return {"success": True, "message": f"sent {action_count} items", "user": user.primary_email}
+        return {"success": False, "message": "send failed", "user": user.primary_email}
+    except Exception as exc:
+        logger.exception("digest failed for %s: %s", user.primary_email, exc)
+        return {"success": False, "message": "unexpected error", "user": user.primary_email}
+    finally:
+        _release_send_lock(user.id)
+
+
+def check_and_send_emails():
+    """Called by the cron trigger every 15 minutes."""
+    import os
+    site_url = os.getenv("DOMAIN", "https://mailmind.fly.dev")
+
+    if not flask_app:
+        logger.error("Flask app not available")
+        return
+
+    with flask_app.app_context():
+        try:
+            users = _users_to_process()
+            if not users:
+                logger.info("No users to process this tick")
+                return
+            logger.info("Processing %d users", len(users))
+            for user in users:
+                try:
+                    result = send_email_summary_for_user(user, site_url)
+                    logger.info("%s: %s", "OK" if result["success"] else "FAIL", result)
+                except Exception as exc:
+                    logger.exception("Error processing user %s: %s", user.id, exc)
+        except Exception as exc:
+            logger.exception("check_and_send_emails failed: %s", exc)
