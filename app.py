@@ -1,23 +1,23 @@
 """
 MailMind is a productivity service, not an email client. This module wires up
-the tiny public surface:
+the public surface:
 
-    /                      -- landing page + OAuth sign-in buttons
-    /google/login          -- kicks off Google OAuth (sign-in + link)
-    /google/callback
-    /microsoft/login       -- Microsoft OAuth
-    /microsoft/callback
-    /settings              -- the only page a normal subscriber ever visits
-    /settings/delete_account
-    /subscribe             -- shown when the user isn't subscribed
-    /create-checkout-session
-    /create-portal-session
-    /webhook               -- Stripe events
-    /code                  -- TEMP_CODE / CODE beta grant during testing
-    /contact
-    /termsandprivacy
-    /logout
+    /                         landing page
+    /login                    sign in with Google or Microsoft
+    /request_access, /beta    beta waitlist form + thank-you page
+    /google/login|callback    Google OAuth (sign-in, linking, reconnecting)
+    /microsoft/login|callback Microsoft OAuth
+    /settings                 inboxes, delivery schedule, billing, account
+    /settings/accounts/<id>/remove
+    /settings/delete          delete the MailMind account
+    /subscribe, /create-checkout-session, /create-portal-session, /webhook
+    /code                     beta access code
+    /contact, /termsandprivacy
+    /logout                   (POST)
 """
+import base64
+import hashlib
+import hmac
 import logging
 import os
 import secrets
@@ -26,7 +26,9 @@ from datetime import datetime, timezone
 
 import requests
 import stripe
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from flask import (
+    Flask, flash, jsonify, redirect, render_template, request, session, url_for,
+)
 from flask_login import (
     LoginManager,
     current_user,
@@ -37,7 +39,7 @@ from flask_login import (
 from flask_migrate import Migrate
 from flask_session import Session
 from flask_sqlalchemy import SQLAlchemy
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFError, CSRFProtect
 from google_auth_oauthlib.flow import Flow
 from redis import Redis
 from sqlalchemy.orm import DeclarativeBase
@@ -54,15 +56,21 @@ if not PRODUCTION:
     from dotenv import load_dotenv
     load_dotenv()
     DOMAIN = os.getenv("DOMAIN", "http://localhost:5000")
+    if DOMAIN.startswith("http://"):
+        # Allow the OAuth libraries to run against a plain-http localhost.
+        os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
 else:
     DOMAIN = os.getenv("DOMAIN", "https://mailmind.fly.dev")
+
+# Google's granular consent lets people untick scopes; we check what was
+# actually granted ourselves instead of letting oauthlib raise.
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_url_path='/static')
 
-# Secret key
 if PRODUCTION:
     secret_key = os.getenv("SECRET_KEY")
     if not secret_key:
@@ -87,7 +95,7 @@ if PRODUCTION:
         DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 else:
-    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///database.db"
+    app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///database.db")
 
 
 class Base(DeclarativeBase):
@@ -98,7 +106,6 @@ db = SQLAlchemy(model_class=Base)
 db.init_app(app)
 migrate = Migrate(app, db)
 
-# Sessions
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_USE_SIGNER"] = True
 
@@ -125,16 +132,18 @@ csrf = CSRFProtect(app)
 
 
 @app.context_processor
-def inject_csrf():
+def inject_globals():
     from flask_wtf.csrf import generate_csrf
-    return {"csrf_token": generate_csrf}
+    return {"csrf_token": generate_csrf, "DOMAIN": DOMAIN}
 
 
 stripe.api_key = os.getenv("STRIPE_API_KEY")
+STRIPE_PRICE_LOOKUP_KEY = os.getenv("STRIPE_PRICE_LOOKUP_KEY", "One_Month_of_MailMind-ae39e51")
 
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = "index"
+login_manager.login_view = "login"
+login_manager.login_message = None
 
 app._redis_client = _redis_client
 
@@ -143,20 +152,19 @@ app._redis_client = _redis_client
 # ---------------------------------------------------------------------------
 
 from functions.encryption import encrypt_token  # noqa: E402
-from functions.refresh_token import refresh  # noqa: E402
+from functions.refresh_token import (  # noqa: E402
+    GOOGLE_SCOPES, MICROSOFT_AUTH_URL, MICROSOFT_SCOPES, MICROSOFT_TOKEN_URL, revoke,
+)
 from functions.users import create_email, create_master  # noqa: E402
 from models import EmailAccount, Master  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# OAuth
+# OAuth configuration
 # ---------------------------------------------------------------------------
 
-GOOGLE_SCOPES = [
-    'https://mail.google.com/',
-    'https://www.googleapis.com/auth/userinfo.email',
-    'openid',
-]
 GOOGLE_REDIRECT_URI = f"{DOMAIN}/google/callback"
+GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+GOOGLE_MAIL_SCOPE = "https://mail.google.com/"
 
 google_client_config = {
     "web": {
@@ -168,17 +176,16 @@ google_client_config = {
     }
 }
 
-OUTLOOK_SCOPES = [
-    'https://graph.microsoft.com/Mail.ReadWrite',
-    'https://graph.microsoft.com/Mail.Send',
-    'https://graph.microsoft.com/User.Read',
-    'openid', 'profile', 'email', 'offline_access',
-]
 OUTLOOK_REDIRECT_URI = f"{DOMAIN}/microsoft/callback"
-
-MICROSOFT_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
-MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
+MICROSOFT_REQUIRED_SCOPES = {"mail.read", "mail.send"}
+
+PROVIDER_NAMES = {"google": "Google", "microsoft": "Microsoft"}
+
+
+@app.template_filter("provider_name")
+def provider_name(provider):
+    return PROVIDER_NAMES.get((provider or "").lower(), (provider or "").title())
 
 
 @login_manager.user_loader
@@ -187,6 +194,66 @@ def load_user(id):
         return db.session.get(Master, int(id))
     except (TypeError, ValueError):
         return None
+
+
+class OAuthFlowError(Exception):
+    """A user-facing OAuth failure, rendered by the auth error page."""
+
+    def __init__(self, title, message, provider=None, retry_consent=False, status=400):
+        super().__init__(message)
+        self.title = title
+        self.message = message
+        self.provider = provider
+        self.retry_consent = retry_consent
+        self.status = status
+
+
+@app.errorhandler(OAuthFlowError)
+def handle_oauth_error(err):
+    retry_url = None
+    if err.provider:
+        retry_url = url_for(f"{err.provider}_login", consent=1 if err.retry_consent else None)
+    return render_template("auth_error.html", title=err.title, message=err.message,
+                           provider=err.provider, retry_url=retry_url), err.status
+
+
+def _pkce_pair():
+    verifier = secrets.token_urlsafe(64)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    return verifier, challenge
+
+
+def _start_session_for(master):
+    """Log in with a fresh session id (prevents session fixation)."""
+    regenerate = getattr(app.session_interface, "regenerate", None)
+    if callable(regenerate):
+        try:
+            regenerate(session)
+        except Exception:  # pragma: no cover - best effort
+            logger.debug("session regenerate unavailable", exc_info=True)
+    login_user(master)
+
+
+def _pop_oauth_state(key):
+    stored = session.pop(key, None) or {}
+    if not stored.get("state") or not hmac.compare_digest(stored["state"], request.args.get("state", "")):
+        raise OAuthFlowError("That sign-in link expired",
+                             "The sign-in request didn't match this browser session. Please try again.",
+                             provider=key.split("_")[0])
+    return stored
+
+
+def _check_provider_error(provider):
+    error = request.args.get("error")
+    if not error:
+        return
+    if error in ("access_denied", "consent_required"):
+        raise OAuthFlowError("Sign-in cancelled",
+                             f"You didn't finish connecting your {PROVIDER_NAMES[provider]} account, "
+                             "so nothing was changed.", provider=provider)
+    logger.warning("%s OAuth error: %s", provider, error)
+    raise OAuthFlowError("Couldn't connect", f"{PROVIDER_NAMES[provider]} returned an error. Please try again.",
+                         provider=provider)
 
 
 # ---------------------------------------------------------------------------
@@ -200,9 +267,26 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/login')
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('settings'))
+    return render_template('login.html')
+
+
+@app.route("/request_access")
+def request_access():
+    return render_template("request_access.html")
+
+
+@app.route("/beta")
+def beta():
+    return render_template("beta.html")
+
+
 @app.route("/contact")
 def contact():
-    return render_template("contact.html")
+    return render_template("contact.html", sent=request.args.get("sent") == "1")
 
 
 @app.route("/termsandprivacy")
@@ -210,10 +294,11 @@ def terms_and_privacy():
     return render_template("termsandprivacy.html")
 
 
-@app.route('/logout')
+@app.route('/logout', methods=["POST"])
 @login_required
 def logout():
     logout_user()
+    session.clear()
     return redirect(url_for('index'))
 
 
@@ -221,68 +306,78 @@ def logout():
 # OAuth: Google
 # ---------------------------------------------------------------------------
 
+def _google_flow(**kwargs):
+    return Flow.from_client_config(
+        google_client_config, scopes=GOOGLE_SCOPES, redirect_uri=GOOGLE_REDIRECT_URI, **kwargs,
+    )
+
+
 @app.route("/google/login")
 def google_login():
     """
-    Kick off Google OAuth. This is BOTH sign-in and account-linking:
-
-    - If the visitor isn't logged in yet, the callback creates or finds a
-      Master keyed by their Google email.
-    - If they are logged in, the callback attaches the (possibly different)
-      Google email as an additional EmailAccount on their existing Master.
+    Sign in, link another inbox (when already signed in), or reconnect.
+    ``?consent=1`` forces Google's consent screen, which is the only way to
+    get a new refresh token for an account that already granted access.
     """
-    flow = Flow.from_client_config(
-        google_client_config, scopes=GOOGLE_SCOPES, redirect_uri=GOOGLE_REDIRECT_URI,
-    )
+    flow = _google_flow(autogenerate_code_verifier=True)
     state = secrets.token_urlsafe(32)
-    session['google_oauth_state'] = state
     auth_url, _ = flow.authorization_url(
-        prompt="consent", access_type='offline', state=state,
+        access_type="offline",
+        include_granted_scopes="true",
+        prompt="consent" if request.args.get("consent") else "select_account",
+        state=state,
     )
+    # PKCE: the callback's Flow must present the same verifier.
+    session["google_oauth"] = {"state": state, "verifier": flow.code_verifier}
     return redirect(auth_url)
 
 
 @app.route('/google/callback')
 def google_callback():
-    stored_state = session.pop('google_oauth_state', None)
-    if not stored_state or stored_state != request.args.get('state'):
-        return "Invalid state parameter", 400
+    _check_provider_error("google")
+    stored = _pop_oauth_state("google_oauth")
 
-    flow = Flow.from_client_config(
-        google_client_config, scopes=GOOGLE_SCOPES,
-        redirect_uri=GOOGLE_REDIRECT_URI, state=stored_state,
-    )
+    flow = _google_flow(state=stored["state"])
+    flow.code_verifier = stored.get("verifier")
 
-    if PRODUCTION and request.url.startswith("http://"):
-        authorization_response = "https://" + request.url[len("http://"):]
-    else:
-        authorization_response = request.url
+    authorization_response = request.url
+    if PRODUCTION and authorization_response.startswith("http://"):
+        authorization_response = "https://" + authorization_response[len("http://"):]
 
     try:
         flow.fetch_token(authorization_response=authorization_response)
     except Exception:
         logger.exception("Google OAuth token exchange failed")
-        return "OAuth failed", 400
+        raise OAuthFlowError("Couldn't connect Google", "Google didn't accept the sign-in. Please try again.",
+                             provider="google")
 
     credentials = flow.credentials
-    if not credentials.refresh_token:
-        return "OAuth failed: missing refresh token — try again and grant offline access", 400
+    granted = credentials.granted_scopes or []
+    granted = set(granted.split() if isinstance(granted, str) else granted)
+    if granted and GOOGLE_MAIL_SCOPE not in granted:
+        raise OAuthFlowError(
+            "MailMind needs Gmail access",
+            "To build your list, MailMind needs permission to read your email and send you the "
+            "digest. Please try again and leave the Gmail box ticked.",
+            provider="google", retry_consent=True,
+        )
 
     try:
-        user_info = requests.get(
-            'https://www.googleapis.com/oauth2/v2/userinfo',
-            headers={'Authorization': f"Bearer {credentials.token}"},
-            timeout=15,
-        ).json()
+        resp = requests.get(GOOGLE_USERINFO_URL,
+                            headers={'Authorization': f"Bearer {credentials.token}"}, timeout=15)
+        resp.raise_for_status()
+        info = resp.json()
     except Exception:
         logger.exception("Google userinfo lookup failed")
-        return "OAuth failed", 400
+        raise OAuthFlowError("Couldn't connect Google", "We couldn't read your Google profile. Please try again.",
+                             provider="google")
 
-    user_email = user_info.get('email')
-    if not user_email:
-        return "OAuth failed: no email in userinfo", 400
+    if not info.get("sub") or not info.get("email") or not info.get("email_verified"):
+        raise OAuthFlowError("Unverified email",
+                             "Your Google account's email address isn't verified, so MailMind can't use it.",
+                             provider="google")
 
-    return _finish_oauth("google", user_email, credentials.refresh_token)
+    return _finish_oauth("google", info["sub"], info["email"].lower(), credentials.refresh_token)
 
 
 # ---------------------------------------------------------------------------
@@ -292,111 +387,173 @@ def google_callback():
 @app.route("/microsoft/login")
 def microsoft_login():
     state = secrets.token_urlsafe(32)
-    session['microsoft_oauth_state'] = state
+    verifier, challenge = _pkce_pair()
+    session["microsoft_oauth"] = {"state": state, "verifier": verifier}
     auth_params = {
         'client_id': os.getenv("MICROSOFT_CLIENT_ID"),
         'response_type': 'code',
         'redirect_uri': OUTLOOK_REDIRECT_URI,
-        'scope': ' '.join(OUTLOOK_SCOPES),
+        'scope': ' '.join(MICROSOFT_SCOPES),
         'state': state,
         'response_mode': 'query',
+        'code_challenge': challenge,
+        'code_challenge_method': 'S256',
+        'prompt': 'consent' if request.args.get("consent") else 'select_account',
     }
     return redirect(MICROSOFT_AUTH_URL + '?' + urllib.parse.urlencode(auth_params))
 
 
 @app.route('/microsoft/callback')
 def microsoft_callback():
-    stored_state = session.pop('microsoft_oauth_state', None)
-    if not stored_state or stored_state != request.args.get('state'):
-        return "Invalid state parameter", 400
+    _check_provider_error("microsoft")
+    stored = _pop_oauth_state("microsoft_oauth")
 
     auth_code = request.args.get('code')
     if not auth_code:
-        return "Authorization code not found", 400
+        raise OAuthFlowError("Couldn't connect Microsoft", "Microsoft didn't send back a sign-in code.",
+                             provider="microsoft")
 
-    token_data = {
-        'client_id': os.getenv("MICROSOFT_CLIENT_ID"),
-        'client_secret': os.getenv("MICROSOFT_CLIENT_SECRET"),
-        'code': auth_code,
-        'redirect_uri': OUTLOOK_REDIRECT_URI,
-        'grant_type': 'authorization_code',
-        'scope': ' '.join(OUTLOOK_SCOPES),
-    }
-    token_response = requests.post(
-        MICROSOFT_TOKEN_URL, data=token_data,
-        headers={'Content-Type': 'application/x-www-form-urlencoded'}, timeout=15,
-    )
-    if token_response.status_code != 200:
-        logger.error("Microsoft token exchange failed: %s", token_response.text)
-        return "Token exchange failed", 400
+    try:
+        token_response = requests.post(MICROSOFT_TOKEN_URL, data={
+            'client_id': os.getenv("MICROSOFT_CLIENT_ID"),
+            'client_secret': os.getenv("MICROSOFT_CLIENT_SECRET"),
+            'code': auth_code,
+            'redirect_uri': OUTLOOK_REDIRECT_URI,
+            'grant_type': 'authorization_code',
+            'scope': ' '.join(MICROSOFT_SCOPES),
+            'code_verifier': stored.get("verifier"),
+        }, timeout=15)
+        token_info = token_response.json()
+    except Exception:
+        logger.exception("Microsoft token exchange failed")
+        raise OAuthFlowError("Couldn't connect Microsoft", "Microsoft didn't accept the sign-in. Please try again.",
+                             provider="microsoft")
+    if token_response.status_code != 200 or "access_token" not in token_info:
+        logger.error("Microsoft token exchange failed: %s", token_info.get("error"))
+        raise OAuthFlowError("Couldn't connect Microsoft", "Microsoft didn't accept the sign-in. Please try again.",
+                             provider="microsoft")
 
-    token_info = token_response.json()
-    user_response = requests.get(
-        MICROSOFT_USERINFO_URL,
-        headers={'Authorization': f"Bearer {token_info['access_token']}"},
-        timeout=15,
-    )
-    if user_response.status_code != 200:
-        logger.error("Microsoft userinfo lookup failed: %s", user_response.text)
-        return "Failed to get user info", 400
+    granted = {s.rsplit("/", 1)[-1].lower() for s in token_info.get("scope", "").split()}
+    if not MICROSOFT_REQUIRED_SCOPES <= granted:
+        raise OAuthFlowError(
+            "MailMind needs mail access",
+            "To build your list, MailMind needs permission to read your mail and send you the "
+            "digest. Please try again and accept the requested permissions.",
+            provider="microsoft", retry_consent=True,
+        )
 
-    user_info = user_response.json()
-    user_email = user_info.get('mail') or user_info.get('userPrincipalName')
-    if not user_email:
-        return "OAuth failed: no email in userinfo", 400
+    try:
+        user_response = requests.get(
+            MICROSOFT_USERINFO_URL,
+            headers={'Authorization': f"Bearer {token_info['access_token']}"}, timeout=15,
+        )
+        user_response.raise_for_status()
+        info = user_response.json()
+    except Exception:
+        logger.exception("Microsoft profile lookup failed")
+        raise OAuthFlowError("Couldn't connect Microsoft", "We couldn't read your Microsoft profile.",
+                             provider="microsoft")
 
-    return _finish_oauth("microsoft", user_email, token_info.get("refresh_token"))
+    # The object id is immutable and tenant-controlled attributes like `mail`
+    # can be set to anything by a tenant admin, so identity is the id and the
+    # UPN (which must sit on a verified domain) is preferred for the address.
+    subject = info.get("id")
+    upn = info.get("userPrincipalName") or ""
+    user_email = (upn if "@" in upn and "#EXT#" not in upn else info.get("mail") or "").lower()
+    if not subject or not user_email:
+        raise OAuthFlowError("Couldn't connect Microsoft", "Your Microsoft account has no usable email address.",
+                             provider="microsoft")
+
+    return _finish_oauth("microsoft", subject, user_email, token_info.get("refresh_token"))
 
 
 # ---------------------------------------------------------------------------
 # Shared OAuth resolution
 # ---------------------------------------------------------------------------
 
-def _finish_oauth(provider: str, user_email: str, refresh_token: str):
-    """
-    Land the OAuth flow: create-or-attach an EmailAccount, log the user in,
-    then send them to /settings (or to /code if they still need to unlock beta).
-    """
-    if not refresh_token:
-        return "OAuth failed: missing refresh token", 400
+def _find_identity(provider, subject, email):
+    """Find the linked inbox for this provider identity (adopting legacy rows)."""
+    account = EmailAccount.query.filter_by(provider=provider, provider_subject=subject).first()
+    if account:
+        return account
+    # Rows created before identities were stored: claim them only for the same
+    # provider and address.
+    legacy = EmailAccount.query.filter_by(provider=provider, email=email, provider_subject=None).first()
+    if legacy:
+        legacy.provider_subject = subject
+    return legacy
 
-    encrypted = encrypt_token(refresh_token)
-    existing_account = EmailAccount.query.filter_by(email=user_email).first()
+
+def _store_token(account, refresh_token):
+    if refresh_token:
+        account.oauth_token = encrypt_token(refresh_token)
+        account.needs_reauth = False
+
+
+def _finish_oauth(provider: str, subject: str, user_email: str, refresh_token):
+    """
+    Land an OAuth flow. Signed-in users link (or reconnect) an inbox; everyone
+    else signs in, creating an account on first use. Identities are matched on
+    the provider's immutable subject id, never on the email alone.
+    """
+    account = _find_identity(provider, subject, user_email)
+    other_with_email = EmailAccount.query.filter_by(email=user_email).first()
+    if other_with_email is account:
+        other_with_email = None
 
     if current_user.is_authenticated:
-        # Adding an additional email account to an existing session.
-        if existing_account and existing_account.master_id != current_user.id:
-            return "This email is already linked to another MailMind account", 409
-
-        if existing_account:
-            existing_account.oauth_token = encrypted
-            existing_account.provider = provider
+        if account and account.master_id != current_user.id:
+            raise OAuthFlowError("Already connected elsewhere",
+                                 f"{user_email} is connected to a different MailMind account.", status=409)
+        if other_with_email:
+            raise OAuthFlowError("Already connected",
+                                 f"{user_email} is already connected through "
+                                 f"{provider_name(other_with_email.provider)}.", status=409)
+        if account is None:
+            if not refresh_token:
+                return redirect(url_for(f"{provider}_login", consent=1))
+            create_email(user_email, encrypt_token(refresh_token), provider=provider,
+                         master=current_user, provider_subject=subject)
+            flash(f"Connected {user_email}.", "success")
         else:
-            create_email(user_email, encrypted, provider=provider, master=current_user)
-
-        current_user.last_login = datetime.now(timezone.utc)
+            if not refresh_token and account.needs_reauth:
+                return redirect(url_for(f"{provider}_login", consent=1))
+            _store_token(account, refresh_token)
+            flash(f"Reconnected {user_email}.", "success")
         db.session.commit()
         return redirect(url_for('settings'))
 
-    # Not logged in yet — this OAuth *is* the sign-in.
-    master = Master.query.filter_by(primary_email=user_email).first()
-    if master is None and existing_account:
-        # An account with this email was linked before as a secondary — reuse
-        # its Master rather than creating a duplicate.
-        master = db.session.get(Master, existing_account.master_id)
-
-    if master is None:
-        master = create_master(user_email)
-
-    if existing_account is None:
-        create_email(user_email, encrypted, provider=provider, master=master)
+    # Signing in.
+    if account is not None:
+        master = account.master
+        if not refresh_token and account.needs_reauth:
+            db.session.commit()
+            return redirect(url_for(f"{provider}_login", consent=1))
+        _store_token(account, refresh_token)
     else:
-        existing_account.oauth_token = encrypted
-        existing_account.provider = provider
+        if other_with_email:
+            raise OAuthFlowError(
+                "Use your original sign-in",
+                f"{user_email} is already connected through {provider_name(other_with_email.provider)}. "
+                f"Sign in with {provider_name(other_with_email.provider)} instead.",
+                provider=other_with_email.provider, status=409,
+            )
+        if not refresh_token:
+            return redirect(url_for(f"{provider}_login", consent=1))
+        master = Master.query.filter_by(primary_email=user_email).first()
+        if master is not None and provider != "google":
+            # Only a verified Google address may claim an existing account by email.
+            raise OAuthFlowError("Use your original sign-in",
+                                 f"{user_email} already has a MailMind account. Sign in with Google instead.",
+                                 provider="google", status=409)
+        if master is None:
+            master = create_master(user_email)
+        create_email(user_email, encrypt_token(refresh_token), provider=provider,
+                     master=master, provider_subject=subject)
 
     master.last_login = datetime.now(timezone.utc)
     db.session.commit()
-    login_user(master)
+    _start_session_for(master)
 
     if not master.subscribed:
         return redirect(url_for('code'))
@@ -404,7 +561,7 @@ def _finish_oauth(provider: str, user_email: str, refresh_token: str):
 
 
 # ---------------------------------------------------------------------------
-# Settings — the only routine page
+# Settings
 # ---------------------------------------------------------------------------
 
 _TIMEZONES = [
@@ -426,13 +583,19 @@ _TIMEZONES = [
     ("Australia/Sydney", "Sydney"),
     ("UTC", "UTC"),
 ]
+_TIMEZONE_VALUES = {tz for tz, _ in _TIMEZONES}
 
 _TIME_OPTIONS = [
     f"{h}:{m:02d} {ampm}"
     for ampm in ("AM", "PM")
-    for h in list(range(1, 13))
+    for h in [12] + list(range(1, 12))
     for m in (0, 15, 30, 45)
 ]
+_TIME_VALUES = set(_TIME_OPTIONS)
+# 24 rows of four quarter-hours, for the settings grid.
+_HOUR_ROWS = [(f"{opts[0].split(':')[0]} {opts[0][-2:]}", opts)
+              for opts in (_TIME_OPTIONS[i:i + 4] for i in range(0, len(_TIME_OPTIONS), 4))]
+MAX_DELIVERY_TIMES = 3
 
 
 @app.route("/settings", methods=["GET", "POST"])
@@ -441,59 +604,86 @@ def settings():
     if not current_user.subscribed:
         return redirect(url_for('subscribe'))
 
-    message = None
-
     if request.method == "POST":
         tz = request.form.get("timezone")
-        times = request.form.getlist("time")
+        times = [t for t in request.form.getlist("time") if t in _TIME_VALUES]
 
-        if not tz:
-            message = "Please select a timezone."
+        if tz not in _TIMEZONE_VALUES:
+            flash("Please choose a timezone.", "error")
         elif not times:
-            message = "Please select at least one time."
+            flash("Please choose at least one delivery time.", "error")
         else:
             current_user.timezone = tz
-            current_user.time = ",".join(times[:3])
+            current_user.time = ",".join(times[:MAX_DELIVERY_TIMES])
             db.session.commit()
-            message = "Settings saved."
+            flash("Delivery schedule saved.", "success")
+        return redirect(url_for('settings'))
 
     return render_template(
         "settings.html",
-        message=message,
         accounts=current_user.email_accounts,
         current_times=(current_user.time or "").split(",") if current_user.time else [],
         current_timezone=current_user.timezone or "",
         timezones=_TIMEZONES,
-        time_options=_TIME_OPTIONS,
+        hour_rows=_HOUR_ROWS,
+        max_times=MAX_DELIVERY_TIMES,
     )
 
 
-@app.route("/settings/delete_account", methods=["POST"])
+@app.route("/settings/accounts/<int:account_id>/remove", methods=["POST"])
 @login_required
-def delete_email_account():
-    try:
-        account_id = int(request.form.get("id"))
-    except (TypeError, ValueError):
-        return jsonify({"success": False, "error": "Invalid account id"}), 400
-
+def remove_email_account(account_id):
     account = EmailAccount.query.filter_by(id=account_id, master_id=current_user.id).first()
     if not account:
-        return jsonify({"success": False, "error": "Not found"}), 404
+        return render_template("error.html", code=404, title="Not found",
+                               message="That inbox isn't connected to your account."), 404
 
     if account.email == current_user.primary_email:
-        return jsonify({
-            "success": False,
-            "error": "Can't delete your primary email — this is your login. Log out first, or contact support.",
-        }), 400
+        flash("That's the address you sign in with, so it can't be removed.", "error")
+        return redirect(url_for('settings')), 303
 
+    revoke(account)
+    email = account.email
+    db.session.delete(account)
+    db.session.commit()
+    flash(f"Disconnected {email}.", "success")
+    return redirect(url_for('settings')), 303
+
+
+def _cancel_billing(master):
+    """Cancel any live Stripe subscription. Raises on Stripe errors."""
+    if not master.stripe_customer_id:
+        return
+    subs = stripe.Subscription.list(customer=master.stripe_customer_id, status="all", limit=20)
+    for sub in subs.auto_paging_iter():
+        if sub.status in ("active", "trialing", "past_due", "unpaid", "incomplete"):
+            stripe.Subscription.cancel(sub.id)
+
+
+@app.route("/settings/delete", methods=["POST"])
+@login_required
+def delete_mailmind_account():
+    if request.form.get("confirm", "").strip().lower() != current_user.primary_email.lower():
+        flash("Type your email address exactly to confirm deleting your account.", "error")
+        return redirect(url_for('settings') + "#danger"), 303
+
+    master = current_user._get_current_object()
     try:
-        db.session.delete(account)
-        db.session.commit()
-        return jsonify({"success": True}), 200
+        _cancel_billing(master)
     except Exception:
-        logger.exception("Failed to delete account %s", account_id)
-        db.session.rollback()
-        return jsonify({"success": False, "error": "Delete failed"}), 500
+        logger.exception("Stripe cancellation failed for master %s", master.id)
+        flash("We couldn't cancel your subscription, so nothing was deleted. Please try again or contact us.",
+              "error")
+        return redirect(url_for('settings') + "#danger"), 303
+
+    for account in list(master.email_accounts):
+        revoke(account)
+    db.session.delete(master)
+    db.session.commit()
+    logout_user()
+    session.clear()
+    flash("Your MailMind account and connected inboxes were deleted.", "success")
+    return redirect(url_for('index')), 303
 
 
 # ---------------------------------------------------------------------------
@@ -511,17 +701,16 @@ def subscribe():
 @app.route('/create-checkout-session', methods=['POST'])
 @login_required
 def create_checkout_session():
+    if not request.form.get("accept_tos"):
+        flash("Please accept the Terms of Service to continue.", "error")
+        return redirect(url_for('subscribe')), 303
     try:
-        prices = stripe.Price.list(
-            lookup_keys=[request.form['lookup_key']],
-            expand=['data.product'],
-        )
+        prices = stripe.Price.list(lookup_keys=[STRIPE_PRICE_LOOKUP_KEY], expand=['data.product'])
+        if not prices.data:
+            raise RuntimeError(f"no Stripe price for lookup key {STRIPE_PRICE_LOOKUP_KEY}")
 
         if not current_user.stripe_customer_id:
-            customer = stripe.Customer.create(
-                email=current_user.primary_email,
-                name=current_user.primary_email,
-            )
+            customer = stripe.Customer.create(email=current_user.primary_email)
             current_user.stripe_customer_id = customer.id
             db.session.commit()
 
@@ -530,21 +719,23 @@ def create_checkout_session():
             line_items=[{'price': prices.data[0].id, 'quantity': 1}],
             mode='subscription',
             success_url=DOMAIN + url_for('settings'),
-            cancel_url=DOMAIN,
+            cancel_url=DOMAIN + url_for('subscribe'),
             subscription_data={'trial_period_days': 7},
         )
         return redirect(checkout_session.url, code=303)
     except Exception:
         logger.exception("Checkout session creation failed")
-        return "Server error", 500
+        flash("We couldn't start checkout. Please try again in a moment.", "error")
+        return redirect(url_for('subscribe')), 303
 
 
 @app.route('/create-portal-session', methods=['POST'])
 @login_required
 def customer_portal():
+    if not current_user.stripe_customer_id:
+        flash("There's no billing account to manage yet.", "error")
+        return redirect(url_for('settings')), 303
     try:
-        if not current_user.stripe_customer_id:
-            return "No subscription found", 400
         portal_session = stripe.billing_portal.Session.create(
             customer=current_user.stripe_customer_id,
             return_url=DOMAIN + url_for('settings'),
@@ -552,7 +743,11 @@ def customer_portal():
         return redirect(portal_session.url, code=303)
     except Exception:
         logger.exception("Portal session creation failed")
-        return "Server error", 500
+        flash("We couldn't open billing right now. Please try again in a moment.", "error")
+        return redirect(url_for('settings')), 303
+
+
+_ACTIVE_SUB_STATUSES = ('active', 'trialing')
 
 
 @app.route('/webhook', methods=['POST'])
@@ -577,54 +772,81 @@ def webhook_received():
 
     data_object = event['data']['object']
     event_type = event['type']
-    customer_id = data_object.get('customer') if isinstance(data_object, dict) else None
+    customer_id = data_object.get('customer') if hasattr(data_object, 'get') else None
     user = Master.query.filter_by(stripe_customer_id=customer_id).first() if customer_id else None
 
-    if user and event_type in ('checkout.session.completed', 'customer.subscription.created'):
-        user.subscribed = True
-    elif user and event_type == 'customer.subscription.updated':
-        user.subscribed = data_object.get('status') in ('active', 'trialing')
-    elif user and event_type == 'customer.subscription.deleted':
-        user.subscribed = False
-
     if user:
+        if event_type == 'checkout.session.completed':
+            user.subscribed = data_object.get('status') == 'complete'
+        elif event_type in ('customer.subscription.created', 'customer.subscription.updated'):
+            user.subscribed = data_object.get('status') in _ACTIVE_SUB_STATUSES
+        elif event_type == 'customer.subscription.deleted':
+            user.subscribed = False
         db.session.commit()
 
     return jsonify({'status': 'success'})
 
 
 # ---------------------------------------------------------------------------
-# Beta grant (kept during testing)
+# Beta access code
 # ---------------------------------------------------------------------------
+
+def _code_matches(submitted, expected):
+    return bool(expected) and hmac.compare_digest(str(submitted or ""), str(expected))
+
 
 @app.route("/code", methods=["POST", "GET"])
 @login_required
 def code():
+    if current_user.subscribed:
+        return redirect(url_for('settings'))
     if request.method != "POST":
         return render_template("code.html", message=None)
 
-    submitted = request.form.get("code")
+    submitted = (request.form.get("code") or "").strip()
     real_code = os.getenv("CODE")
-    temp_code = os.getenv("TEMP_CODE")
 
-    if temp_code and str(submitted) == str(temp_code):
-        logger.info("TEMP CODE granted to %s", current_user.primary_email)
+    if _code_matches(submitted, os.getenv("TEMP_CODE")):
+        logger.info("TEMP CODE granted to master %s", current_user.id)
         current_user.subscribed = True
         current_user.temp = True
         db.session.commit()
+        flash("You're in. Pick when you'd like your list delivered.", "success")
         return redirect(url_for('settings'))
 
-    if real_code and str(real_code) != "DISABLED" and str(submitted) == str(real_code):
-        logger.info("CODE granted to %s", current_user.primary_email)
+    if real_code != "DISABLED" and _code_matches(submitted, real_code):
+        logger.info("CODE granted to master %s", current_user.id)
         current_user.subscribed = True
         db.session.commit()
+        flash("You're in. Pick when you'd like your list delivered.", "success")
         return redirect(url_for('settings'))
 
-    return render_template("code.html", message="Invalid code.")
+    return render_template("code.html", message="That code didn't work. Check it and try again."), 400
 
 
 # ---------------------------------------------------------------------------
-# CSRF exemptions for JSON API endpoints (until the frontend sends the header)
+# Errors
 # ---------------------------------------------------------------------------
 
-csrf.exempt(delete_email_account)
+@app.errorhandler(CSRFError)
+def handle_csrf_error(err):
+    return render_template("error.html", code=400, title="Page expired",
+                           message="This form was open too long. Go back, refresh, and try again."), 400
+
+
+@app.errorhandler(404)
+def not_found(err):
+    return render_template("error.html", code=404, title="Page not found",
+                           message="That page doesn't exist, or it moved."), 404
+
+
+@app.errorhandler(405)
+def method_not_allowed(err):
+    return render_template("error.html", code=405, title="Not allowed",
+                           message="That page can't be opened this way."), 405
+
+
+@app.errorhandler(500)
+def server_error(err):
+    return render_template("error.html", code=500, title="Something went wrong",
+                           message="We hit an unexpected error. Please try again in a moment."), 500

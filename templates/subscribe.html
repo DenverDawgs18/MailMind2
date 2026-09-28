@@ -1,65 +1,35 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='imgs/logo.svg') }}">
-    <link rel="alternate icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
-    <title>Subscribe — MailMind</title>
-    <style>
-        .subscribe-wrapper { max-width: 520px; margin: 60px auto; padding: 0 20px; }
-        .card { background: #fff; border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); padding: 32px; text-align: center; }
-        .card h1 { margin-top: 0; font-size: 40px; letter-spacing: -0.04em; }
-        .price { font-size: 2.4rem; font-weight: 700; letter-spacing: -0.03em; margin: 16px 0 4px; }
-        .tos { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 24px 0; color: var(--gray); font-size: 14px; }
-        button.checkout { padding: 14px 28px; background: var(--ink); color: #fff; border: none; border-radius: 999px; font-family: inherit; font-weight: 600; font-size: 16px; cursor: pointer; }
-        button.checkout:disabled { opacity: 0.5; cursor: not-allowed; }
-    </style>
-</head>
-<body>
-    <div class="navbar">
-        <a href="{{ url_for('index') }}" class="home">MailMind</a>
-        <div class="navwrap">
-            {% if current_user.is_authenticated %}
-                <a href="{{ url_for('settings') }}">Settings</a>
-                <a href="{{ url_for('logout') }}">Log out</a>
-            {% else %}
-                <a href="{{ url_for('contact') }}">Contact</a>
-            {% endif %}
-        </div>
-        <div class="empty"></div>
+{% extends "base.html" %}
+{% from "_macros.html" import aurora %}
+{% block title %}Subscribe — MailMind{% endblock %}
+{% block content %}
+{{ aurora() }}
+<div class="page narrow center">
+    <div class="rise">
+        <p class="kicker">MailMind monthly</p>
+        <h1 class="page-title">One list. <span class="shimmer">Every day.</span></h1>
+        <p class="lede">Try it free for 7 days. Cancel any time from settings.</p>
     </div>
-
-    <div class="subscribe-wrapper">
-        <div class="card">
-            <h1>Subscribe to MailMind</h1>
-            <p class="price">$25 / month</p>
-            <p>7-day free trial, cancel any time.</p>
-
-            <form action="{{ url_for('create_checkout_session') }}" method="POST">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                <input type="hidden" name="lookup_key" value="One_Month_of_MailMind-ae39e51" />
-
-                <label class="tos">
-                    <input type="checkbox" id="accept-tos" />
-                    I accept the
-                    <a href="{{ url_for('terms_and_privacy') }}" target="_blank" style="color:var(--accent-ink);">Terms of Service and Privacy Policy</a>.
-                </label>
-
-                <button class="checkout" type="submit" disabled>Continue to checkout</button>
-            </form>
-        </div>
-    </div>
-
-    <footer>
-        <a href="{{ url_for('terms_and_privacy') }}">Terms of Use and Privacy Policy</a>
-    </footer>
-
-    <script>
-        document.getElementById('accept-tos').addEventListener('change', function() {
-            document.querySelector('button.checkout').disabled = !this.checked;
-        });
-    </script>
-</body>
-</html>
+    <form class="card price-card rise" style="animation-delay:.12s" action="{{ url_for('create_checkout_session') }}" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="price"><b>$25</b><span>/ month after your trial</span></div>
+        <ul class="perks" style="margin-top:22px">
+            <li><span class="ck-mini"></span>All your Gmail and Outlook inboxes</li>
+            <li><span class="ck-mini"></span>Up to three digests a day</li>
+            <li><span class="ck-mini"></span>Calendar links for meetings and deadlines</li>
+        </ul>
+        <label class="tos">
+            <input type="checkbox" name="accept_tos" value="1" id="accept-tos" required>
+            <span>I accept the <a href="{{ url_for('terms_and_privacy') }}" target="_blank" rel="noopener">Terms of Service and Privacy Policy</a>.</span>
+        </label>
+        <button class="btn btn-primary" type="submit" id="checkout" style="width:100%;margin-top:22px;min-height:52px;font-size:17px" disabled>Start free trial</button>
+        <p class="fine" style="text-align:center">Have a beta code? <a href="{{ url_for('code') }}">Enter it here</a>.</p>
+    </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('accept-tos').addEventListener('change', function () {
+    document.getElementById('checkout').disabled = !this.checked;
+});
+</script>
+{% endblock %}

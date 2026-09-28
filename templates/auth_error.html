@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "_macros.html" import provider_icon, aurora %}
+{% block title %}{{ title }} — MailMind{% endblock %}
+{% block content %}
+{{ aurora() }}
+<div class="page narrow center rise">
+    <img class="big-mark" src="{{ url_for('static', filename='imgs/logo.svg') }}" alt="" width="84" height="84">
+    <h1 class="page-title">{{ title }}</h1>
+    <p class="lede">{{ message }}</p>
+    <div class="actions">
+        {% if retry_url %}
+        <a class="btn btn-primary" href="{{ retry_url }}">{{ provider_icon(provider, 18) }} Try again with {{ provider | provider_name }}</a>
+        {% endif %}
+        <a class="btn btn-secondary" href="{{ url_for('settings') if current_user.is_authenticated else url_for('login') }}">
+            {{ 'Back to settings' if current_user.is_authenticated else 'Back to sign in' }}
+        </a>
+    </div>
+</div>
+{% endblock %}

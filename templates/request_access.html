@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_macros.html" import aurora %}
+{% block title %}Join the beta — MailMind{% endblock %}
+{% block content %}
+{{ aurora() }}
+<div class="page">
+    <div class="split">
+        <div class="rise">
+            <p class="kicker">Private beta · Limited spots</p>
+            <h1 class="page-title">Join the <span class="shimmer">beta.</span></h1>
+            <p class="lede">Get a short list of what actually needs you, delivered to your inbox every morning.</p>
+            <ul class="perks">
+                <li><span class="ck-mini"></span>Works with Gmail and Outlook</li>
+                <li><span class="ck-mini"></span>One email a day. No app to open.</li>
+                <li><span class="ck-mini"></span>Early access to everything new</li>
+            </ul>
+        </div>
+        <form class="card form-card rise" style="animation-delay:.15s" action="https://api.web3forms.com/submit" method="POST">
+            <input type="hidden" name="access_key" value="e56caf5c-afef-4ff8-86e5-e1ffbe1a9f21">
+            <input type="hidden" name="subject" value="MailMind beta request">
+            <input type="hidden" name="redirect" value="{{ DOMAIN }}{{ url_for('beta') }}">
+            <div class="field">
+                <label for="email">Email</label>
+                <input type="email" name="email" id="email" placeholder="you@example.com" autocomplete="email" required>
+            </div>
+            <div class="field">
+                <label for="message">Why do you want MailMind?</label>
+                <textarea name="message" id="message" placeholder="How many emails do you get a day? What slips through the cracks?" required></textarea>
+            </div>
+            <button type="submit" class="beta-btn">
+                <span class="beta-ring" aria-hidden="true"></span>
+                <span class="beta-label">Request access</span>
+                <span class="beta-arrow" aria-hidden="true">&rarr;</span>
+            </button>
+            <p class="fine">We'll email you instructions when your spot opens.</p>
+        </form>
+    </div>
+</div>
+{% endblock %}

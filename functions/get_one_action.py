@@ -11,7 +11,16 @@ if not PRODUCTION:
     from dotenv import load_dotenv
     load_dotenv(override=True)
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+_client = None
+
+
+def _get_client():
+    """Build the OpenAI client on first use so importing this module never needs the key."""
+    global _client
+    if _client is None:
+        _client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _client
+
 
 system_prompt = """
 You are an expert email assistant specializing in action item extraction. 
@@ -49,7 +58,7 @@ RESPONSE: No action
 """
 
 def get_an_action(email_body):
-    response = client.chat.completions.create(
+    response = _get_client().chat.completions.create(
         model=FINE_TUNED_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},

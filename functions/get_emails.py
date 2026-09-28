@@ -15,6 +15,24 @@ from imapclient import IMAPClient
 
 logger = logging.getLogger(__name__)
 
+# Every digest carries this header and subject prefix so MailMind never reads
+# its own digests back in as action items. The older subjects are included
+# so digests already sitting in inboxes are skipped too.
+DIGEST_HEADER = "X-MailMind-Digest"
+DIGEST_SUBJECT_PREFIX = "Your MailMind list"
+_DIGEST_SUBJECT_MARKERS = (
+    DIGEST_SUBJECT_PREFIX.lower(),
+    "daily to-do list from mailmind",
+    "daily to do list from mailmind",
+)
+
+
+def is_digest(subject: str, headers=None) -> bool:
+    if headers is not None and headers.get(DIGEST_HEADER):
+        return True
+    subject = (subject or "").lower()
+    return any(marker in subject for marker in _DIGEST_SUBJECT_MARKERS)
+
 html_converter = html2text.HTML2Text()
 html_converter.ignore_images = True
 html_converter.ignore_links = False
@@ -112,7 +130,7 @@ def _get_gmail_emails(user_email: str, token: str, cutoff: datetime) -> list[dic
                     continue
                 msg = message_from_bytes(data[b'RFC822'])
                 subj = _safe_decode_header(msg['Subject'])
-                if "daily to do list from mailmind" in subj.lower():
+                if is_digest(subj, msg):
                     continue
                 msgs.append({
                     'from': _safe_decode_header(msg['From']),
@@ -161,6 +179,10 @@ def _get_microsoft_emails(user_email: str, token: str, cutoff: datetime) -> list
                 else:
                     received = datetime.now(timezone.utc)
 
+                subject = _safe_decode_header(message.get('subject', ''))
+                if is_digest(subject):
+                    continue
+
                 from_field = message.get('from', {}).get('emailAddress', {})
                 sender_name = from_field.get('name', '')
                 sender_email = from_field.get('address', '')
@@ -173,7 +195,7 @@ def _get_microsoft_emails(user_email: str, token: str, cutoff: datetime) -> list
 
                 msgs.append({
                     'from': _safe_decode_header(from_str),
-                    'subject': _safe_decode_header(message.get('subject', '')),
+                    'subject': subject,
                     'body': _normalize_whitespace(body_content),
                     'utc': received,
                 })

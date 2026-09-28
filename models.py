@@ -11,9 +11,9 @@ def _utcnow():
 
 class Master(db.Model, UserMixin):
     """
-    A MailMind account. There is no username/password — the account IS the
-    primary email verified by Google or Microsoft OAuth. Additional email
-    accounts get attached via the same OAuth flows.
+    A MailMind account. There is no username/password — the account is keyed
+    by the primary email verified through Google or Microsoft OAuth. More email
+    accounts get attached through the same OAuth flows.
     """
 
     id = db.Column(db.Integer, primary_key=True)
@@ -31,15 +31,31 @@ class Master(db.Model, UserMixin):
 
 
 class EmailAccount(db.Model):
+    """
+    One linked inbox. ``provider_subject`` is the provider's immutable user id
+    (Google ``sub`` / Microsoft object id) and is what identities are matched
+    on — never the email address, which some providers let tenants rewrite.
+    """
+
+    __table_args__ = (
+        db.UniqueConstraint('provider', 'provider_subject', name='uq_email_account_identity'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
-    oauth_token = db.Column(db.Text(), nullable=False)  # encrypted refresh token
+    oauth_token = db.Column(db.Text(), nullable=False)  # Fernet-encrypted refresh token
     provider = db.Column(db.String(32), nullable=False)  # "google" or "microsoft"
+    provider_subject = db.Column(db.String(255), nullable=True)
+    # Set when the refresh token stops working (revoked, expired, undecryptable);
+    # the user is asked to reconnect and the scheduler skips the inbox.
+    needs_reauth = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=_utcnow)
     master_id = db.Column(
         db.Integer, db.ForeignKey('master.id', ondelete='CASCADE'), nullable=False
     )
     master = db.relationship(
-        'Master', backref=db.backref('email_accounts', cascade='all, delete-orphan')
+        'Master', backref=db.backref('email_accounts', cascade='all, delete-orphan',
+                                     order_by='EmailAccount.id')
     )
 
     def __repr__(self):
