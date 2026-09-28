@@ -8,7 +8,8 @@ the public surface:
     /google/login|callback    Google OAuth (sign-in, linking, reconnecting)
     /microsoft/login|callback Microsoft OAuth
     /list                     today's list (check items off)
-    /settings                 inboxes, delivery schedule, billing, account
+    /settings                 forwarding, inboxes, delivery schedule, billing, account
+    /inbound/postmark         forwarded mail (Postmark inbound webhook)
     /settings/accounts/<id>/remove
     /settings/delete          delete the MailMind account
     /subscribe, /create-checkout-session, /create-portal-session, /webhook
@@ -136,7 +137,8 @@ csrf = CSRFProtect(app)
 @app.context_processor
 def inject_globals():
     from flask_wtf.csrf import generate_csrf
-    return {"csrf_token": generate_csrf, "DOMAIN": DOMAIN}
+    from functions.forwarding import forwarding_enabled as _fwd_on
+    return {"csrf_token": generate_csrf, "DOMAIN": DOMAIN, "forwarding_on": _fwd_on()}
 
 
 stripe.api_key = os.getenv("STRIPE_API_KEY")
@@ -158,7 +160,13 @@ from functions.refresh_token import (  # noqa: E402
     GOOGLE_SCOPES, MICROSOFT_AUTH_URL, MICROSOFT_SCOPES, MICROSOFT_TOKEN_URL, revoke,
 )
 from functions.users import create_email, create_master  # noqa: E402
-from models import Digest, DigestItem, EmailAccount, Master  # noqa: E402
+from functions.forwarding import (  # noqa: E402
+    address_for, check_webhook_auth, extract_token, forwarding_enabled, gmail_confirmation, new_token,
+    parse_message,
+)
+from models import (  # noqa: E402
+    Digest, DigestItem, EmailAccount, ForwardingAddress, Identity, InboundEmail, Master,
+)
 
 # ---------------------------------------------------------------------------
 # OAuth configuration
@@ -167,6 +175,9 @@ from models import Digest, DigestItem, EmailAccount, Master  # noqa: E402
 GOOGLE_REDIRECT_URI = f"{DOMAIN}/google/callback"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 GOOGLE_MAIL_SCOPE = "https://mail.google.com/"
+# Sign-in only: non-sensitive scopes, no Google security assessment needed.
+GOOGLE_SIGNIN_SCOPES = ["openid", "https://www.googleapis.com/auth/userinfo.email",
+                        "https://www.googleapis.com/auth/userinfo.profile"]
 
 google_client_config = {
     "web": {
@@ -201,20 +212,27 @@ def load_user(id):
 class OAuthFlowError(Exception):
     """A user-facing OAuth failure, rendered by the auth error page."""
 
-    def __init__(self, title, message, provider=None, retry_consent=False, status=400):
+    def __init__(self, title, message, provider=None, retry_consent=False, status=400, connect=False):
         super().__init__(message)
         self.title = title
         self.message = message
         self.provider = provider
         self.retry_consent = retry_consent
         self.status = status
+        self.connect = connect
+
+
+def _consent_url(provider):
+    """Re-run a provider's mailbox connection with the consent screen forced."""
+    return url_for(f"{provider}_login", consent=1, connect=1 if provider == "google" else None)
 
 
 @app.errorhandler(OAuthFlowError)
 def handle_oauth_error(err):
     retry_url = None
     if err.provider:
-        retry_url = url_for(f"{err.provider}_login", consent=1 if err.retry_consent else None)
+        retry_url = url_for(f"{err.provider}_login", consent=1 if err.retry_consent else None,
+                            connect=1 if (err.connect or err.retry_consent) and err.provider == "google" else None)
     return render_template("auth_error.html", title=err.title, message=err.message,
                            provider=err.provider, retry_url=retry_url), err.status
 
@@ -306,29 +324,42 @@ def logout():
 # OAuth: Google
 # ---------------------------------------------------------------------------
 
-def _google_flow(**kwargs):
+def _google_flow(scopes=GOOGLE_SCOPES, **kwargs):
     return Flow.from_client_config(
-        google_client_config, scopes=GOOGLE_SCOPES, redirect_uri=GOOGLE_REDIRECT_URI, **kwargs,
+        google_client_config, scopes=scopes, redirect_uri=GOOGLE_REDIRECT_URI, **kwargs,
     )
+
+
+def _google_mode():
+    """
+    "signin": name + email only (non-sensitive scopes, no Google security
+    assessment); used when mail arrives by forwarding.
+    "mailbox": full Gmail access to read and send directly.
+    """
+    if request.args.get("connect") or not forwarding_enabled():
+        return "mailbox"
+    return "signin"
 
 
 @app.route("/google/login")
 def google_login():
     """
-    Sign in, link another inbox (when already signed in), or reconnect.
+    Sign in, connect a Gmail inbox directly (``?connect=1``), or reconnect.
     ``?consent=1`` forces Google's consent screen, which is the only way to
     get a new refresh token for an account that already granted access.
     """
-    flow = _google_flow(autogenerate_code_verifier=True)
+    mode = _google_mode()
+    flow = _google_flow(GOOGLE_SCOPES if mode == "mailbox" else GOOGLE_SIGNIN_SCOPES,
+                        autogenerate_code_verifier=True)
     state = secrets.token_urlsafe(32)
-    auth_url, _ = flow.authorization_url(
-        access_type="offline",
-        include_granted_scopes="true",
-        prompt="consent" if request.args.get("consent") else "select_account",
-        state=state,
-    )
+    params = {"prompt": "consent" if request.args.get("consent") else "select_account", "state": state}
+    if mode == "mailbox":
+        params.update(access_type="offline", include_granted_scopes="true")
+    else:
+        params.update(access_type="online")
+    auth_url, _ = flow.authorization_url(**params)
     # PKCE: the callback's Flow must present the same verifier.
-    session["google_oauth"] = {"state": state, "verifier": flow.code_verifier}
+    session["google_oauth"] = {"state": state, "verifier": flow.code_verifier, "mode": mode}
     return redirect(auth_url)
 
 
@@ -336,8 +367,10 @@ def google_login():
 def google_callback():
     _check_provider_error("google")
     stored = _pop_oauth_state("google_oauth")
+    mode = stored.get("mode", "mailbox")
+    connect = mode == "mailbox"
 
-    flow = _google_flow(state=stored["state"])
+    flow = _google_flow(GOOGLE_SCOPES if connect else GOOGLE_SIGNIN_SCOPES, state=stored["state"])
     flow.code_verifier = stored.get("verifier")
 
     authorization_response = request.url
@@ -349,18 +382,19 @@ def google_callback():
     except Exception:
         logger.exception("Google OAuth token exchange failed")
         raise OAuthFlowError("Couldn't connect Google", "Google didn't accept the sign-in. Please try again.",
-                             provider="google")
+                             provider="google", connect=connect)
 
     credentials = flow.credentials
-    granted = credentials.granted_scopes or []
-    granted = set(granted.split() if isinstance(granted, str) else granted)
-    if granted and GOOGLE_MAIL_SCOPE not in granted:
-        raise OAuthFlowError(
-            "MailMind needs Gmail access",
-            "To build your list, MailMind needs permission to read your email and send you the "
-            "digest. Please try again and leave the Gmail box ticked.",
-            provider="google", retry_consent=True,
-        )
+    if connect:
+        granted = credentials.granted_scopes or []
+        granted = set(granted.split() if isinstance(granted, str) else granted)
+        if granted and GOOGLE_MAIL_SCOPE not in granted:
+            raise OAuthFlowError(
+                "MailMind needs Gmail access",
+                "To read your inbox directly, MailMind needs permission to read your email and send "
+                "you the digest. Please try again and leave the Gmail box ticked.",
+                provider="google", retry_consent=True,
+            )
 
     try:
         resp = requests.get(GOOGLE_USERINFO_URL,
@@ -370,14 +404,16 @@ def google_callback():
     except Exception:
         logger.exception("Google userinfo lookup failed")
         raise OAuthFlowError("Couldn't connect Google", "We couldn't read your Google profile. Please try again.",
-                             provider="google")
+                             provider="google", connect=connect)
 
     if not info.get("sub") or not info.get("email") or not info.get("email_verified"):
         raise OAuthFlowError("Unverified email",
                              "Your Google account's email address isn't verified, so MailMind can't use it.",
-                             provider="google")
+                             provider="google", connect=connect)
 
-    return _finish_oauth("google", info["sub"], info["email"].lower(), credentials.refresh_token)
+    if connect:
+        return _finish_oauth("google", info["sub"], info["email"].lower(), credentials.refresh_token)
+    return _finish_signin("google", info["sub"], info["email"].lower())
 
 
 # ---------------------------------------------------------------------------
@@ -511,13 +547,13 @@ def _finish_oauth(provider: str, subject: str, user_email: str, refresh_token):
                                  f"{provider_name(other_with_email.provider)}.", status=409)
         if account is None:
             if not refresh_token:
-                return redirect(url_for(f"{provider}_login", consent=1))
+                return redirect(_consent_url(provider))
             create_email(user_email, encrypt_token(refresh_token), provider=provider,
                          master=current_user, provider_subject=subject)
             flash(f"Connected {user_email}.", "success")
         else:
             if not refresh_token and account.needs_reauth:
-                return redirect(url_for(f"{provider}_login", consent=1))
+                return redirect(_consent_url(provider))
             _store_token(account, refresh_token)
             flash(f"Reconnected {user_email}.", "success")
         db.session.commit()
@@ -528,7 +564,7 @@ def _finish_oauth(provider: str, subject: str, user_email: str, refresh_token):
         master = account.master
         if not refresh_token and account.needs_reauth:
             db.session.commit()
-            return redirect(url_for(f"{provider}_login", consent=1))
+            return redirect(_consent_url(provider))
         _store_token(account, refresh_token)
     else:
         if other_with_email:
@@ -539,7 +575,7 @@ def _finish_oauth(provider: str, subject: str, user_email: str, refresh_token):
                 provider=other_with_email.provider, status=409,
             )
         if not refresh_token:
-            return redirect(url_for(f"{provider}_login", consent=1))
+            return redirect(_consent_url(provider))
         master = Master.query.filter_by(primary_email=user_email).first()
         if master is not None and provider != "google":
             # Only a verified Google address may claim an existing account by email.
@@ -558,6 +594,126 @@ def _finish_oauth(provider: str, subject: str, user_email: str, refresh_token):
     if not master.subscribed:
         return redirect(url_for('code'))
     return redirect(url_for('todo_list'))
+
+
+def _finish_signin(provider: str, subject: str, user_email: str):
+    """
+    Sign in with an identity that grants no mailbox access. Matching mirrors
+    _finish_oauth: the provider's immutable subject first, then accounts made
+    before identities existed, and only a verified Google address may claim
+    an existing account by email.
+    """
+    if current_user.is_authenticated:
+        return redirect(url_for('settings'))
+
+    identity = Identity.query.filter_by(provider=provider, subject=subject).first()
+    if identity is not None:
+        master = identity.master
+    else:
+        account = _find_identity(provider, subject, user_email)
+        other_with_email = EmailAccount.query.filter_by(email=user_email).first()
+        if account is not None:
+            master = account.master
+        elif other_with_email is not None:
+            raise OAuthFlowError(
+                "Use your original sign-in",
+                f"{user_email} is already connected through {provider_name(other_with_email.provider)}. "
+                f"Sign in with {provider_name(other_with_email.provider)} instead.",
+                provider=other_with_email.provider, status=409,
+            )
+        else:
+            master = Master.query.filter_by(primary_email=user_email).first()
+            if master is not None and provider != "google":
+                raise OAuthFlowError("Use your original sign-in",
+                                     f"{user_email} already has a MailMind account. Sign in with Google instead.",
+                                     provider="google", status=409)
+            if master is None:
+                master = create_master(user_email)
+        db.session.add(Identity(provider=provider, subject=subject, email=user_email, master=master))
+
+    master.last_login = datetime.now(timezone.utc)
+    db.session.commit()
+    _start_session_for(master)
+
+    if not master.subscribed:
+        return redirect(url_for('code'))
+    return redirect(url_for('todo_list'))
+
+
+# ---------------------------------------------------------------------------
+# Forwarding
+# ---------------------------------------------------------------------------
+
+def _forwarding_for(master):
+    """The user's forwarding address, created on first use (None if forwarding is off)."""
+    if not forwarding_enabled():
+        return None
+    if master.forwarding is None:
+        db.session.add(ForwardingAddress(master=master, token=new_token()))
+        db.session.commit()
+    return master.forwarding
+
+
+@app.route("/inbound/postmark", methods=["POST"])
+@csrf.exempt
+def inbound_postmark():
+    """Postmark inbound webhook: one forwarded email per request."""
+    if not forwarding_enabled():
+        return "Not found", 404
+    if not check_webhook_auth(request.authorization):
+        return "Unauthorized", 401, {"WWW-Authenticate": 'Basic realm="inbound"'}
+
+    payload = request.get_json(silent=True) or {}
+    token = extract_token(payload)
+    fwd = ForwardingAddress.query.filter_by(token=token).first() if token else None
+    if fwd is None:
+        # Unknown address: accept and drop so Postmark doesn't retry.
+        logger.info("Inbound mail for unknown forwarding token")
+        return jsonify({"status": "ignored"})
+
+    fwd.last_received_at = datetime.now(timezone.utc)
+
+    confirmation = gmail_confirmation(payload)
+    if confirmation:
+        fwd.confirmation_code, fwd.confirmation_for = confirmation
+        fwd.confirmation_at = datetime.now(timezone.utc)
+        db.session.commit()
+        return jsonify({"status": "confirmation"})
+
+    message = parse_message(payload, fallback_source=fwd.master.primary_email)
+    if message is None:
+        db.session.commit()
+        return jsonify({"status": "ignored"})
+
+    duplicate = message["message_id"] and InboundEmail.query.filter_by(
+        master_id=fwd.master_id, message_id=message["message_id"]).first()
+    if not duplicate:
+        db.session.add(InboundEmail(master_id=fwd.master_id, **message))
+    db.session.commit()
+    return jsonify({"status": "queued"})
+
+
+@app.route("/settings/forwarding/rotate", methods=["POST"])
+@login_required
+def rotate_forwarding():
+    fwd = _forwarding_for(current_user)
+    if fwd is None:
+        return redirect(url_for('settings')), 303
+    fwd.token = new_token()
+    fwd.confirmation_code = fwd.confirmation_for = fwd.confirmation_at = None
+    db.session.commit()
+    flash("New forwarding address created. Update the forwarding rule in your email settings.", "success")
+    return redirect(url_for('settings') + "#forwarding"), 303
+
+
+@app.route("/settings/forwarding/dismiss", methods=["POST"])
+@login_required
+def dismiss_forwarding_code():
+    fwd = current_user.forwarding
+    if fwd is not None:
+        fwd.confirmation_code = fwd.confirmation_for = fwd.confirmation_at = None
+        db.session.commit()
+    return redirect(url_for('settings') + "#forwarding"), 303
 
 
 # ---------------------------------------------------------------------------
@@ -606,6 +762,28 @@ def _group_items(items):
     return list(groups.items())
 
 
+def _needs_inbox_setup(master):
+    """True when nothing feeds MailMind yet: no connected inbox and no forwarded mail."""
+    if master.email_accounts:
+        return False
+    fwd = master.forwarding
+    return fwd is None or fwd.last_received_at is None
+
+
+@app.template_filter("ago")
+def ago_filter(dt):
+    if dt is None:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    seconds = max(0, (datetime.now(timezone.utc) - dt).total_seconds())
+    for size, unit in ((86400, "day"), (3600, "hour"), (60, "minute")):
+        if seconds >= size:
+            n = int(seconds // size)
+            return f"{n} {unit}{'s' if n != 1 else ''} ago"
+    return "just now"
+
+
 @app.template_filter("clock")
 def clock_filter(dt):
     return dt.strftime("%-I:%M %p") if dt else ""
@@ -638,6 +816,7 @@ def todo_list():
         earlier=earlier,
         next_delivery=_next_delivery(current_user),
         needs_reauth=[a.email for a in current_user.email_accounts if a.needs_reauth],
+        needs_setup=_needs_inbox_setup(current_user),
     )
 
 
@@ -720,8 +899,11 @@ def settings():
             flash("Delivery schedule saved.", "success")
         return redirect(url_for('settings'))
 
+    fwd = _forwarding_for(current_user)
     return render_template(
         "settings.html",
+        forwarding=fwd,
+        forward_address=address_for(fwd.token) if fwd else None,
         accounts=current_user.email_accounts,
         current_times=(current_user.time or "").split(",") if current_user.time else [],
         current_timezone=current_user.timezone or "",

@@ -12,6 +12,7 @@
     <div class="settings-grid">
         <nav class="side-nav rise" aria-label="Settings sections">
             <div class="who"><b>{{ current_user.primary_email }}</b><span>Signed in</span></div>
+            {% if forwarding %}<a href="#forwarding">Forwarding</a>{% endif %}
             <a href="#inboxes">Inboxes</a>
             <a href="#schedule">Delivery</a>
             <a href="#plan">Plan</a>
@@ -19,14 +20,86 @@
         </nav>
 
         <div class="stack">
+            {% if forwarding %}
+            <!-- Forwarding -->
+            <section class="card rise" id="forwarding" style="animation-delay:.05s">
+                <div class="card-head">
+                    <div>
+                        <h2>Forwarding</h2>
+                        <p class="hint">Forward your email to this private address and MailMind builds your list from it. No inbox access needed.</p>
+                    </div>
+                    {% if forwarding.last_received_at %}<span class="tag ok">Receiving</span>{% else %}<span class="tag warn">Not set up yet</span>{% endif %}
+                </div>
+
+                <div class="fwd-address">
+                    <code id="fwd-address">{{ forward_address }}</code>
+                    <button type="button" class="btn btn-primary btn-sm" id="copy-fwd" data-copy="{{ forward_address }}">Copy</button>
+                </div>
+                <p class="hint fwd-status">
+                    {% if forwarding.last_received_at %}Last email received {{ forwarding.last_received_at | ago }}.
+                    {% else %}Waiting for your first forwarded email.{% endif %}
+                </p>
+
+                {% if forwarding.confirmation_code %}
+                <div class="fwd-code" role="status">
+                    <div>
+                        <p class="label">Gmail confirmation code{% if forwarding.confirmation_for %} for {{ forwarding.confirmation_for }}{% endif %}</p>
+                        <p class="code-big">{{ forwarding.confirmation_code }}</p>
+                        <p class="hint">Paste this into Gmail's forwarding settings and click <b>Verify</b>.</p>
+                    </div>
+                    <form method="post" action="{{ url_for('dismiss_forwarding_code') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-quiet btn-sm">Done</button>
+                    </form>
+                </div>
+                {% endif %}
+
+                <div class="fwd-guides">
+                    <details class="guide" {% if not forwarding.last_received_at %}open{% endif %}>
+                        <summary>{{ provider_icon('google', 18) }} Set up in Gmail</summary>
+                        <ol>
+                            <li>Open <a href="https://mail.google.com/mail/u/0/#settings/fwdandpop" target="_blank" rel="noopener">Gmail → Settings → Forwarding and POP/IMAP</a>.</li>
+                            <li>Click <b>Add a forwarding address</b> and paste the address above.</li>
+                            <li>Gmail sends a confirmation code to MailMind. It will appear on this page within a few seconds; refresh if you don't see it.</li>
+                            <li>Enter the code in Gmail, choose <b>Forward a copy of incoming mail</b> and <b>keep Gmail's copy in the Inbox</b>, then <b>Save changes</b>.</li>
+                        </ol>
+                        <p class="hint">Only want some mail? Instead of forwarding everything, create a <a href="https://support.google.com/mail/answer/6579" target="_blank" rel="noopener">filter</a> and pick "Forward it to" this address.</p>
+                    </details>
+                    <details class="guide">
+                        <summary>{{ provider_icon('microsoft', 18) }} Set up in Outlook</summary>
+                        <ol>
+                            <li>Open <a href="https://outlook.live.com/mail/0/options/mail/forwarding" target="_blank" rel="noopener">Outlook → Settings → Mail → Forwarding</a>.</li>
+                            <li>Turn on <b>Enable forwarding</b> and paste the address above.</li>
+                            <li>Tick <b>Keep a copy of forwarded messages</b> and click <b>Save</b>.</li>
+                        </ol>
+                        <p class="hint">Work account? Your IT admin may need to allow forwarding to outside addresses.</p>
+                    </details>
+                </div>
+
+                <div class="connect-row">
+                    <form method="post" action="{{ url_for('rotate_forwarding') }}"
+                          data-confirm="Create a new address? The current one stops working, so you'll need to update your forwarding settings.">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-quiet btn-sm">Get a new address</button>
+                    </form>
+                </div>
+            </section>
+            {% endif %}
+
             <!-- Inboxes -->
             <section class="card rise" id="inboxes" style="animation-delay:.05s">
                 <div class="card-head">
                     <div>
+                        {% if forwarding %}
+                        <h2>Connected inboxes</h2>
+                        <p class="hint">Optional. Connect an inbox directly and MailMind reads it itself{% if accounts %}, sending your list from {{ current_user.primary_email }}{% endif %}. Gmail direct access is limited during the beta.</p>
+                        {% else %}
                         <h2>Inboxes</h2>
                         <p class="hint">MailMind reads the last day of mail from each inbox and sends your list from {{ current_user.primary_email }}.</p>
+                        {% endif %}
                     </div>
                 </div>
+                {% if not accounts %}<p class="hint">No inboxes connected directly.</p>{% endif %}
                 <ul class="acct-list">
                     {% for account in accounts %}
                     <li class="acct">
@@ -41,7 +114,7 @@
                         </div>
                         <div class="acct-actions">
                             {% if account.needs_reauth %}
-                            <a class="btn btn-primary btn-sm" href="{{ url_for(account.provider ~ '_login', consent=1) }}">Reconnect</a>
+                            <a class="btn btn-primary btn-sm" href="{{ url_for(account.provider ~ '_login', consent=1, connect=1 if account.provider == 'google' else None) }}">Reconnect</a>
                             {% endif %}
                             {% if account.email != current_user.primary_email %}
                             <form method="post" action="{{ url_for('remove_email_account', account_id=account.id) }}"
@@ -55,8 +128,8 @@
                     {% endfor %}
                 </ul>
                 <div class="connect-row">
-                    <a class="btn btn-secondary btn-sm" href="{{ url_for('google_login') }}">{{ provider_icon('google', 16) }} Add Gmail</a>
-                    <a class="btn btn-secondary btn-sm" href="{{ url_for('microsoft_login') }}">{{ provider_icon('microsoft', 16) }} Add Outlook</a>
+                    <a class="btn btn-secondary btn-sm" href="{{ url_for('google_login', connect=1) }}">{{ provider_icon('google', 16) }} Connect Gmail</a>
+                    <a class="btn btn-secondary btn-sm" href="{{ url_for('microsoft_login') }}">{{ provider_icon('microsoft', 16) }} Connect Outlook</a>
                 </div>
             </section>
 
@@ -196,6 +269,18 @@
         var grid = document.querySelector('.time-grid');
         var row = first.closest('.hour-row');
         grid.scrollTop = Math.max(0, row.offsetTop - grid.offsetTop - 8);
+    }
+
+    var copy = document.getElementById('copy-fwd');
+    if (copy) {
+        copy.addEventListener('click', function () {
+            var done = function () { copy.textContent = 'Copied'; setTimeout(function () { copy.textContent = 'Copy'; }, 1800); };
+            if (navigator.clipboard) { navigator.clipboard.writeText(copy.dataset.copy).then(done); }
+            else {
+                var r = document.createRange(); r.selectNodeContents(document.getElementById('fwd-address'));
+                var sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); document.execCommand('copy'); done();
+            }
+        });
     }
 
     document.querySelectorAll('form[data-confirm]').forEach(function (f) {

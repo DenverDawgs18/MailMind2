@@ -46,6 +46,10 @@ def test_fresh_database(tmp_path):
     assert {"provider_subject", "needs_reauth", "created_at"} <= _columns(conn, "email_account")
     assert {"master_id", "created_at", "delivered"} <= _columns(conn, "digest")
     assert {"digest_id", "action", "done"} <= _columns(conn, "digest_item")
+    assert {"provider", "subject", "master_id"} <= _columns(conn, "identity")
+    assert {"token", "confirmation_code", "last_received_at"} <= _columns(conn, "forwarding_address")
+    assert {"body", "source_email", "message_id"} <= _columns(conn, "inbound_email")
+    assert {"action", "source_email"} <= _columns(conn, "pending_item")
 
 
 def test_legacy_database_is_adopted_without_data_loss(tmp_path):

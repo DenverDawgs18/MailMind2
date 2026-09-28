@@ -36,7 +36,7 @@
         <p class="updated">Last updated September 28, 2026</p>
 
         <h3>What MailMind does</h3>
-        <p>MailMind reads the last 24 hours of email in the inboxes you connect, finds the things that need you, and emails you a short list at the times you choose.</p>
+        <p>MailMind reads the email you forward to it, or the last 24 hours of mail in inboxes you connect directly, finds the things that need you, and emails you a short list at the times you choose.</p>
 
         <h3>What we store</h3>
         <ul>
@@ -55,6 +55,17 @@
             <li>No person at MailMind reads your email, except when you explicitly share a message with us for support.</li>
         </ul>
 
+        <h3>Forwarded email</h3>
+        <ul>
+            <li>If you forward mail to your MailMind address, we receive those messages through Postmark, our email provider.</li>
+            <li>Each forwarded message is held only until it's read, normally within 15 minutes, and then deleted. At most we keep it for 24 hours if processing fails.</li>
+            <li>What we keep is the same as for connected inboxes: the action item, sender name and subject, as part of your list.</li>
+            <li>You control what's forwarded. You can forward everything, use a filter, or turn forwarding off in your email settings at any time.</li>
+        </ul>
+
+        <h3>Signing in</h3>
+        <p>When you sign in with Google without connecting your inbox, MailMind receives only your name and email address.</p>
+
         <h3>Google user data</h3>
         <p>MailMind's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements. Gmail data is used only to build and deliver your list. It is never sold, never used for advertising, and never used to train general AI models.</p>
 
@@ -63,6 +74,7 @@
             <li><b>Google and Microsoft</b>, to access the inboxes you connect.</li>
             <li><b>OpenAI</b>, to extract action items.</li>
             <li><b>Stripe</b>, for billing.</li>
+            <li><b>Postmark</b>, which receives forwarded email and delivers your list.</li>
             <li><b>Fly.io</b>, which hosts the app and database.</li>
         </ul>
         <p>We don't use advertising, sell data, or share it with anyone else.</p>

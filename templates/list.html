@@ -72,7 +72,10 @@
     {% elif not digest %}
     <section class="card empty rise" style="animation-delay:.08s">
         <img src="{{ url_for('static', filename='imgs/logo.svg') }}" alt="" width="64" height="64">
-        {% if next_delivery %}
+        {% if needs_setup and forwarding_on %}
+        <p>First, point your email at MailMind. It takes about a minute: forward your mail to your private MailMind address.</p>
+        <a class="btn btn-primary" href="{{ url_for('settings') }}#forwarding">Set up forwarding</a>
+        {% elif next_delivery %}
         <p>Your first list will be ready {{ next_delivery.strftime('%A') }} at {{ next_delivery | clock }}. It'll show up here and in your inbox.</p>
         {% else %}
         <p>Pick a delivery time and your first list will show up here and in your inbox.</p>

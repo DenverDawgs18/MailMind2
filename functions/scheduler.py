@@ -42,7 +42,10 @@ from app import app, db
 from functions.get_emails import DIGEST_HEADER, DIGEST_SUBJECT_PREFIX, get_emails
 from functions.get_one_action import get_an_action
 from functions.refresh_token import TokenRefreshError, refresh
-from models import DIGEST_RETENTION_DAYS, Digest, DigestItem, Master
+from functions.forwarding import outbound_enabled, send_via_postmark
+from models import (
+    DIGEST_RETENTION_DAYS, INBOUND_MAX_AGE_HOURS, Digest, DigestItem, InboundEmail, Master, PendingItem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -485,18 +488,31 @@ def send_email_summary_for_user(user: Master, site_url: str) -> Dict[str, Any]:
             if items:
                 groups.append({"account_email": account.email, "items": items})
 
+        # Items pulled from forwarded mail since the last list.
+        pending = PendingItem.query.filter_by(master_id=user.id).order_by(PendingItem.id).all()
+        for item in pending:
+            group = next((g for g in groups if g["account_email"] == item.source_email), None)
+            if group is None:
+                group = {"account_email": item.source_email, "items": []}
+                groups.append(group)
+            group["items"].append({"action": item.action, "from": item.sender or "",
+                                   "subject": item.subject or "", "calendar_url": item.calendar_url})
+        for item in pending:
+            db.session.delete(item)
+
         digest = _store_digest(user, groups)
 
         if not groups and not notices:
             return {"success": True, "message": "no action items", "user": user.id}
 
-        # Send from the user's primary account, falling back to any inbox we
-        # could authenticate.
+        # Send from the user's primary inbox when it's connected directly (so
+        # the list arrives from themselves); otherwise, e.g. forwarding-only
+        # users, send through Postmark from MailMind's address.
         primary = next((a for a in user.email_accounts if a.email == user.primary_email), None)
         if primary is None or primary.id not in tokens:
             primary = next((a for a in user.email_accounts if a.id in tokens), None)
-        if primary is None:
-            return {"success": False, "message": "no usable inbox to send from", "user": user.id}
+        if primary is None and not outbound_enabled():
+            return {"success": False, "message": "no way to deliver the list", "user": user.id}
 
         local_now = datetime.now(pytz.timezone(user.timezone or "UTC"))
         current_date = local_now.strftime('%A, %B %-d')
@@ -504,7 +520,10 @@ def send_email_summary_for_user(user: Master, site_url: str) -> Dict[str, Any]:
         subject = (f"{DIGEST_SUBJECT_PREFIX}: {count} thing{'s' if count != 1 else ''} for "
                    f"{local_now.strftime('%A')}")
         html = _render_digest(groups, notices, user.primary_email, site_url, current_date)
-        sent = _send_html_email(primary.email, tokens[primary.id], primary.provider, subject, html)
+        if primary is not None:
+            sent = _send_html_email(primary.email, tokens[primary.id], primary.provider, subject, html)
+        else:
+            sent = send_via_postmark(user.primary_email, subject, html, DIGEST_HEADER)
         if sent:
             digest.delivered = True
             db.session.commit()
@@ -517,6 +536,44 @@ def send_email_summary_for_user(user: Master, site_url: str) -> Dict[str, Any]:
         _release_send_lock(user.id)
 
 
+def process_inbound_queue(batch: int = 300) -> int:
+    """
+    Turn queued forwarded emails into pending action items and delete the
+    email bodies. Runs every tick so bodies are held for minutes, not hours.
+    Rows that keep failing (e.g. the model is down) are dropped after
+    INBOUND_MAX_AGE_HOURS.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=INBOUND_MAX_AGE_HOURS)
+    processed = 0
+    for row in InboundEmail.query.order_by(InboundEmail.id).limit(batch).all():
+        received = row.received_at if row.received_at.tzinfo else row.received_at.replace(tzinfo=timezone.utc)
+        try:
+            actions = _split_actions(get_an_action(row.body))
+        except Exception as exc:
+            if received < cutoff:
+                logger.warning("Dropping inbound email %s after repeated failures", row.id)
+                db.session.delete(row)
+                db.session.commit()
+            else:
+                logger.warning("Action extraction failed for inbound email %s: %s", row.id, exc)
+            continue
+        for action in actions:
+            db.session.add(PendingItem(
+                master_id=row.master_id, source_email=row.source_email, action=action,
+                sender=row.sender, subject=row.subject,
+                calendar_url=_calendar_link("google", action) if _is_calendar_worthy(action) else None,
+            ))
+        db.session.delete(row)
+        db.session.commit()
+        processed += 1
+
+    # Items for people who never get a list (no schedule, lapsed plan) don't pile up forever.
+    stale = datetime.now(timezone.utc) - timedelta(days=DIGEST_RETENTION_DAYS)
+    PendingItem.query.filter(PendingItem.created_at < stale).delete()
+    db.session.commit()
+    return processed
+
+
 def check_and_send_emails():
     """Called by the cron trigger every 15 minutes."""
     import os
@@ -527,6 +584,14 @@ def check_and_send_emails():
         return
 
     with flask_app.app_context():
+        try:
+            processed = process_inbound_queue()
+            if processed:
+                logger.info("Processed %d forwarded emails", processed)
+        except Exception as exc:
+            logger.exception("Inbound queue processing failed: %s", exc)
+            db.session.rollback()
+
         try:
             users = _users_to_process()
             if not users:

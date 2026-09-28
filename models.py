@@ -101,3 +101,83 @@ class DigestItem(db.Model):
 
 
 DIGEST_RETENTION_DAYS = 14
+
+
+class Identity(db.Model):
+    """
+    A sign-in identity (provider + immutable subject id) that isn't tied to
+    mailbox access. Lets people sign in with Google's basic scopes and feed
+    MailMind by forwarding, without granting Gmail access.
+    """
+
+    __table_args__ = (db.UniqueConstraint('provider', 'subject', name='uq_identity_provider_subject'),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    provider = db.Column(db.String(32), nullable=False)
+    subject = db.Column(db.String(255), nullable=False)
+    email = db.Column(db.String(255), nullable=False)
+    master_id = db.Column(
+        db.Integer, db.ForeignKey('master.id', ondelete='CASCADE'), nullable=False, index=True
+    )
+    created_at = db.Column(db.DateTime(timezone=True), default=_utcnow)
+    master = db.relationship('Master', backref=db.backref('identities', cascade='all, delete-orphan'))
+
+
+class ForwardingAddress(db.Model):
+    """The private address a user forwards mail to. One per account."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    master_id = db.Column(
+        db.Integer, db.ForeignKey('master.id', ondelete='CASCADE'), nullable=False, unique=True
+    )
+    token = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=_utcnow)
+    last_received_at = db.Column(db.DateTime(timezone=True))
+    # Gmail asks the new forwarding target to confirm with a code; we catch it
+    # and show it to the user in settings.
+    confirmation_code = db.Column(db.String(32))
+    confirmation_for = db.Column(db.String(255))
+    confirmation_at = db.Column(db.DateTime(timezone=True))
+    master = db.relationship(
+        'Master', backref=db.backref('forwarding', uselist=False, cascade='all, delete-orphan')
+    )
+
+
+class InboundEmail(db.Model):
+    """
+    A forwarded email waiting to be read. Rows live only until the next
+    scheduler tick (every 15 minutes) extracts action items, then are deleted.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    master_id = db.Column(
+        db.Integer, db.ForeignKey('master.id', ondelete='CASCADE'), nullable=False, index=True
+    )
+    source_email = db.Column(db.String(255), nullable=False)
+    sender = db.Column(db.String(512))
+    subject = db.Column(db.Text())
+    body = db.Column(db.Text(), nullable=False)
+    message_id = db.Column(db.String(998), index=True)
+    received_at = db.Column(db.DateTime(timezone=True), default=_utcnow, nullable=False)
+    master = db.relationship('Master', backref=db.backref('inbound_emails', cascade='all, delete-orphan'))
+
+
+class PendingItem(db.Model):
+    """An action item pulled from forwarded mail, waiting for the next list."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    master_id = db.Column(
+        db.Integer, db.ForeignKey('master.id', ondelete='CASCADE'), nullable=False, index=True
+    )
+    source_email = db.Column(db.String(255), nullable=False)
+    action = db.Column(db.Text(), nullable=False)
+    sender = db.Column(db.String(512))
+    subject = db.Column(db.Text())
+    calendar_url = db.Column(db.Text())
+    created_at = db.Column(db.DateTime(timezone=True), default=_utcnow, nullable=False)
+    master = db.relationship('Master', backref=db.backref('pending_items', cascade='all, delete-orphan'))
+
+
+# Forwarded mail that can't be processed (e.g. the model is down) is dropped
+# after this long rather than kept indefinitely.
+INBOUND_MAX_AGE_HOURS = 24
