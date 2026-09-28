@@ -6,84 +6,180 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">
     <meta name="google-site-verification" content="bvGZgZ2rn-5Nz7flQHwTl779qpJhdXLk3ztmwAY8ZZ8" />
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
-    <title>MailMind</title>
+    <meta name="description" content="Every morning, MailMind reads your inbox and emails you one short list of what actually needs you.">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='imgs/logo.svg') }}">
+    <link rel="alternate icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
+    <title>MailMind — Your inbox, as a to-do list.</title>
 </head>
 <body>
     <div class="navbar">
         <a href="{{ url_for('index') }}" class="home">MailMind</a>
         <div class="navwrap">
+            <a href="#film">Film</a>
+            <a href="#how">How it works</a>
             <a href="{{ url_for('contact') }}">Contact</a>
-            <a href="{{ url_for('terms_and_privacy') }}">Terms &amp; Privacy</a>
         </div>
         <div class="empty"></div>
     </div>
 
-    <div class="wrapper">
-        <div class="hero">
-            <div class="herocontainer">
-                <h1 class="smarter">Your inbox, as a to-do list.</h1>
-                <h1 class="turn">Every morning, MailMind emails you the <span class="todo">action items</span>
-                    hiding in the last 24 hours of your inbox.</h1>
+    <main class="main-content">
+        <!-- Hero -->
+        <section class="hero">
+            <img class="hero-logo rise" src="{{ url_for('static', filename='imgs/logo.svg') }}" alt="" width="88" height="88">
+            <h1 class="hero-title rise">Your inbox,<br>as a <span class="accent">to-do list.</span></h1>
+            <p class="hero-sub rise">Every morning, MailMind reads the last 24 hours of your email
+                and sends you one short list of what actually needs you.</p>
+            <div class="cta rise">
+                <a class="pill-btn dark" href="{{ url_for('google_login') }}">Sign in with Google</a>
+                <a class="pill-btn light" href="{{ url_for('microsoft_login') }}">Sign in with Microsoft</a>
+            </div>
+            <p class="fine rise">Signing in creates your account. No password. No app.</p>
+        </section>
 
-                <div style="display:flex;flex-direction:column;gap:12px;align-items:flex-start;margin-top:20px;">
-                    <a href="{{ url_for('google_login') }}"
-                       style="display:inline-block;padding:14px 22px;background:#fff;color:#171524;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.3);">
-                        Sign in with Google
-                    </a>
-                    <a href="{{ url_for('microsoft_login') }}"
-                       style="display:inline-block;padding:14px 22px;background:#0067b8;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.3);">
-                        Sign in with Microsoft
-                    </a>
-                    <p style="color:#aaa;font-size:13px;margin-top:6px;">
-                        Sign-in creates your account. No password required.
-                    </p>
-                </div>
+        <!-- Film -->
+        <section class="film" id="film">
+            <div class="film-frame reveal">
+                <video id="film-video" src="{{ url_for('static', filename='video/mailmind.mp4') }}"
+                       poster="{{ url_for('static', filename='video/poster.jpg') }}"
+                       preload="none" playsinline></video>
+                <button class="play" id="film-play" aria-label="Play the MailMind film">
+                    <span class="play-dot"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg></span>
+                    <span class="play-label">Watch the film <span class="g">(1:00)</span></span>
+                </button>
             </div>
-            <div class="email-ui">
-                <div class="action-item">
-                    Follow up with Sarah about the proposal
-                </div>
-                <div class="email-preview">
-                    <div class="sender">From: sarah@client.com</div>
-                    <div class="subject">Subject: Proposal Feedback</div>
-                    <p class="email">
-                        Hey! Just wanted to follow up on the proposal I sent last week.
-                        Let me know if you have any questions or if you'd like to jump on a call. -Sarah
-                    </p>
-                </div>
-            </div>
-        </div>
+        </section>
 
-        <div class="cards">
-            <div class="card">
-                <img src="{{ url_for('static', filename='imgs/to-do-svgrepo-com.svg') }}" class="cardimg" alt="">
-                <h2 class="cardheader">Delivered, not viewed</h2>
-                <p class="carddescription">
-                    Your daily to-do list arrives in your inbox at the time you pick.
-                    Nothing to log into.
-                </p>
+        <!-- Before / after -->
+        <section class="band">
+            <p class="eyebrow reveal">You have</p>
+            <p class="big-number reveal">1,284</p>
+            <p class="band-sub reveal">unread emails. Four of them matter.<br><span class="g">MailMind finds them.</span></p>
+        </section>
+
+        <!-- Product shot -->
+        <section class="showcase">
+            <div class="mail-card reveal">
+                <div class="mc-head">
+                    <span class="av" style="background:#5e5ce6">S</span>
+                    <div><div class="mc-from">Sarah Chen</div><div class="mc-subj">Proposal feedback</div></div>
+                </div>
+                <p class="mc-body">Loved the draft! Could you <mark>send the final version by Thursday</mark> so we can get it signed?</p>
             </div>
-            <div class="card">
-                <img src="{{ url_for('static', filename='imgs/list-1540-svgrepo-com.svg') }}" class="cardimg" alt="">
-                <h2 class="cardheader">Custom AI</h2>
-                <p class="carddescription">
-                    A fine-tuned model reads your emails and pulls out the concrete
-                    asks — no marketing noise, no notifications, no fluff.
-                </p>
+            <div class="arrow reveal" aria-hidden="true">
+                <svg viewBox="0 0 48 24" width="48" height="24"><path d="M2 12h40m-8-8 8 8-8 8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
-            <div class="card slight">
-                <img src="{{ url_for('static', filename='imgs/files-svgrepo-com.svg') }}" class="cardimg" alt="">
-                <h2 class="cardheader">Multiple inboxes</h2>
-                <p class="carddescription">
-                    Link as many Google or Outlook accounts as you have. One digest,
-                    one list, one inbox to check.
-                </p>
+            <div class="list-card reveal">
+                <div class="lc-title">Today</div>
+                <div class="lc-date">Your 7:00 AM digest</div>
+                <ul class="lc-rows">
+                    <li class="done"><span class="ck"></span><span class="rt">Send Sarah the final proposal</span><span class="due">Thu</span></li>
+                    <li><span class="ck"></span><span class="rt">Sign the lease renewal</span><span class="due">Fri</span></li>
+                    <li><span class="ck"></span><span class="rt">Pull Q3 numbers for Mark</span><span class="due">Mon</span></li>
+                    <li><span class="ck"></span><span class="rt">Sign up for team snacks</span><span class="due hot">Today</span></li>
+                </ul>
             </div>
-        </div>
-    </div>
+        </section>
+
+        <!-- How it works -->
+        <section class="how" id="how">
+            <h2 class="section-title reveal">It just works.</h2>
+            <div class="steps">
+                <div class="step reveal">
+                    <span class="num">1</span>
+                    <h3>Sign in.</h3>
+                    <p>Connect Google or Microsoft in one click. That's the whole setup.</p>
+                </div>
+                <div class="step reveal">
+                    <span class="num">2</span>
+                    <h3>It reads.</h3>
+                    <p>A fine-tuned model reads the last day of email and pulls out the real asks.</p>
+                </div>
+                <div class="step reveal">
+                    <span class="num">3</span>
+                    <h3>You do.</h3>
+                    <p>One email, at the time you choose, with just what needs you. Nothing else.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Feature tiles -->
+        <section class="tiles">
+            <div class="tile tall reveal">
+                <p class="tile-kicker">Delivered, not viewed</p>
+                <h3>No app to open.</h3>
+                <p class="tile-copy">Your list arrives in the inbox you already check. Nothing to install, nothing to log into.</p>
+                <div class="notif">
+                    <img src="{{ url_for('static', filename='imgs/logo.svg') }}" alt="" width="36" height="36">
+                    <div><b>MailMind</b> <span class="g">now</span><br>Your day, in one email.<br><span class="g">4 things need you today.</span></div>
+                </div>
+            </div>
+            <div class="tile reveal">
+                <p class="tile-kicker">Every account</p>
+                <h3>All your inboxes. <span class="accent">One list.</span></h3>
+                <div class="chips">
+                    <span><i style="background:#ff375f"></i>Gmail</span>
+                    <span><i style="background:#0a84ff"></i>Outlook</span>
+                    <span><i style="background:#34c759"></i>Work</span>
+                    <span><i style="background:#bf5af2"></i>School</span>
+                </div>
+            </div>
+            <div class="tile reveal">
+                <p class="tile-kicker">Quiet by design</p>
+                <h3>No noise.</h3>
+                <p class="tile-copy">Newsletters, receipts and promos stay where they are. You only hear about what needs you.</p>
+            </div>
+            <div class="tile wide reveal">
+                <p class="tile-kicker">On your schedule</p>
+                <h3>Up to three digests a day, whenever you want them.</h3>
+                <div class="times"><span>7:00 AM</span><span>12:30 PM</span><span>5:00 PM</span></div>
+            </div>
+        </section>
+
+        <!-- Closing -->
+        <section class="closing">
+            <h2 class="closing-title reveal">Your inbox, <span class="accent">handled.</span></h2>
+            <div class="cta reveal">
+                <a class="pill-btn dark" href="{{ url_for('google_login') }}">Sign in with Google</a>
+                <a class="pill-btn light" href="{{ url_for('microsoft_login') }}">Sign in with Microsoft</a>
+            </div>
+        </section>
+    </main>
+
     <footer>
         <a href="{{ url_for('terms_and_privacy') }}">Terms of Use and Privacy Policy</a>
+        &nbsp;·&nbsp; <a href="{{ url_for('contact') }}">Contact</a>
     </footer>
+
+    <script>
+        // Fade sections in as they scroll into view.
+        (function () {
+            var els = document.querySelectorAll('.reveal');
+            if (!('IntersectionObserver' in window)) {
+                els.forEach(function (el) { el.classList.add('in'); });
+                return;
+            }
+            var io = new IntersectionObserver(function (entries) {
+                entries.forEach(function (e) {
+                    if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+                });
+            }, { threshold: 0.15 });
+            els.forEach(function (el) { io.observe(el); });
+        })();
+
+        // Film: poster with a play button, native controls once playing.
+        (function () {
+            var video = document.getElementById('film-video');
+            var play = document.getElementById('film-play');
+            play.addEventListener('click', function () {
+                video.controls = true;
+                video.play();
+                play.classList.add('hidden');
+            });
+            video.addEventListener('ended', function () {
+                video.controls = false;
+                play.classList.remove('hidden');
+            });
+        })();
+    </script>
 </body>
 </html>

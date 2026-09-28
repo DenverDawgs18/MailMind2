@@ -1,148 +1,136 @@
-/* universal */
+/* MailMind design system — clean, white, quiet. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..800&display=swap');
+
+:root {
+    --ink: #1d1d1f;
+    --ink-2: #424245;
+    --gray: #6e6e73;
+    --gray-2: #86868b;
+    --line: #e8e8ed;
+    --soft: #f5f5f7;
+    --paper: #ffffff;
+    --accent: #ff6a2b;
+    --accent-ink: #d9480f;
+    --accent-soft: #fff1ea;
+    --danger: #d70015;
+    --radius: 22px;
+    --shadow: 0 20px 60px rgba(0, 0, 0, .07), 0 2px 8px rgba(0, 0, 0, .04);
+}
+
+* { box-sizing: border-box; }
+
 body {
-    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
     line-height: 1.5;
     font-weight: 400;
     font-synthesis: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background: linear-gradient(135deg, #171524 0%, #1a1830 100%);
-    color: white;
+    background: var(--paper);
+    color: var(--ink);
     margin: 0;
-    padding: 0; 
-    position: relative;
-
-    /* FLEXBOX LAYOUT FOR STICKY FOOTER */
+    padding: 0;
     display: flex;
     flex-direction: column;
     min-height: 100vh;
 }
 
-.main-content {
-    flex: 1; 
-}
-.navbar{
+h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.1; }
+a { color: inherit; }
+.main-content { flex: 1; }
+
+/* ---------- nav ---------- */
+.navbar {
     display: flex;
     justify-content: space-between;
-    gap: 50px;
-    padding: 20px;
-    background: linear-gradient(145deg, #514b7a, #5a5488);
-    flex-wrap: wrap;
+    align-items: center;
+    gap: 24px;
+    padding: 0 max(24px, calc((100% - 1080px) / 2));
+    height: 60px;
     position: sticky;
     top: 0;
-    z-index: 5;
+    z-index: 50;
+    background: rgba(255, 255, 255, .78);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid rgba(0, 0, 0, .06);
 }
-.navbar > .navwrap > a, .navbar > a{
+.navbar > a.home {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
     text-decoration: none;
-    color: white;
-    font-size: 18px;
+    color: var(--ink);
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
 }
-.navwrap{
-    display: flex;
-    gap: 20px;
+.navbar > a.home::before {
+    content: '';
+    width: 26px;
+    height: 26px;
+    background: url('imgs/logo.svg') center / contain no-repeat;
 }
-.navbar > .navwrap > a:hover, .navbar > a:hover, footer a:hover {
-    color: #cc8400;
-    transform: translateY(-1px);
+.navwrap { display: flex; gap: 28px; }
+.navwrap a {
+    text-decoration: none;
+    color: var(--gray);
+    font-size: 14px;
+    transition: color .2s ease;
 }
-@media (max-width: 500px) {
-    .navbar{
-        gap: 20px; 
-        padding: 10px;
-    }
-    .navbar > a {
-        font-size: 14px;
-    }
-}
-/* Footer Styling */
+.navwrap a:hover { color: var(--ink); }
+.navbar .empty { display: none; }
+
+/* ---------- footer ---------- */
 footer {
-    background: linear-gradient(145deg, #514b7a, #5a5488);
-    border: 3px solid black;
-    border-radius: 25px 25px 0 0;
-    box-shadow: 5px 5px darkorange, 8px 8px 15px rgba(0, 0, 0, 0.3);
-    padding: 30px 50px;
     margin-top: auto;
+    border-top: 1px solid var(--line);
+    background: var(--soft);
+    padding: 28px 24px;
     text-align: center;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.3s ease;
-   
+    font-size: 13px;
+    color: var(--gray-2);
 }
+footer a { color: var(--gray); text-decoration: none; }
+footer a:hover { color: var(--ink); text-decoration: underline; }
 
-footer::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(45deg, transparent, rgba(204, 132, 0, 0.1), transparent);
-    transform: rotate(45deg);
-    transition: all 0.3s ease;
-    opacity: 0;
-}
-
-footer:hover::before {
-    opacity: 1;
-    transform: rotate(45deg) translate(50px, 50px);
-}
-
-footer:hover {
-    transform: translateY(-2px);
-    box-shadow: 7px 7px darkorange, 10px 10px 20px rgba(0, 0, 0, 0.4);
-}
-
-footer a {
-    color: #e6d7a3;
-    text-decoration: none;
+/* ---------- shared components ---------- */
+.btn, .pill-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px 18px;
+    border-radius: 999px;
+    font: inherit;
     font-weight: 600;
-    font-size: 16px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    position: relative;
-    transition: all 0.3s ease;
-    z-index: 1;
+    font-size: 15px;
+    text-decoration: none;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: transform .2s ease, background .2s ease, box-shadow .2s ease, border-color .2s ease;
 }
+.btn:active, .pill-btn:active { transform: scale(.98); }
 
-footer a::after {
-    content: '';
-    position: absolute;
-    bottom: -3px;
-    left: 50%;
-    width: 0;
-    height: 2px;
-    background: linear-gradient(45deg, #cc8400, #ff8c00);
-    transition: all 0.3s ease;
-    transform: translateX(-50%);
+input[type="text"], input[type="email"], textarea, select {
+    font: inherit;
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid #d2d2d7;
+    border-radius: 12px;
+    padding: 11px 14px;
+    outline: none;
+    transition: border-color .2s ease, box-shadow .2s ease;
 }
-
-
-
-footer a:hover::after {
-    width: 100%;
+input[type="text"]:focus, input[type="email"]:focus, textarea:focus, select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(255, 106, 43, .15);
 }
+input[type="checkbox"] { accent-color: var(--accent); }
 
-/* Responsive footer */
-@media (max-width: 768px) {
-    footer {
-        padding: 20px 30px;
-        margin-top: 40px;
-    }
-    
-    footer a {
-        font-size: 14px;
-    }
-}
-
-@media (max-width: 480px) {
-    footer {
-        padding: 15px 20px;
-        border-radius: 15px 15px 0 0;
-    }
-    
-    footer a {
-        font-size: 13px;
-        letter-spacing: 0.5px;
-    }
+@media (max-width: 500px) {
+    .navwrap { gap: 16px; }
+    .navwrap a { font-size: 13px; }
 }

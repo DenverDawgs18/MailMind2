@@ -4,15 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='imgs/logo.svg') }}">
+    <link rel="alternate icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
     <title>Subscribe — MailMind</title>
     <style>
         .subscribe-wrapper { max-width: 520px; margin: 60px auto; padding: 0 20px; }
-        .card { background: rgba(58, 53, 96, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 32px; text-align: center; }
-        .card h1 { color: #e6d7a3; margin-top: 0; }
-        .price { font-size: 1.4rem; color: #f0f0f0; margin: 16px 0; }
-        .tos { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 24px 0; color: #f0f0f0; font-size: 14px; }
-        button.checkout { padding: 12px 24px; background: #cc8400; color: #171524; border: none; border-radius: 8px; font-weight: 600; font-size: 16px; cursor: pointer; }
+        .card { background: #fff; border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); padding: 32px; text-align: center; }
+        .card h1 { margin-top: 0; font-size: 40px; letter-spacing: -0.04em; }
+        .price { font-size: 2.4rem; font-weight: 700; letter-spacing: -0.03em; margin: 16px 0 4px; }
+        .tos { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 24px 0; color: var(--gray); font-size: 14px; }
+        button.checkout { padding: 14px 28px; background: var(--ink); color: #fff; border: none; border-radius: 999px; font-family: inherit; font-weight: 600; font-size: 16px; cursor: pointer; }
         button.checkout:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
@@ -43,7 +44,7 @@
                 <label class="tos">
                     <input type="checkbox" id="accept-tos" />
                     I accept the
-                    <a href="{{ url_for('terms_and_privacy') }}" target="_blank" style="color:#cc8400;">Terms of Service and Privacy Policy</a>.
+                    <a href="{{ url_for('terms_and_privacy') }}" target="_blank" style="color:var(--accent-ink);">Terms of Service and Privacy Policy</a>.
                 </label>
 
                 <button class="checkout" type="submit" disabled>Continue to checkout</button>
