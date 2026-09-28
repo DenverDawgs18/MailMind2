@@ -238,7 +238,7 @@ def test_legacy_account_without_subject_is_adopted(app):
 
     with anon(app):
         resp = _finish_oauth("google", "g-legacy", "legacy@example.com", "new")
-        assert resp.headers["Location"].endswith("/settings")
+        assert resp.headers["Location"].endswith("/list")
     acct = EmailAccount.query.filter_by(email="legacy@example.com").one()
     assert acct.provider_subject == "g-legacy" and acct.master_id == mid
 
@@ -481,6 +481,105 @@ def test_delete_account_removes_everything(app, client, monkeypatch):
     with app.app_context():
         assert _db.session.get(Master, uid) is None
         assert all(_db.session.get(EmailAccount, i) is None for i in ids)
+
+
+# ---------------------------------------------------------------------------
+# The list
+# ---------------------------------------------------------------------------
+
+def _add_digest(app, master_id, items, days_ago=0):
+    from datetime import datetime, timedelta, timezone
+    from app import db as _db
+    from models import Digest, DigestItem
+    d = Digest(master_id=master_id, created_at=datetime.now(timezone.utc) - timedelta(days=days_ago))
+    for action, done in items:
+        d.items.append(DigestItem(account_email="me@example.com", action=action, sender="Sam",
+                                  subject="Hi", done=done))
+    _db.session.add(d)
+    _db.session.commit()
+    return [i.id for i in d.items]
+
+
+def test_landing_is_reachable_when_signed_in(app, client):
+    _login_as(app, client)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert b"Open your list" in resp.data and b"Join the beta" not in resp.data
+
+
+def test_list_empty_state(app, client):
+    uid, _ = _login_as(app, client)
+    from app import db as _db
+    from models import Master
+    m = _db.session.get(Master, uid)
+    m.time, m.timezone = "7:00 AM", "America/Denver"
+    _db.session.commit()
+    resp = client.get("/list")
+    assert resp.status_code == 200
+    assert b"on its way" in resp.data and b"at 7:00 AM" in resp.data
+
+
+def test_list_shows_latest_and_open_earlier_items(app, client):
+    uid, _ = _login_as(app, client)
+    _add_digest(app, uid, [("Old open thing", False), ("Old done thing", True)], days_ago=2)
+    _add_digest(app, uid, [("Send the deck", False), ("Book the room", True)])
+    html = client.get("/list").data.decode()
+    assert "Send the deck" in html and "1 of 2 done" in html
+    assert "Still open from earlier" in html and "Old open thing" in html
+    assert "Old done thing" not in html
+
+
+def test_toggle_item(app, client):
+    uid, _ = _login_as(app, client)
+    (item_id,) = _add_digest(app, uid, [("Call Sam", False)])
+    resp = client.post(f"/list/items/{item_id}/toggle", data={"done": "1"},
+                       headers={"Accept": "application/json"})
+    assert resp.get_json() == {"id": item_id, "done": True}
+    resp = client.post(f"/list/items/{item_id}/toggle", data={"done": "0"})
+    assert resp.status_code == 303
+    from app import db as _db
+    from models import DigestItem
+    assert _db.session.get(DigestItem, item_id).done is False
+
+
+def test_toggle_other_users_item_is_404(app, client):
+    from app import db as _db
+    from models import Master
+    victim = Master(primary_email="v@x.com", subscribed=True, temp=False)
+    _db.session.add(victim)
+    _db.session.commit()
+    (item_id,) = _add_digest(app, victim.id, [("Private", False)])
+    _login_as(app, client, primary_email="a@x.com")
+    assert client.post(f"/list/items/{item_id}/toggle", data={"done": "1"}).status_code == 404
+    from models import DigestItem
+    assert _db.session.get(DigestItem, item_id).done is False
+
+
+def test_scheduler_stores_list_and_purges_old(app, monkeypatch):
+    from app import db as _db
+    from functions import scheduler
+    from functions.encryption import encrypt_token
+    from models import Digest, EmailAccount, Master
+
+    m = Master(primary_email="s@x.com", subscribed=True, temp=False, timezone="UTC", time="7:00 AM")
+    _db.session.add(m)
+    _db.session.commit()
+    _db.session.add(EmailAccount(email="s@x.com", oauth_token=encrypt_token("rt"), provider="google", master=m))
+    _db.session.commit()
+    _add_digest(app, m.id, [("Ancient", False)], days_ago=30)
+
+    monkeypatch.setattr(scheduler, "refresh", lambda a: "at")
+    monkeypatch.setattr(scheduler, "get_emails", lambda *a, **k: [
+        {"from": "Sam <sam@x.com>", "subject": "Deck", "body": "Please send the deck"}])
+    monkeypatch.setattr(scheduler, "get_an_action", lambda body: "- Send Sam the deck")
+    monkeypatch.setattr(scheduler, "_send_html_email", lambda *a, **k: True)
+
+    result = scheduler.send_email_summary_for_user(m, "https://mailmind.test")
+    assert result["success"]
+    digests = Digest.query.filter_by(master_id=m.id).all()
+    assert len(digests) == 1  # the 30-day-old one was purged
+    assert digests[0].delivered is True
+    assert [i.action for i in digests[0].items] == ["Send Sam the deck"]
 
 
 # ---------------------------------------------------------------------------

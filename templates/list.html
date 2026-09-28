@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% from "_macros.html" import aurora %}
+{% block title %}Your list — MailMind{% endblock %}
+
+{% macro item_row(item, show_account=False) -%}
+<li class="todo{% if item.done %} done{% endif %}" data-id="{{ item.id }}">
+    <form method="post" action="{{ url_for('toggle_item', item_id=item.id) }}" class="todo-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="done" value="{{ '0' if item.done else '1' }}">
+        <button type="submit" class="ck" role="checkbox" aria-checked="{{ 'true' if item.done else 'false' }}"
+                aria-label="{{ 'Mark not done' if item.done else 'Mark done' }}: {{ item.action }}"></button>
+    </form>
+    <div class="todo-main">
+        <p class="todo-action">{{ item.action }}</p>
+        <p class="todo-meta">
+            {% if item.sender %}<span>{{ item.sender }}</span>{% endif %}
+            {% if item.subject %}<span>{{ item.subject }}</span>{% endif %}
+            {% if show_account %}<span>{{ item.account_email }}</span>{% endif %}
+        </p>
+    </div>
+    {% if item.calendar_url %}
+    <a class="btn btn-secondary btn-sm cal" href="{{ item.calendar_url }}" target="_blank" rel="noopener">Add to calendar</a>
+    {% endif %}
+</li>
+{%- endmacro %}
+
+{% block content %}
+{{ aurora() }}
+<div class="page narrow">
+    <div class="page-head rise">
+        <p class="kicker">{{ generated_at.strftime('%A, %B %-d') if generated_at else 'Your list' }}</p>
+        {% if not digest %}
+        <h1 class="page-title">Your list is <span class="shimmer">on its way.</span></h1>
+        {% elif total == 0 %}
+        <h1 class="page-title">Nothing needs <span class="shimmer">you today.</span></h1>
+        {% elif done_count == total %}
+        <h1 class="page-title" id="headline">All <span class="shimmer">done.</span></h1>
+        {% else %}
+        <h1 class="page-title" id="headline">{{ total - done_count }} thing{{ 's' if total - done_count != 1 }} <span class="shimmer">need{{ 's' if total - done_count == 1 }} you.</span></h1>
+        {% endif %}
+        <p class="lede">
+            {% if generated_at %}From your {{ generated_at | clock }} list.{% endif %}
+            {% if next_delivery %}Next list arrives {{ 'today' if generated_at and next_delivery.date() == generated_at.date() else next_delivery.strftime('%A') }} at {{ next_delivery | clock }}.
+            {% else %}<a href="{{ url_for('settings') }}#schedule">Choose when your list arrives</a>.{% endif %}
+        </p>
+    </div>
+
+    {% for email in needs_reauth %}
+    <div class="notice rise">
+        <span>We can't read <b>{{ email }}</b> right now, so it's missing from your list.</span>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('settings') }}#inboxes">Reconnect</a>
+    </div>
+    {% endfor %}
+
+    {% if digest and total %}
+    <section class="card list-panel rise" style="animation-delay:.08s">
+        <div class="list-top">
+            <div>
+                <div class="list-title">Today</div>
+                <div class="list-sub" id="progress-label">{{ done_count }} of {{ total }} done</div>
+            </div>
+            <img src="{{ url_for('static', filename='imgs/logo.svg') }}" alt="" width="36" height="36">
+        </div>
+        <div class="progress" aria-hidden="true"><span id="progress-bar" style="transform:scaleX({{ (done_count / total) if total else 0 }})"></span></div>
+        {% for account_email, items in groups %}
+            {% if groups|length > 1 %}<p class="group-label">{{ account_email }}</p>{% endif %}
+            <ul class="todos">
+                {% for item in items %}{{ item_row(item) }}{% endfor %}
+            </ul>
+        {% endfor %}
+    </section>
+    {% elif not digest %}
+    <section class="card empty rise" style="animation-delay:.08s">
+        <img src="{{ url_for('static', filename='imgs/logo.svg') }}" alt="" width="64" height="64">
+        {% if next_delivery %}
+        <p>Your first list will be ready {{ next_delivery.strftime('%A') }} at {{ next_delivery | clock }}. It'll show up here and in your inbox.</p>
+        {% else %}
+        <p>Pick a delivery time and your first list will show up here and in your inbox.</p>
+        <a class="btn btn-primary" href="{{ url_for('settings') }}#schedule">Set delivery times</a>
+        {% endif %}
+    </section>
+    {% else %}
+    <section class="card empty rise" style="animation-delay:.08s">
+        <img src="{{ url_for('static', filename='imgs/logo.svg') }}" alt="" width="64" height="64">
+        <p>MailMind read your inboxes and didn't find anything that needs you. Enjoy it.</p>
+    </section>
+    {% endif %}
+
+    {% if earlier %}
+    <section class="card list-panel earlier rise" style="animation-delay:.14s">
+        <details>
+            <summary>
+                <span class="list-title small">Still open from earlier</span>
+                <span class="tag">{{ earlier|length }}</span>
+            </summary>
+            <ul class="todos">
+                {% for item in earlier %}{{ item_row(item, show_account=True) }}{% endfor %}
+            </ul>
+        </details>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var total = {{ total }};
+    var bar = document.getElementById('progress-bar');
+    var label = document.getElementById('progress-label');
+
+    var headline = document.getElementById('headline');
+
+    function refreshProgress() {
+        if (!bar) return;
+        var done = document.querySelectorAll('.list-panel:not(.earlier) .todo.done').length;
+        var left = total - done;
+        bar.style.transform = 'scaleX(' + (total ? done / total : 0) + ')';
+        label.textContent = done + ' of ' + total + ' done';
+        if (headline) {
+            headline.innerHTML = left === 0
+                ? 'All <span class="shimmer">done.</span>'
+                : left + ' thing' + (left === 1 ? '' : 's') + ' <span class="shimmer">need' + (left === 1 ? 's' : '') + ' you.</span>';
+        }
+    }
+
+    // Check items off without a page reload; the form still works without JS.
+    document.querySelectorAll('.todo-form').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var li = form.closest('.todo');
+            var doneInput = form.querySelector('input[name="done"]');
+            var btn = form.querySelector('.ck');
+            var body = new FormData(form);          // carries the intended state
+            var nowDone = doneInput.value === '1';
+            li.classList.toggle('done', nowDone);
+            btn.setAttribute('aria-checked', nowDone ? 'true' : 'false');
+            doneInput.value = nowDone ? '0' : '1';  // next click undoes it
+            refreshProgress();
+            fetch(form.action, {
+                method: 'POST',
+                body: body,
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin'
+            }).then(function (r) {
+                if (!r.ok) throw new Error(r.status);
+            }).catch(function () {
+                // Roll back if the save failed.
+                li.classList.toggle('done', !nowDone);
+                btn.setAttribute('aria-checked', !nowDone ? 'true' : 'false');
+                doneInput.value = nowDone ? '1' : '0';
+                refreshProgress();
+            });
+        });
+    });
+})();
+</script>
+{% endblock %}

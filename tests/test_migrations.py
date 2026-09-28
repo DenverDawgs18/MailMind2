@@ -44,6 +44,8 @@ def test_fresh_database(tmp_path):
     conn = sqlite3.connect(db)
     assert {"primary_email", "subscribed", "temp", "created_at"} <= _columns(conn, "master")
     assert {"provider_subject", "needs_reauth", "created_at"} <= _columns(conn, "email_account")
+    assert {"master_id", "created_at", "delivered"} <= _columns(conn, "digest")
+    assert {"digest_id", "action", "done"} <= _columns(conn, "digest_item")
 
 
 def test_legacy_database_is_adopted_without_data_loss(tmp_path):

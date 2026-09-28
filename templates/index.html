@@ -6,7 +6,18 @@
 {% block nav_links %}
     <a href="#film">Film</a>
     <a href="#story">How it works</a>
+    {% if current_user.is_authenticated %}
+    <a href="{{ url_for('settings') }}">Settings</a>
+    {% else %}
     <a href="{{ url_for('login') }}">Log in</a>
+    {% endif %}
+{% endblock %}
+{% block nav_cta %}
+    {% if current_user.is_authenticated %}
+    <a class="nav-cta" href="{{ url_for('todo_list') }}">Your list</a>
+    {% else %}
+    <a class="nav-cta" href="{{ url_for('request_access') }}">Join the beta</a>
+    {% endif %}
 {% endblock %}
 {% block content %}
         <!-- ============ HERO ============ -->
@@ -24,12 +35,20 @@
             <p class="hero-sub rise">Every morning, MailMind reads the last 24 hours of your email
                 and sends you one short list of what actually needs you.</p>
             <div class="hero-cta rise">
+                {% if current_user.is_authenticated %}
+                <a class="beta-btn" href="{{ url_for('todo_list') }}">
+                    <span class="beta-ring" aria-hidden="true"></span>
+                    <span class="beta-label">Open your list</span>
+                    <span class="beta-arrow" aria-hidden="true">&rarr;</span>
+                </a>
+                {% else %}
                 <a class="beta-btn" href="{{ url_for('request_access') }}">
                     <span class="beta-ring" aria-hidden="true"></span>
                     <span class="beta-label">Join the beta</span>
                     <span class="beta-arrow" aria-hidden="true">&rarr;</span>
                 </a>
                 <p class="signin-line">Already in the beta? <a href="{{ url_for('login') }}">Log in</a>.</p>
+                {% endif %}
             </div>
         </section>
 
@@ -243,12 +262,20 @@
             <p class="kicker reveal">Private beta · Limited spots</p>
             <h2 class="closing-title reveal">Your inbox,<br><span class="shimmer">handled.</span></h2>
             <div class="hero-cta reveal">
+                {% if current_user.is_authenticated %}
+                <a class="beta-btn big" href="{{ url_for('todo_list') }}">
+                    <span class="beta-ring" aria-hidden="true"></span>
+                    <span class="beta-label">Open your list</span>
+                    <span class="beta-arrow" aria-hidden="true">&rarr;</span>
+                </a>
+                {% else %}
                 <a class="beta-btn big" href="{{ url_for('request_access') }}">
                     <span class="beta-ring" aria-hidden="true"></span>
                     <span class="beta-label">Join the beta</span>
                     <span class="beta-arrow" aria-hidden="true">&rarr;</span>
                 </a>
                 <p class="signin-line">Already in the beta? <a href="{{ url_for('login') }}">Log in</a>.</p>
+                {% endif %}
             </div>
         </section>
 {% endblock %}

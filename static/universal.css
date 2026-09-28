@@ -160,6 +160,7 @@ footer:has(> a:only-child) { justify-content: center; }
 .foot-links { display: flex; gap: 26px; flex-wrap: wrap; }
 
 /* ---------- nav extras ---------- */
+.navwrap a, .nav-cta { white-space: nowrap; }
 .navwrap a[aria-current="page"] { color: var(--ink); background: rgba(0, 0, 0, .05); }
 .nav-form { margin: 0; }
 button.nav-cta { border: 0; cursor: pointer; font-family: inherit; }
@@ -277,6 +278,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 18px; height: 18px;
     .navwrap { gap: 0; }
     .navwrap a { font-size: 13px; padding: 8px 9px; }
     .nav-cta { padding: 0 14px; font-size: 13px; height: 38px; }
+    .nav-optional { display: none; }
 }
 
 /* =========================================================

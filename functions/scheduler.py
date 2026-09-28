@@ -24,7 +24,7 @@ import smtplib
 import socket
 import ssl
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -38,11 +38,11 @@ from apscheduler.triggers.cron import CronTrigger
 from jinja2 import Environment
 from sqlalchemy import and_
 
-from app import app
+from app import app, db
 from functions.get_emails import DIGEST_HEADER, DIGEST_SUBJECT_PREFIX, get_emails
 from functions.get_one_action import get_an_action
 from functions.refresh_token import TokenRefreshError, refresh
-from models import Master
+from models import DIGEST_RETENTION_DAYS, Digest, DigestItem, Master
 
 logger = logging.getLogger(__name__)
 
@@ -418,6 +418,27 @@ def _users_to_process() -> List[Master]:
 # Digest generation + send per user
 # ---------------------------------------------------------------------------
 
+def _store_digest(user: Master, groups: List[dict]) -> Digest:
+    """Save the list for the website and drop lists past the retention window."""
+    digest = Digest(master_id=user.id)
+    for group in groups:
+        for item in group["items"]:
+            digest.items.append(DigestItem(
+                account_email=group["account_email"],
+                action=item["action"],
+                sender=(item.get("from") or "")[:512],
+                subject=item.get("subject") or "",
+                calendar_url=item.get("calendar_url"),
+            ))
+    db.session.add(digest)
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=DIGEST_RETENTION_DAYS)
+    for old in Digest.query.filter(Digest.master_id == user.id, Digest.created_at < cutoff).all():
+        db.session.delete(old)
+    db.session.commit()
+    return digest
+
+
 def send_email_summary_for_user(user: Master, site_url: str) -> Dict[str, Any]:
     if not _acquire_send_lock(user.id):
         return {"success": True, "message": "lock held", "user": user.id}
@@ -464,6 +485,8 @@ def send_email_summary_for_user(user: Master, site_url: str) -> Dict[str, Any]:
             if items:
                 groups.append({"account_email": account.email, "items": items})
 
+        digest = _store_digest(user, groups)
+
         if not groups and not notices:
             return {"success": True, "message": "no action items", "user": user.id}
 
@@ -483,6 +506,8 @@ def send_email_summary_for_user(user: Master, site_url: str) -> Dict[str, Any]:
         html = _render_digest(groups, notices, user.primary_email, site_url, current_date)
         sent = _send_html_email(primary.email, tokens[primary.id], primary.provider, subject, html)
         if sent:
+            digest.delivered = True
+            db.session.commit()
             return {"success": True, "message": f"sent {count} items", "user": user.id}
         return {"success": False, "message": "send failed", "user": user.id}
     except Exception as exc:

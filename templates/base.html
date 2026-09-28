@@ -18,8 +18,9 @@
         <div class="navwrap">
             {% block nav_links %}
             {% if current_user.is_authenticated %}
+                <a href="{{ url_for('todo_list') }}"{% if request.endpoint == 'todo_list' %} aria-current="page"{% endif %}>Your list</a>
                 <a href="{{ url_for('settings') }}"{% if request.endpoint == 'settings' %} aria-current="page"{% endif %}>Settings</a>
-                <a href="{{ url_for('contact') }}"{% if request.endpoint == 'contact' %} aria-current="page"{% endif %}>Contact</a>
+                <a class="nav-optional" href="{{ url_for('contact') }}"{% if request.endpoint == 'contact' %} aria-current="page"{% endif %}>Contact</a>
             {% else %}
                 <a href="{{ url_for('contact') }}"{% if request.endpoint == 'contact' %} aria-current="page"{% endif %}>Contact</a>
                 <a href="{{ url_for('login') }}"{% if request.endpoint == 'login' %} aria-current="page"{% endif %}>Log in</a>

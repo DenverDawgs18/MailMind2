@@ -44,12 +44,13 @@
             <li>An OAuth refresh token for each inbox, encrypted at rest. We never see or store your password.</li>
             <li>Your delivery times and timezone.</li>
             <li>If you subscribe, a Stripe customer ID. Card details are handled by Stripe and never reach us.</li>
+            <li>Your lists: each action item with the sender's name and the email's subject line, so you can see and check them off on the website. Lists are deleted automatically after 14 days.</li>
         </ul>
 
         <h3>Your email content</h3>
         <ul>
             <li>When your list is due, we fetch the last day of messages, pass each one to OpenAI's API to pick out action items, and email the result to you from your own inbox.</li>
-            <li>We don't keep your email content. It's processed in memory and discarded after your list is sent.</li>
+            <li>We don't keep your email bodies. They're processed in memory and discarded once your list is built; only the list itself is saved, as described above.</li>
             <li>Under OpenAI's API terms, content sent through the API isn't used to train their models. OpenAI may retain it for up to 30 days for abuse monitoring.</li>
             <li>No person at MailMind reads your email, except when you explicitly share a message with us for support.</li>
         </ul>
@@ -69,7 +70,7 @@
         <h3>Your controls</h3>
         <ul>
             <li>Disconnect any inbox from Settings. For Google accounts we also revoke MailMind's access with Google.</li>
-            <li>Delete your MailMind account from Settings. This cancels billing and permanently deletes your stored data and tokens.</li>
+            <li>Delete your MailMind account from Settings. This cancels billing and permanently deletes your stored data, lists and tokens.</li>
             <li>You can also remove MailMind's access directly from your <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">Google account</a> or <a href="https://account.live.com/consent/Manage" target="_blank" rel="noopener">Microsoft account</a>.</li>
         </ul>
 

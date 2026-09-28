@@ -7,6 +7,7 @@ the public surface:
     /request_access, /beta    beta waitlist form + thank-you page
     /google/login|callback    Google OAuth (sign-in, linking, reconnecting)
     /microsoft/login|callback Microsoft OAuth
+    /list                     today's list (check items off)
     /settings                 inboxes, delivery schedule, billing, account
     /settings/accounts/<id>/remove
     /settings/delete          delete the MailMind account
@@ -22,8 +23,9 @@ import logging
 import os
 import secrets
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+import pytz
 import requests
 import stripe
 from flask import (
@@ -156,7 +158,7 @@ from functions.refresh_token import (  # noqa: E402
     GOOGLE_SCOPES, MICROSOFT_AUTH_URL, MICROSOFT_SCOPES, MICROSOFT_TOKEN_URL, revoke,
 )
 from functions.users import create_email, create_master  # noqa: E402
-from models import EmailAccount, Master  # noqa: E402
+from models import Digest, DigestItem, EmailAccount, Master  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # OAuth configuration
@@ -262,15 +264,13 @@ def _check_provider_error(provider):
 
 @app.route('/')
 def index():
-    if current_user.is_authenticated:
-        return redirect(url_for('settings'))
     return render_template('index.html')
 
 
 @app.route('/login')
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('settings'))
+        return redirect(url_for('todo_list'))
     return render_template('login.html')
 
 
@@ -557,7 +557,108 @@ def _finish_oauth(provider: str, subject: str, user_email: str, refresh_token):
 
     if not master.subscribed:
         return redirect(url_for('code'))
-    return redirect(url_for('settings'))
+    return redirect(url_for('todo_list'))
+
+
+# ---------------------------------------------------------------------------
+# The list
+# ---------------------------------------------------------------------------
+
+def _next_delivery(master):
+    """The next scheduled delivery as an aware datetime in the user's timezone, or None."""
+    if not master.time or not master.timezone:
+        return None
+    try:
+        tz = pytz.timezone(master.timezone)
+    except pytz.UnknownTimeZoneError:
+        return None
+    now = datetime.now(tz)
+    upcoming = []
+    for t in master.time.split(","):
+        try:
+            clock = datetime.strptime(t.strip(), "%I:%M %p").time()
+        except ValueError:
+            continue
+        for day in (0, 1):
+            date = (now + timedelta(days=day)).date()
+            candidate = tz.localize(datetime.combine(date, clock))
+            if candidate > now:
+                upcoming.append(candidate)
+                break
+    return min(upcoming) if upcoming else None
+
+
+def _local(dt, tz_name):
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    try:
+        return dt.astimezone(pytz.timezone(tz_name or "UTC"))
+    except pytz.UnknownTimeZoneError:
+        return dt
+
+
+def _group_items(items):
+    groups = {}
+    for item in items:
+        groups.setdefault(item.account_email, []).append(item)
+    return list(groups.items())
+
+
+@app.template_filter("clock")
+def clock_filter(dt):
+    return dt.strftime("%-I:%M %p") if dt else ""
+
+
+@app.route("/list")
+@login_required
+def todo_list():
+    if not current_user.subscribed:
+        return redirect(url_for('subscribe'))
+
+    latest = (Digest.query.filter_by(master_id=current_user.id)
+              .order_by(Digest.created_at.desc(), Digest.id.desc()).first())
+    earlier = []
+    if latest is not None:
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        earlier = (DigestItem.query.join(Digest)
+                   .filter(Digest.master_id == current_user.id, Digest.id != latest.id,
+                           Digest.created_at >= week_ago, DigestItem.done.is_(False))
+                   .order_by(Digest.created_at.desc(), DigestItem.id).all())
+
+    items = latest.items if latest else []
+    return render_template(
+        "list.html",
+        digest=latest,
+        generated_at=_local(latest.created_at, current_user.timezone) if latest else None,
+        groups=_group_items(items),
+        done_count=sum(1 for i in items if i.done),
+        total=len(items),
+        earlier=earlier,
+        next_delivery=_next_delivery(current_user),
+        needs_reauth=[a.email for a in current_user.email_accounts if a.needs_reauth],
+    )
+
+
+@app.route("/list/items/<int:item_id>/toggle", methods=["POST"])
+@login_required
+def toggle_item(item_id):
+    item = (DigestItem.query.join(Digest)
+            .filter(DigestItem.id == item_id, Digest.master_id == current_user.id).first())
+    if item is None:
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify({"error": "not found"}), 404
+        return render_template("error.html", code=404, title="Not found",
+                               message="That item isn't on your list."), 404
+
+    item.done = request.form.get("done", "1" if not item.done else "0") == "1"
+    item.done_at = datetime.now(timezone.utc) if item.done else None
+    db.session.commit()
+
+    if request.accept_mimetypes.best == "application/json":
+        return jsonify({"id": item.id, "done": item.done})
+    return redirect(url_for('todo_list')), 303
 
 
 # ---------------------------------------------------------------------------
