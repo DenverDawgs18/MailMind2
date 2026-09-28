@@ -4,7 +4,7 @@ A 60-second spot, generated entirely in code — no stock footage, no samples.
 
 - `scene.html` — every frame of the picture. `window.render(t)` lays out the scene for time `t` (seconds), so rendering is fully deterministic.
 - `render.js` — drives headless Chromium (Playwright) to screenshot each frame.
-- `music.py` — synthesises the soundtrack (plucked strums, felt piano, bells, bass, soft drums and UI sound design) with numpy/scipy. 120 BPM, so every scene cut lands on a bar line.
+- `music.py` — synthesises the soundtrack with numpy/scipy: uptempo electro-pop with a four-on-the-floor kick, claps, 16th hats, side-chained pumping bass, supersaw stabs, a plucked lead hook, risers/impacts, and UI sound design. 120 BPM, so every scene cut lands on a bar line; the drop hits on the logo at 16 s.
 - `mailmind.mp4` — the 1080p60 master. The site serves a lighter encode from `static/video/mailmind.mp4`.
 
 ## Rebuild
@@ -29,7 +29,7 @@ ffmpeg -framerate 60 -i frames/f%05d.jpg -i soundtrack.wav -c:v libx264 -preset 
 # web encode + poster for the site
 ffmpeg -i mailmind.mp4 -c:v libx264 -preset slow -crf 25 -tune animation -pix_fmt yuv420p \
   -c:a aac -b:a 128k -movflags +faststart ../../static/video/mailmind.mp4
-ffmpeg -ss 56.75 -i mailmind.mp4 -frames:v 1 -vf scale=1280:-1 -q:v 3 ../../static/video/poster.jpg
+ffmpeg -ss 52.8 -i mailmind.mp4 -frames:v 1 -vf scale=1280:-1 -q:v 3 ../../static/video/poster.jpg
 ```
 
 `mkdir -p prev && node render.js preview 2,9.5,17.5` writes stills to `prev/` for quick checks.
@@ -47,4 +47,4 @@ ffmpeg -ss 56.75 -i mailmind.mp4 -frames:v 1 -vf scale=1280:-1 -q:v 3 ../../stat
 | 38–44 s | Four inboxes merge into one list. |
 | 44–50 s | On the beat: "No app to open. No new password. No noise. Just what to do." |
 | 50–54 s | "Your inbox, handled." |
-| 54–60 s | End card. |
+| 54–60 s | End card: "Join the beta" → mailmind.fly.dev/request_access |
