@@ -1,0 +1,464 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: 'Inter'; src: url(fonts/inter.woff2) format('woff2'); font-weight: 100 900; }
+:root { --ink: #1d1d1f; --gray: #86868b; --soft: #f5f5f7; --line: #e8e8ed; --accent: #ff6a2b; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: #fff; }
+body { font-family: 'Inter', sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased;
+       font-feature-settings: 'ss01', 'cv11'; }
+.scene { position: absolute; inset: 0; display: none; }
+.abs { position: absolute; }
+.center { position: absolute; left: 0; right: 0; text-align: center; }
+.h { font-weight: 650; letter-spacing: -0.035em; line-height: 1.05; }
+.g { color: var(--gray); }
+.a { color: var(--accent); }
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* email card */
+.mail { position: absolute; width: 380px; height: 100px; background: #fff; border-radius: 20px;
+        border: 1px solid #ededf0; box-shadow: 0 12px 34px rgba(0,0,0,.07), 0 2px 6px rgba(0,0,0,.04);
+        display: flex; align-items: center; gap: 16px; padding: 0 22px; }
+.av { width: 46px; height: 46px; border-radius: 50%; flex: none; color: #fff; font-weight: 650;
+      font-size: 20px; display: flex; align-items: center; justify-content: center; }
+.mail .t { flex: 1; min-width: 0; }
+.mail .s { font-weight: 650; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.01em; }
+.mail .u { font-size: 16px; color: var(--gray); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
+.mail .tm { font-size: 14px; color: #a1a1a6; align-self: flex-start; margin-top: 24px; }
+
+/* big email (scene 5) */
+.big { position: absolute; width: 700px; background: #fff; border-radius: 28px; border: 1px solid #ededf0;
+       box-shadow: 0 30px 80px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.04); padding: 40px 44px; }
+.big .hd { display: flex; align-items: center; gap: 18px; }
+.big .av { width: 58px; height: 58px; font-size: 24px; }
+.big .from { font-size: 24px; font-weight: 650; letter-spacing: -0.015em; }
+.big .subj { font-size: 19px; color: var(--gray); margin-top: 2px; }
+.big .body { font-size: 27px; line-height: 1.5; margin-top: 28px; letter-spacing: -0.012em; color: #333336; }
+.hl { background-image: linear-gradient(rgba(255,106,43,.22), rgba(255,106,43,.22));
+      background-repeat: no-repeat; background-size: 0% 100%; border-radius: 6px; padding: 0 3px; margin: 0 -3px; }
+
+/* list panel */
+.panel { position: absolute; background: #fff; border-radius: 30px; border: 1px solid #ededf0;
+         box-shadow: 0 30px 80px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.04); padding: 38px 40px; }
+.panel .ph { font-size: 36px; font-weight: 700; letter-spacing: -0.03em; }
+.panel .pd { font-size: 18px; color: var(--gray); margin-top: 2px; }
+.row { display: flex; align-items: center; gap: 18px; height: 78px; border-bottom: 1px solid var(--line); }
+.row:last-child { border-bottom: none; }
+.ck { width: 30px; height: 30px; border-radius: 50%; border: 2.5px solid #c7c7cc; flex: none; position: relative; }
+.ck svg { position: absolute; inset: -2.5px; }
+.row .rt { flex: 1; font-size: 24px; letter-spacing: -0.015em; font-weight: 500; white-space: nowrap; }
+.pill { font-size: 15px; font-weight: 600; padding: 6px 12px; border-radius: 99px; background: var(--soft); color: #6e6e73; }
+.pill.hot { background: rgba(255,106,43,.12); color: var(--accent); }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+
+/* phone */
+.phone { position: absolute; width: 470px; height: 960px; border-radius: 76px; background: #1d1d1f; padding: 14px;
+         box-shadow: 0 40px 100px rgba(0,0,0,.18); }
+.screen { position: relative; width: 100%; height: 100%; border-radius: 63px; overflow: hidden;
+          background: linear-gradient(180deg, #f3f4f8 0%, #ffffff 60%); }
+.island { position: absolute; top: 18px; left: 50%; width: 120px; height: 34px; margin-left: -60px; background: #1d1d1f; border-radius: 20px; z-index: 5; }
+.notif { position: absolute; left: 16px; right: 16px; top: 330px; background: rgba(255,255,255,.92); border-radius: 28px;
+         box-shadow: 0 10px 40px rgba(0,0,0,.10); padding: 18px 20px; display: flex; gap: 14px; }
+.appi { width: 48px; height: 48px; border-radius: 12px; background: #fff; border: 1px solid #ececf0; flex: none;
+        display: flex; align-items: center; justify-content: center; }
+
+/* account pills */
+.acct { position: absolute; display: flex; align-items: center; gap: 16px; background: #fff; border: 1px solid #ededf0;
+        border-radius: 99px; padding: 18px 30px 18px 20px; box-shadow: 0 14px 40px rgba(0,0,0,.07); font-size: 26px; font-weight: 550; letter-spacing: -0.015em; white-space: nowrap; }
+.acct .ic { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+
+<!-- 1. unread counter -->
+<div class="scene" id="s1">
+  <div class="center h g" id="s1a" style="top:300px;font-size:58px;font-weight:550">You have</div>
+  <div class="center h tnum" id="s1n" style="top:380px;font-size:230px;font-weight:700;letter-spacing:-0.05em">0</div>
+  <div class="center h g" id="s1b" style="top:640px;font-size:58px;font-weight:550">unread emails.</div>
+</div>
+
+<!-- 2. chaos -->
+<div class="scene" id="s2">
+  <div class="abs" id="s2cards" style="inset:0"></div>
+  <div class="abs" id="s2star" style="inset:0"></div>
+  <div class="center h" id="s2a" style="top:420px;font-size:92px">Somewhere in there</div>
+  <div class="center h" id="s2b" style="top:530px;font-size:92px">is the one that matters.</div>
+</div>
+
+<!-- 3. question -->
+<div class="scene" id="s3">
+  <div class="center h" id="s3a" style="top:410px;font-size:96px">What if your inbox</div>
+  <div class="center h" id="s3b" style="top:525px;font-size:96px">just told you what to do?</div>
+</div>
+
+<!-- 4. logo -->
+<div class="scene" id="s4">
+  <div class="abs" id="s4logo" style="left:810px;top:290px;width:300px;height:300px"></div>
+  <div class="center h" id="s4w" style="top:640px;font-size:120px;font-weight:700;letter-spacing:-0.045em">MailMind</div>
+</div>
+
+<!-- 5. reads -> writes -->
+<div class="scene" id="s5">
+  <div class="center h" id="s5t1" style="top:110px;font-size:72px">It reads your email.</div>
+  <div class="center h" id="s5t2" style="top:110px;font-size:72px">And writes your <span class="a">to-do list.</span></div>
+  <div id="s5mails"></div>
+  <div class="panel" id="s5panel" style="left:1060px;top:300px;width:700px;height:520px">
+    <div class="ph">Today</div>
+    <div class="pd">Tuesday, October 6</div>
+    <div id="s5rows" style="margin-top:22px"></div>
+  </div>
+</div>
+
+<!-- 6. phone -->
+<div class="scene" id="s6">
+  <div class="abs h" id="s6a" style="left:220px;top:400px;font-size:96px">Every morning.</div>
+  <div class="abs h g" id="s6b" style="left:220px;top:515px;font-size:96px">Right in your inbox.</div>
+  <div class="phone" id="s6phone" style="left:1230px;top:60px">
+    <div class="screen">
+      <div class="island"></div>
+      <div id="s6lock">
+        <div class="center" style="top:120px;font-size:24px;font-weight:600;color:#6e6e73">Tuesday, October 6</div>
+        <div class="center h tnum" style="top:150px;font-size:128px;font-weight:600;letter-spacing:-0.04em">7:00</div>
+      </div>
+      <div class="notif" id="s6notif">
+        <div class="appi" id="s6appi"></div>
+        <div style="flex:1">
+          <div style="display:flex;justify-content:space-between"><b style="font-size:20px;letter-spacing:-.01em">MailMind</b><span style="font-size:16px;color:#8e8e93">now</span></div>
+          <div style="font-size:19px;font-weight:600;margin-top:2px;letter-spacing:-.01em">Your day, in one email.</div>
+          <div style="font-size:18px;color:#3a3a3c;margin-top:1px">4 things need you today.</div>
+        </div>
+      </div>
+      <div id="s6mail" class="abs" style="inset:0;background:#fff;padding:90px 32px 0">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div class="appi" id="s6appi2" style="width:52px;height:52px;border-radius:50%"></div>
+          <div><div style="font-size:20px;font-weight:650">MailMind</div><div style="font-size:16px;color:#8e8e93">to me · 7:00 AM</div></div>
+        </div>
+        <div class="h" style="font-size:40px;margin-top:34px">Good morning.</div>
+        <div style="font-size:21px;color:#6e6e73;margin-top:8px">Here's what needs you today.</div>
+        <div id="s6rows" style="margin-top:20px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 7. inboxes -->
+<div class="scene" id="s7">
+  <div class="center h" id="s7t1" style="top:110px;font-size:72px">Gmail. Outlook. Work. Personal.</div>
+  <div class="center h" id="s7t2" style="top:110px;font-size:72px">All your inboxes. <span class="a">One list.</span></div>
+  <div id="s7accts"></div>
+  <div class="panel" id="s7panel" style="left:560px;top:290px;width:800px">
+    <div class="ph">Today</div>
+    <div class="pd">From 3 inboxes</div>
+    <div id="s7rows" style="margin-top:18px"></div>
+  </div>
+</div>
+
+<!-- 8. beats -->
+<div class="scene" id="s8">
+  <div class="center h" id="s8w0" style="top:460px;font-size:136px;font-weight:700">No app to open.</div>
+  <div class="center h" id="s8w1" style="top:460px;font-size:136px;font-weight:700">No new password.</div>
+  <div class="center h" id="s8w2" style="top:460px;font-size:136px;font-weight:700">No noise.</div>
+  <div class="center h a" id="s8w3" style="top:460px;font-size:136px;font-weight:700">Just what to do.</div>
+</div>
+
+<!-- 9. handled -->
+<div class="scene" id="s9">
+  <div class="center h" id="s9a" style="top:370px;font-size:170px;font-weight:700;letter-spacing:-0.05em">Your inbox,</div>
+  <div class="center h" id="s9b" style="top:560px;font-size:170px;font-weight:700;letter-spacing:-0.05em">handled.</div>
+</div>
+
+<!-- 10. end card -->
+<div class="scene" id="s10">
+  <div class="abs" id="s10logo" style="left:870px;top:170px;width:180px;height:180px"></div>
+  <div class="center h" id="s10w" style="top:385px;font-size:104px;font-weight:700;letter-spacing:-0.045em">MailMind</div>
+  <div class="center h g" id="s10t" style="top:525px;font-size:44px;font-weight:550;letter-spacing:-0.02em">Your inbox, as a to-do list.</div>
+  <div class="center" id="s10c" style="top:665px">
+    <span style="display:inline-flex;align-items:center;gap:14px;background:#1d1d1f;color:#fff;border-radius:999px;padding:22px 40px;font-size:34px;font-weight:650;letter-spacing:-0.02em;box-shadow:0 20px 50px rgba(255,106,43,.28)">Join the beta <span style="color:#ff6a2b">&rarr;</span></span>
+  </div>
+  <div class="center" id="s10u" style="top:800px;font-size:26px;color:#86868b;letter-spacing:-0.005em">mailmind.fly.dev/request_access</div>
+</div>
+
+<div class="abs" id="fadewhite" style="inset:0;background:#fff;opacity:0"></div>
+
+<script>
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const P = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, x) => a + (b - a) * x;
+const eo = x => 1 - Math.pow(1 - x, 3);
+const eo5 = x => 1 - Math.pow(1 - x, 5);
+const eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const expo = x => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x);
+const back = x => { const c1 = 1.2, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+// Apple-style reveal: fade, rise, un-blur. Returns visibility (0..1).
+function reveal(el, t, a, dur = .7, outA = 1e9, outDur = .5, rise = 26) {
+  const i = eo5(P(t, a, a + dur)), o = eio(P(t, outA, outA + outDur));
+  const v = i * (1 - o);
+  el.style.opacity = v;
+  el.style.transform = `translateY(${(1 - i) * rise - o * 12}px)`;
+  el.style.filter = (i < 1 || o > 0) ? `blur(${(1 - i) * 10 + o * 8}px)` : 'none';
+  return v;
+}
+function show(id, on) { $(id).style.display = on ? 'block' : 'none'; }
+
+// ---------- logo ----------
+const V_FLAP = [[40, 92], [150, 172], [260, 92]];
+const V_CHECK = [[92, 160], [134, 202], [214, 118]];
+function logoSVG(id) {
+  return `<svg viewBox="0 0 300 300" width="100%" height="100%">
+    <rect id="${id}r" x="30" y="62" width="240" height="176" rx="38" fill="none" stroke="#1d1d1f" stroke-width="14" stroke-linejoin="round"/>
+    <polyline id="${id}v" fill="none" stroke="#1d1d1f" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+function setLogo(id, draw, flap, morph) {
+  const r = $(id + 'r'), v = $(id + 'v');
+  const perim = 2 * (240 + 176) - 8 * 38 + 2 * Math.PI * 38;
+  r.style.strokeDasharray = perim; r.style.strokeDashoffset = perim * (1 - draw);
+  const pts = V_FLAP.map((p, k) => [lerp(p[0], V_CHECK[k][0], morph), lerp(p[1], V_CHECK[k][1], morph)]);
+  v.setAttribute('points', pts.map(p => p.join(',')).join(' '));
+  const len = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]) + Math.hypot(pts[2][0] - pts[1][0], pts[2][1] - pts[1][1]);
+  v.style.strokeDasharray = len + 2; v.style.strokeDashoffset = (len + 2) * (1 - flap);
+  // colour: ink -> accent
+  const c = [[29, 29, 31], [255, 106, 43]].reduce((a, b) => a.map((x, k) => Math.round(lerp(x, b[k], morph))));
+  v.setAttribute('stroke', `rgb(${c})`);
+}
+$('s4logo').innerHTML = logoSVG('L4');
+$('s10logo').innerHTML = logoSVG('L10');
+const mini = `<svg viewBox="0 0 300 300" width="34" height="34"><rect x="30" y="62" width="240" height="176" rx="38" fill="none" stroke="#1d1d1f" stroke-width="20"/><polyline points="${V_CHECK.map(p => p.join(',')).join(' ')}" fill="none" stroke="#ff6a2b" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+$('s6appi').innerHTML = mini; $('s6appi2').innerHTML = mini;
+
+// ---------- data ----------
+const COLORS = ['#ff6a2b', '#5e5ce6', '#30b0c7', '#34c759', '#ff375f', '#ff9f0a', '#0a84ff', '#bf5af2', '#8e8e93'];
+const SENDERS = ['Weekly Digest', 'Team Standup', 'Receipts', 'Newsletter', 'Jordan Lee', 'Calendar', 'Promotions', 'Flight Deals',
+  'Mom', 'Billing', 'LinkedIn Updates', 'Security Alert', 'Webinar', 'Product Updates', 'Priya Shah', 'HR Team', 'Shipping',
+  'Group Chat', 'Survey', 'Rewards', 'Dentist', 'Book Club', 'IT Desk', 'Sale ends tonight', 'Community', 'Recruiter'];
+const SUBJ = ['Re: Re: Fwd: quick question', 'Your order has shipped', "Don't miss out — 40% off", 'Meeting notes (v3)',
+  'Reminder: tomorrow', 'You have 12 new notifications', 'Invoice #20931', 'FW: thoughts?', 'Last chance!', 'Weekly roundup',
+  'Password changed', 'Following up', 'New comment on your doc', 'Can we reschedule?', 'Welcome aboard', 'Action required?'];
+
+const TASKS = [
+  { who: 'Sarah Chen', init: 'S', col: '#5e5ce6', subj: 'Proposal feedback',
+    body: ['Loved the draft! Could you ', 'send the final version by Thursday', ' so we can get it signed?'],
+    task: 'Send Sarah the final proposal', due: 'Thu', hot: false },
+  { who: 'Oakwood Properties', init: 'O', col: '#34c759', subj: 'Lease renewal',
+    body: ['Your lease ends Oct 31. Please ', 'sign the renewal form by Friday', ' to keep your rate.'],
+    task: 'Sign the lease renewal', due: 'Fri', hot: false },
+  { who: 'Mark Rivera', init: 'M', col: '#0a84ff', subj: 'Q3 numbers',
+    body: ['Quick one — can you ', "pull the Q3 numbers before Monday's", ' meeting?'],
+    task: 'Pull Q3 numbers for Mark', due: 'Mon', hot: false },
+  { who: 'Coach Dana', init: 'D', col: '#ff9f0a', subj: 'Saturday game',
+    body: ['Heads up: ', 'snack sign-ups close tonight', '. Thanks, team!'],
+    task: 'Sign up for team snacks', due: 'Today', hot: true },
+];
+
+function mailCard(s, u, col, tm) {
+  const d = document.createElement('div'); d.className = 'mail';
+  d.innerHTML = `<div class="av" style="background:${col}">${s[0]}</div><div class="t"><div class="s">${s}</div><div class="u">${u}</div></div><div class="tm">${tm}</div>`;
+  return d;
+}
+const checkSVG = `<svg viewBox="0 0 30 30" width="30" height="30"><circle cx="15" cy="15" r="15" fill="#ff6a2b" class="cf"/><polyline points="8.5,15.5 13,20 21.5,10.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="cp" stroke-dasharray="20" stroke-dashoffset="20"/></svg>`;
+function row(task, due, hot, dotCol) {
+  const r = document.createElement('div'); r.className = 'row';
+  r.innerHTML = `${dotCol ? `<div class="dot" style="background:${dotCol}"></div>` : ''}<div class="ck">${checkSVG}</div><div class="rt">${task}</div><div class="pill${hot ? ' hot' : ''}">${due}</div>`;
+  r.querySelector('.cf').style.opacity = 0;
+  return r;
+}
+
+// scene 2 cards
+const CARDS = [];
+for (let i = 0; i < 64; i++) {
+  const col = COLORS[Math.floor(rnd() * COLORS.length)];
+  const s = SENDERS[Math.floor(rnd() * SENDERS.length)], u = SUBJ[Math.floor(rnd() * SUBJ.length)];
+  const el = mailCard(s, u, col, ['9:41', '8:02', 'Yesterday', 'Mon', '6:15', 'Sun', '11:20'][Math.floor(rnd() * 7)]);
+  $('s2cards').appendChild(el);
+  const col_ = i % 8, rw = Math.floor(i / 8);
+  CARDS.push({ el, x: col_ * 240 - 60 + rnd() * 140, y: rw * 128 + 20 + rnd() * 70, r: (rnd() - .5) * 14,
+               t0: 5.5 + Math.pow(i / 64, 0.8) * 5.4 + rnd() * .15, fall: 260 + rnd() * 300 });
+}
+// shuffle the landing order so the pile fills in randomly
+CARDS.sort(() => rnd() - .5);
+CARDS.forEach((c, i) => c.t0 = 5.5 + Math.pow(i / 64, 0.75) * 5.2);
+const STAR = mailCard('Sarah Chen', 'Proposal: final version by Thursday?', '#5e5ce6', '9:12');
+STAR.style.left = '770px'; STAR.style.top = '250px'; $('s2star').appendChild(STAR);
+
+// scene 5
+const BIG = TASKS.map((m, k) => {
+  const d = document.createElement('div'); d.className = 'big';
+  d.innerHTML = `<div class="hd"><div class="av" style="background:${m.col}">${m.init}</div><div><div class="from">${m.who}</div><div class="subj">${m.subj}</div></div></div>
+    <div class="body">${m.body[0]}<span class="hl">${m.body[1]}</span>${m.body[2]}</div>`;
+  d.style.left = '170px'; d.style.top = '425px';
+  $('s5mails').appendChild(d); return d;
+});
+const R5 = TASKS.map(m => { const r = row(m.task, m.due, m.hot); $('s5rows').appendChild(r); return r; });
+const R6 = TASKS.map(m => { const r = row(m.task, m.due, m.hot); r.style.height = '84px'; r.querySelector('.rt').style.fontSize = '21px';
+  r.querySelector('.rt').style.whiteSpace = 'normal'; $('s6rows').appendChild(r); return r; });
+
+// scene 7
+const ACCTS = [
+  { name: 'alex@gmail.com', col: '#ff375f', x: 170, y: 330 },
+  { name: 'alex@outlook.com', col: '#0a84ff', x: 1330, y: 360 },
+  { name: 'alex@company.com', col: '#34c759', x: 230, y: 700 },
+  { name: 'alex@school.edu', col: '#bf5af2', x: 1290, y: 730 },
+].map(a => {
+  const d = document.createElement('div'); d.className = 'acct';
+  d.innerHTML = `<div class="ic" style="background:${a.col}1f"><div class="dot" style="width:16px;height:16px;background:${a.col}"></div></div>${a.name}`;
+  d.style.left = a.x + 'px'; d.style.top = a.y + 'px'; $('s7accts').appendChild(d); a.el = d; return a;
+});
+const S7ROWS = [['Send Sarah the final proposal', 'Thu', '#0a84ff'], ['Sign the lease renewal', 'Fri', '#ff375f'],
+  ['Pull Q3 numbers for Mark', 'Mon', '#34c759'], ['Submit reading response', 'Wed', '#bf5af2'], ['Sign up for team snacks', 'Today', '#ff375f', true]]
+  .map(r => { const e = row(r[0], r[1], r[3], r[2]); $('s7rows').appendChild(e); return e; });
+
+function setCheck(r, x) {
+  r.querySelector('.cf').style.opacity = eo(P(x, 0, .35));
+  r.querySelector('.cp').style.strokeDashoffset = 20 * (1 - eo(P(x, .25, .8)));
+  r.querySelector('.ck').style.borderColor = x > 0 ? 'transparent' : '#c7c7cc';
+  const tx = r.querySelector('.rt'); tx.style.color = x > .5 ? '#a1a1a6' : '#1d1d1f';
+}
+
+// ---------- render ----------
+window.render = function (t) {
+  // Scene 1: 0 - 6
+  show('s1', t < 6.2);
+  if (t < 6.2) {
+    reveal($('s1a'), t, .3, .9, 5.2, .6);
+    const nv = reveal($('s1n'), t, .7, .9, 5.3, .6);
+    $('s1n').textContent = Math.round(1284 * expo(P(t, .8, 3.6))).toLocaleString('en-US');
+    reveal($('s1b'), t, 3.0, .9, 5.4, .6);
+    const sc = 1 - .06 * eio(P(t, 5.2, 6));
+    $('s1').style.transform = `scale(${sc})`;
+  }
+  // Scene 2: 5.5 - 12.5
+  show('s2', t >= 5.4 && t < 12.6);
+  if (t >= 5.4 && t < 12.6) {
+    const dim = eio(P(t, 8.4, 9.2));
+    for (const c of CARDS) {
+      const k = P(t, c.t0, c.t0 + .7);
+      const e = back(k);
+      const drift = (t - c.t0) * 4;
+      c.el.style.opacity = Math.min(1, k * 4);
+      c.el.style.transform = `translate(${c.x}px, ${c.y - (1 - e) * c.fall + drift}px) rotate(${c.r * (0.4 + .6 * e)}deg) scale(${lerp(1.08, 1, eo(k))})`;
+    }
+    const out = eio(P(t, 11.7, 12.4));
+    $('s2cards').style.filter = `blur(${dim * 9 + out * 10}px)`;
+    $('s2cards').style.opacity = (1 - .55 * dim) * (1 - out);
+    // the one that matters stays sharp, lifted
+    const st = eo5(P(t, 8.6, 9.4));
+    STAR.style.opacity = st * (1 - out);
+    STAR.style.transform = `translateY(${(1 - st) * 20}px) scale(${1.25 + .03 * Math.sin((t - 9) * 2.5)})`;
+    STAR.style.boxShadow = `0 0 0 ${3 * eo(P(t, 10.2, 10.8))}px rgba(255,106,43,.9), 0 24px 60px rgba(0,0,0,.14)`;
+    reveal($('s2a'), t, 9.0, .8, 11.7, .5);
+    reveal($('s2b'), t, 9.8, .8, 11.75, .5);
+  }
+  // Scene 3: 12.4 - 16
+  show('s3', t >= 12.4 && t < 16.1);
+  if (t >= 12.4 && t < 16.1) {
+    reveal($('s3a'), t, 12.6, .9, 15.3, .6);
+    reveal($('s3b'), t, 13.4, .9, 15.35, .6);
+  }
+  // Scene 4: 16 - 20 logo
+  show('s4', t >= 15.9 && t < 20.1);
+  if (t >= 15.9 && t < 20.1) {
+    setLogo('L4', eio(P(t, 16.0, 16.9)), eo(P(t, 16.55, 17.1)), eio(P(t, 17.25, 17.85)));
+    const pop = eo5(P(t, 17.25, 18.2));
+    const o = eio(P(t, 19.4, 20));
+    $('s4logo').style.transform = `translateY(${-30 * pop}px) scale(${(1 + .06 * Math.sin(Math.PI * P(t, 17.25, 17.9))) * (1 - .05 * o)})`;
+    $('s4logo').style.opacity = 1 - o;
+    reveal($('s4w'), t, 17.7, .9, 19.4, .6);
+  }
+  // Scene 5: 20 - 30
+  show('s5', t >= 19.9 && t < 30.1);
+  if (t >= 19.9 && t < 30.1) {
+    reveal($('s5t1'), t, 20.1, .8, 25.3, .5);
+    reveal($('s5t2'), t, 25.8, .8, 29.4, .5);
+    const po = eo5(P(t, 20.4, 21.2)), out = eio(P(t, 29.4, 30));
+    $('s5panel').style.opacity = po * (1 - out);
+    $('s5panel').style.transform = `translateY(${(1 - po) * 40}px)`;
+    const SL = [[21.0, 2.7], [23.7, 1.9], [25.6, 1.45], [27.05, 1.25]];
+    BIG.forEach((b, k) => {
+      const [a, d] = SL[k];
+      const i = eo5(P(t, a, a + .3 * d)), h = eio(P(t, a + .3 * d, a + .6 * d)), o = eio(P(t, a + .66 * d, a + .92 * d));
+      b.style.display = (t > a - .05 && o < 1) ? 'block' : 'none';
+      b.style.opacity = i * (1 - o);
+      b.style.transform = `translate(${-60 * (1 - i) + 420 * o}px, ${(k - 1.5) * 80 * o}px) scale(${1 - .45 * o})`;
+      b.style.filter = o > 0 ? `blur(${o * 6}px)` : 'none';
+      b.querySelector('.hl').style.backgroundSize = `${h * 100}% 100%`;
+      const r = R5[k], ri = eo5(P(t, a + .74 * d, a + .74 * d + .5));
+      r.style.opacity = ri; r.style.transform = `translateX(${(1 - ri) * -30}px)`;
+    });
+    setCheck(R5[0], P(t, 28.5, 29.1));
+    $('s5mails').style.opacity = 1 - out;
+  }
+  // Scene 6: 30 - 38 phone
+  show('s6', t >= 29.9 && t < 38.1);
+  if (t >= 29.9 && t < 38.1) {
+    const pin = eo5(P(t, 30.0, 31.0)), out = eio(P(t, 37.3, 38));
+    $('s6phone').style.transform = `translateY(${(1 - pin) * 700 + out * 40}px)`;
+    $('s6phone').style.opacity = 1 - out;
+    reveal($('s6a'), t, 30.8, .8, 37.3, .5);
+    reveal($('s6b'), t, 32.0, .8, 37.35, .5);
+    const n = eo5(P(t, 31.5, 32.1)), exp = eio(P(t, 33.3, 34.0));
+    $('s6notif').style.opacity = Math.min(1, n * 2) * (1 - exp);
+    $('s6notif').style.transform = `translateY(${(1 - n) * -120}px) scale(${lerp(.92, 1, n) * (1 + .06 * exp)})`;
+    $('s6lock').style.opacity = 1 - exp;
+    $('s6mail').style.opacity = exp;
+    $('s6mail').style.transform = `translateY(${(1 - exp) * 60}px)`;
+    R6.forEach((r, k) => { const x = eo5(P(t, 34.0 + k * .22, 34.6 + k * .22)); r.style.opacity = x; r.style.transform = `translateY(${(1 - x) * 16}px)`; });
+    setCheck(R6[3], P(t, 36.0, 36.6));
+  }
+  // Scene 7: 38 - 44 inboxes
+  show('s7', t >= 37.9 && t < 44.1);
+  if (t >= 37.9 && t < 44.1) {
+    reveal($('s7t1'), t, 38.1, .7, 40.3, .5);
+    reveal($('s7t2'), t, 40.7, .8, 43.4, .5);
+    const merge = eio(P(t, 39.8, 40.8)), out = eio(P(t, 43.4, 44));
+    ACCTS.forEach((a, k) => {
+      const i = eo5(P(t, 38.3 + k * .25, 39.0 + k * .25));
+      const dx = (960 - (a.x + 180)) * merge, dy = (560 - (a.y + 40)) * merge;
+      a.el.style.opacity = i * (1 - eo(P(t, 40.3, 40.8)));
+      a.el.style.transform = `translate(${dx}px, ${dy + (1 - i) * 30}px) scale(${1 - .5 * merge})`;
+    });
+    const pi = eo5(P(t, 40.4, 41.2));
+    $('s7panel').style.opacity = pi * (1 - out);
+    $('s7panel').style.transform = `scale(${lerp(.9, 1, pi)})`;
+    S7ROWS.forEach((r, k) => { const x = eo5(P(t, 40.8 + k * .18, 41.4 + k * .18)); r.style.opacity = x; r.style.transform = `translateY(${(1 - x) * 14}px)`; });
+  }
+  // Scene 8: 44 - 50 beats
+  show('s8', t >= 43.95 && t < 50.1);
+  if (t >= 43.95 && t < 50.1) {
+    [44, 45, 46, 47].forEach((b, k) => {
+      const el = $('s8w' + k), end = k < 3 ? b + 1 : 49.4;
+      const i = eo5(P(t, b, b + .28)), o = k < 3 ? P(t, end - .08, end) : eio(P(t, end, end + .6));
+      el.style.opacity = i * (1 - o);
+      el.style.transform = `scale(${lerp(1.06, 1, i) * (1 - .02 * o)})`;
+      el.style.filter = i < 1 ? `blur(${(1 - i) * 8}px)` : 'none';
+    });
+  }
+  // Scene 9: 50 - 54
+  show('s9', t >= 49.9 && t < 54.1);
+  if (t >= 49.9 && t < 54.1) {
+    reveal($('s9a'), t, 50.0, .9, 53.3, .6, 40);
+    reveal($('s9b'), t, 50.9, .9, 53.35, .6, 40);
+    const x = eio(P(t, 51.5, 52.3));
+    $('s9b').style.color = `rgb(${[29, 29, 31].map((c, k) => Math.round(lerp(c, [255, 106, 43][k], x)))})`;
+  }
+  // Scene 10: 54 - 60
+  show('s10', t >= 53.9);
+  if (t >= 53.9) {
+    setLogo('L10', eio(P(t, 54.0, 54.8)), eo(P(t, 54.5, 54.9)), eio(P(t, 55.0, 55.5)));
+    reveal($('s10w'), t, 55.2, .9);
+    reveal($('s10t'), t, 55.9, .9);
+    reveal($('s10c'), t, 56.4, .9, 1e9, .5, 40);
+    reveal($('s10u'), t, 56.9, .9);
+  }
+
+};
+window.render(0);
+window.ready = document.fonts.ready.then(() => true);
+</script>
+</body>
+</html>

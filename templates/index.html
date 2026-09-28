@@ -1,3 +1,4 @@
+{% set beta_url = 'https://mailmind.fly.dev/request_access' %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,84 +7,391 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">
     <meta name="google-site-verification" content="bvGZgZ2rn-5Nz7flQHwTl779qpJhdXLk3ztmwAY8ZZ8" />
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
-    <title>MailMind</title>
+    <meta name="description" content="Every morning, MailMind reads your inbox and emails you one short list of what actually needs you. Join the beta.">
+    <meta name="theme-color" content="#ffffff">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='imgs/logo.svg') }}">
+    <link rel="alternate icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
+    <title>MailMind — Your inbox, as a to-do list.</title>
 </head>
-<body>
-    <div class="navbar">
+<body class="home-page">
+    <div class="navbar" id="nav">
         <a href="{{ url_for('index') }}" class="home">MailMind</a>
         <div class="navwrap">
+            <a href="#film">Film</a>
+            <a href="#story">How it works</a>
+            <a href="{{ url_for('contact') }}">Contact</a>
+        </div>
+        <a class="nav-cta" href="{{ beta_url }}">Join the beta</a>
+    </div>
+
+    <main class="main-content">
+        <!-- ============ HERO ============ -->
+        <section class="hero">
+            <div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <div class="grid-fade" aria-hidden="true"></div>
+
+            <a class="chip rise" href="{{ beta_url }}">
+                <span class="chip-dot"></span> Now in private beta <span class="chip-arrow">&rarr;</span>
+            </a>
+            <h1 class="hero-title">
+                <span class="w rise">Your</span> <span class="w rise">inbox,</span><br>
+                <span class="w rise">as</span> <span class="w rise">a</span> <span class="w rise shimmer">to-do&nbsp;list.</span>
+            </h1>
+            <p class="hero-sub rise">Every morning, MailMind reads the last 24 hours of your email
+                and sends you one short list of what actually needs you.</p>
+            <div class="hero-cta rise">
+                <a class="beta-btn" href="{{ beta_url }}">
+                    <span class="beta-ring" aria-hidden="true"></span>
+                    <span class="beta-label">Join the beta</span>
+                    <span class="beta-arrow" aria-hidden="true">&rarr;</span>
+                </a>
+                <p class="signin-line">Already in? Sign in with
+                    <a href="{{ url_for('google_login') }}">Google</a> or
+                    <a href="{{ url_for('microsoft_login') }}">Microsoft</a>.</p>
+            </div>
+        </section>
+
+        <!-- ============ FILM ============ -->
+        <section class="film" id="film">
+            <div class="film-stage" id="film-stage">
+                <div class="film-glow" aria-hidden="true"></div>
+                <div class="film-frame">
+                    <video id="film-video" src="{{ url_for('static', filename='video/mailmind.mp4') }}"
+                           poster="{{ url_for('static', filename='video/poster.jpg') }}"
+                           preload="none" playsinline></video>
+                    <button class="play" id="film-play" aria-label="Play the MailMind film">
+                        <span class="play-dot"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg></span>
+                        <span class="play-label">Watch the film <span class="g">1:00</span></span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ MARQUEE ============ -->
+        <section class="marquee" aria-label="Examples of action items MailMind finds">
+            <div class="track">
+                <div class="lane">
+                    <span><i style="--c:#5e5ce6"></i>Send Sarah the final proposal</span>
+                    <span><i style="--c:#34c759"></i>Sign the lease renewal</span>
+                    <span><i style="--c:#0a84ff"></i>Pull Q3 numbers for Mark</span>
+                    <span><i style="--c:#ff9f0a"></i>Sign up for team snacks</span>
+                    <span><i style="--c:#ff375f"></i>RSVP to Jordan's wedding</span>
+                    <span><i style="--c:#bf5af2"></i>Submit reading response</span>
+                    <span><i style="--c:#30b0c7"></i>Confirm dentist on Tuesday</span>
+                    <span><i style="--c:#5e5ce6"></i>Review Priya's pull request</span>
+                </div>
+                <div class="lane" aria-hidden="true">
+                    <span><i style="--c:#5e5ce6"></i>Send Sarah the final proposal</span>
+                    <span><i style="--c:#34c759"></i>Sign the lease renewal</span>
+                    <span><i style="--c:#0a84ff"></i>Pull Q3 numbers for Mark</span>
+                    <span><i style="--c:#ff9f0a"></i>Sign up for team snacks</span>
+                    <span><i style="--c:#ff375f"></i>RSVP to Jordan's wedding</span>
+                    <span><i style="--c:#bf5af2"></i>Submit reading response</span>
+                    <span><i style="--c:#30b0c7"></i>Confirm dentist on Tuesday</span>
+                    <span><i style="--c:#5e5ce6"></i>Review Priya's pull request</span>
+                </div>
+            </div>
+            <div class="track reverse" aria-hidden="true">
+                <div class="lane">
+                    <span><i style="--c:#ff9f0a"></i>Pay the water bill by the 15th</span>
+                    <span><i style="--c:#0a84ff"></i>Book flights for Denver</span>
+                    <span><i style="--c:#34c759"></i>Reply to the recruiter</span>
+                    <span><i style="--c:#ff375f"></i>Send Mom the photos</span>
+                    <span><i style="--c:#bf5af2"></i>Renew your passport</span>
+                    <span><i style="--c:#30b0c7"></i>Approve the Q4 budget</span>
+                    <span><i style="--c:#5e5ce6"></i>Pick up the dry cleaning</span>
+                    <span><i style="--c:#ff9f0a"></i>Schedule the 1:1 with Alex</span>
+                </div>
+                <div class="lane">
+                    <span><i style="--c:#ff9f0a"></i>Pay the water bill by the 15th</span>
+                    <span><i style="--c:#0a84ff"></i>Book flights for Denver</span>
+                    <span><i style="--c:#34c759"></i>Reply to the recruiter</span>
+                    <span><i style="--c:#ff375f"></i>Send Mom the photos</span>
+                    <span><i style="--c:#bf5af2"></i>Renew your passport</span>
+                    <span><i style="--c:#30b0c7"></i>Approve the Q4 budget</span>
+                    <span><i style="--c:#5e5ce6"></i>Pick up the dry cleaning</span>
+                    <span><i style="--c:#ff9f0a"></i>Schedule the 1:1 with Alex</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ NUMBER ============ -->
+        <section class="band">
+            <p class="eyebrow reveal">You have</p>
+            <p class="big-number reveal" id="count" data-to="1284">1,284</p>
+            <p class="band-sub reveal">unread emails. <span class="accent-grad">Four of them matter.</span><br>
+                <span class="g">MailMind finds them.</span></p>
+        </section>
+
+        <!-- ============ STORY (sticky scroll) ============ -->
+        <section class="story" id="story">
+            <div class="story-stage">
+                <div class="story-head">
+                    <p class="kicker">How it works</p>
+                    <h2 class="story-title">
+                        <span class="st st-a">It reads your email.</span>
+                        <span class="st st-b">And writes your <span class="accent-grad">to-do list.</span></span>
+                    </h2>
+                </div>
+                <div class="story-grid">
+                    <div class="mails">
+                        <article class="mail-card" data-i="0">
+                            <div class="mc-head"><span class="av" style="background:#5e5ce6">S</span>
+                                <div><div class="mc-from">Sarah Chen</div><div class="mc-subj">Proposal feedback</div></div></div>
+                            <p class="mc-body">Loved the draft! Could you <mark>send the final version by Thursday</mark> so we can get it signed?</p>
+                        </article>
+                        <article class="mail-card" data-i="1">
+                            <div class="mc-head"><span class="av" style="background:#34c759">O</span>
+                                <div><div class="mc-from">Oakwood Properties</div><div class="mc-subj">Lease renewal</div></div></div>
+                            <p class="mc-body">Your lease ends Oct 31. Please <mark>sign the renewal form by Friday</mark> to keep your rate.</p>
+                        </article>
+                        <article class="mail-card" data-i="2">
+                            <div class="mc-head"><span class="av" style="background:#0a84ff">M</span>
+                                <div><div class="mc-from">Mark Rivera</div><div class="mc-subj">Q3 numbers</div></div></div>
+                            <p class="mc-body">Quick one — can you <mark>pull the Q3 numbers before Monday's</mark> meeting?</p>
+                        </article>
+                        <article class="mail-card" data-i="3">
+                            <div class="mc-head"><span class="av" style="background:#ff9f0a">D</span>
+                                <div><div class="mc-from">Coach Dana</div><div class="mc-subj">Saturday game</div></div></div>
+                            <p class="mc-body">Heads up: <mark>snack sign-ups close tonight</mark>. Thanks, team!</p>
+                        </article>
+                    </div>
+                    <div class="list-card">
+                        <div class="lc-top">
+                            <div><div class="lc-title">Today</div><div class="lc-date">Your 7:00 AM digest</div></div>
+                            <img src="{{ url_for('static', filename='imgs/logo.svg') }}" alt="" width="36" height="36">
+                        </div>
+                        <ul class="lc-rows">
+                            <li data-i="0"><span class="ck"></span><span class="rt">Send Sarah the final proposal</span><span class="due">Thu</span></li>
+                            <li data-i="1"><span class="ck"></span><span class="rt">Sign the lease renewal</span><span class="due">Fri</span></li>
+                            <li data-i="2"><span class="ck"></span><span class="rt">Pull Q3 numbers for Mark</span><span class="due">Mon</span></li>
+                            <li data-i="3"><span class="ck"></span><span class="rt">Sign up for team snacks</span><span class="due hot">Today</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="story-progress" aria-hidden="true"><span id="story-bar"></span></div>
+            </div>
+        </section>
+
+        <!-- ============ STEPS ============ -->
+        <section class="how">
+            <h2 class="section-title reveal">It just <span class="accent-grad">works.</span></h2>
+            <div class="steps">
+                <div class="steps-line" aria-hidden="true"><span></span></div>
+                <div class="step reveal">
+                    <span class="num">01</span>
+                    <h3>Join.</h3>
+                    <p>Request a spot in the beta. When you're in, sign in with Google or Microsoft. That's the whole setup.</p>
+                </div>
+                <div class="step reveal">
+                    <span class="num">02</span>
+                    <h3>It reads.</h3>
+                    <p>A fine-tuned model reads the last day of email and pulls out the real asks.</p>
+                </div>
+                <div class="step reveal">
+                    <span class="num">03</span>
+                    <h3>You do.</h3>
+                    <p>One email, at the time you choose, with just what needs you. Nothing else.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ BENTO ============ -->
+        <section class="bento">
+            <div class="tile t-app reveal">
+                <p class="tile-kicker">Delivered, not viewed</p>
+                <h3>No app<br>to open.</h3>
+                <p class="tile-copy">Your list arrives in the inbox you already check.</p>
+                <div class="phone-mini" aria-hidden="true">
+                    <div class="pm-time">7:00</div>
+                    <div class="pm-date">Tuesday, October 6</div>
+                    <div class="pm-notif">
+                        <img src="{{ url_for('static', filename='imgs/logo.svg') }}" alt="" width="30" height="30">
+                        <div><b>MailMind</b> <span class="g">now</span><br>Your day, in one email.<br><span class="g">4 things need you today.</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="tile t-inbox reveal">
+                <p class="tile-kicker">Every account</p>
+                <h3>All your inboxes.<br><span class="accent-grad">One list.</span></h3>
+                <div class="orbit" aria-hidden="true">
+                    <div class="orbit-ring"></div>
+                    <img class="orbit-core" src="{{ url_for('static', filename='imgs/logo.svg') }}" alt="" width="54" height="54">
+                    <div class="orbit-arm" style="--a:0deg"><span><i style="--c:#ff375f"></i>Gmail</span></div>
+                    <div class="orbit-arm" style="--a:90deg"><span><i style="--c:#0a84ff"></i>Outlook</span></div>
+                    <div class="orbit-arm" style="--a:180deg"><span><i style="--c:#34c759"></i>Work</span></div>
+                    <div class="orbit-arm" style="--a:270deg"><span><i style="--c:#bf5af2"></i>School</span></div>
+                </div>
+            </div>
+            <div class="tile t-noise reveal">
+                <p class="tile-kicker">Quiet by design</p>
+                <h3>No noise.</h3>
+                <div class="noise-list" aria-hidden="true">
+                    <span class="n">40% off everything — today only</span>
+                    <span class="n">Your weekly roundup is here</span>
+                    <span class="keep"><b>Sign the lease renewal</b><em>Fri</em></span>
+                    <span class="n">You have 12 new notifications</span>
+                    <span class="n">Receipt for your order #20931</span>
+                </div>
+            </div>
+            <div class="tile t-time reveal">
+                <div>
+                    <p class="tile-kicker">On your schedule</p>
+                    <h3>Up to three digests a day. Whenever you want them.</h3>
+                </div>
+                <div class="clock-row" aria-hidden="true">
+                    <svg class="clock" viewBox="0 0 100 100" width="120" height="120">
+                        <circle cx="50" cy="50" r="46" fill="#fff" stroke="#e8e8ed" stroke-width="2"/>
+                        <g stroke="#d2d2d7" stroke-width="2" stroke-linecap="round">
+                            <line x1="50" y1="9" x2="50" y2="15"/><line x1="91" y1="50" x2="85" y2="50"/>
+                            <line x1="50" y1="91" x2="50" y2="85"/><line x1="9" y1="50" x2="15" y2="50"/>
+                        </g>
+                        <line class="hand-h" x1="50" y1="50" x2="50" y2="30" stroke="#1d1d1f" stroke-width="4" stroke-linecap="round"/>
+                        <line class="hand-m" x1="50" y1="50" x2="50" y2="18" stroke="#ff6a2b" stroke-width="3" stroke-linecap="round"/>
+                        <circle cx="50" cy="50" r="3.5" fill="#1d1d1f"/>
+                    </svg>
+                    <div class="times"><span>7:00 AM</span><span>12:30 PM</span><span>5:00 PM</span></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ CLOSING ============ -->
+        <section class="closing">
+            <div class="aurora small" aria-hidden="true"><i></i><i></i><i></i></div>
+            <p class="kicker reveal">Private beta · Limited spots</p>
+            <h2 class="closing-title reveal">Your inbox,<br><span class="shimmer">handled.</span></h2>
+            <div class="hero-cta reveal">
+                <a class="beta-btn big" href="{{ beta_url }}">
+                    <span class="beta-ring" aria-hidden="true"></span>
+                    <span class="beta-label">Join the beta</span>
+                    <span class="beta-arrow" aria-hidden="true">&rarr;</span>
+                </a>
+                <p class="signin-line">Already in? Sign in with
+                    <a href="{{ url_for('google_login') }}">Google</a> or
+                    <a href="{{ url_for('microsoft_login') }}">Microsoft</a>.</p>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <a href="{{ url_for('index') }}" class="foot-brand">MailMind</a>
+        <span class="foot-links">
+            <a href="{{ beta_url }}">Join the beta</a>
             <a href="{{ url_for('contact') }}">Contact</a>
             <a href="{{ url_for('terms_and_privacy') }}">Terms &amp; Privacy</a>
-        </div>
-        <div class="empty"></div>
-    </div>
-
-    <div class="wrapper">
-        <div class="hero">
-            <div class="herocontainer">
-                <h1 class="smarter">Your inbox, as a to-do list.</h1>
-                <h1 class="turn">Every morning, MailMind emails you the <span class="todo">action items</span>
-                    hiding in the last 24 hours of your inbox.</h1>
-
-                <div style="display:flex;flex-direction:column;gap:12px;align-items:flex-start;margin-top:20px;">
-                    <a href="{{ url_for('google_login') }}"
-                       style="display:inline-block;padding:14px 22px;background:#fff;color:#171524;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.3);">
-                        Sign in with Google
-                    </a>
-                    <a href="{{ url_for('microsoft_login') }}"
-                       style="display:inline-block;padding:14px 22px;background:#0067b8;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.3);">
-                        Sign in with Microsoft
-                    </a>
-                    <p style="color:#aaa;font-size:13px;margin-top:6px;">
-                        Sign-in creates your account. No password required.
-                    </p>
-                </div>
-            </div>
-            <div class="email-ui">
-                <div class="action-item">
-                    Follow up with Sarah about the proposal
-                </div>
-                <div class="email-preview">
-                    <div class="sender">From: sarah@client.com</div>
-                    <div class="subject">Subject: Proposal Feedback</div>
-                    <p class="email">
-                        Hey! Just wanted to follow up on the proposal I sent last week.
-                        Let me know if you have any questions or if you'd like to jump on a call. -Sarah
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        <div class="cards">
-            <div class="card">
-                <img src="{{ url_for('static', filename='imgs/to-do-svgrepo-com.svg') }}" class="cardimg" alt="">
-                <h2 class="cardheader">Delivered, not viewed</h2>
-                <p class="carddescription">
-                    Your daily to-do list arrives in your inbox at the time you pick.
-                    Nothing to log into.
-                </p>
-            </div>
-            <div class="card">
-                <img src="{{ url_for('static', filename='imgs/list-1540-svgrepo-com.svg') }}" class="cardimg" alt="">
-                <h2 class="cardheader">Custom AI</h2>
-                <p class="carddescription">
-                    A fine-tuned model reads your emails and pulls out the concrete
-                    asks — no marketing noise, no notifications, no fluff.
-                </p>
-            </div>
-            <div class="card slight">
-                <img src="{{ url_for('static', filename='imgs/files-svgrepo-com.svg') }}" class="cardimg" alt="">
-                <h2 class="cardheader">Multiple inboxes</h2>
-                <p class="carddescription">
-                    Link as many Google or Outlook accounts as you have. One digest,
-                    one list, one inbox to check.
-                </p>
-            </div>
-        </div>
-    </div>
-    <footer>
-        <a href="{{ url_for('terms_and_privacy') }}">Terms of Use and Privacy Policy</a>
+        </span>
     </footer>
+
+    <script>
+    (function () {
+        var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var clamp = function (x, a, b) { return Math.min(b, Math.max(a, x)); };
+
+        // Reveal on scroll
+        var els = document.querySelectorAll('.reveal');
+        if (!('IntersectionObserver' in window) || reduce) {
+            els.forEach(function (el) { el.classList.add('in'); });
+        } else {
+            var io = new IntersectionObserver(function (entries) {
+                entries.forEach(function (e) {
+                    if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+                });
+            }, { threshold: 0.18 });
+            els.forEach(function (el) { io.observe(el); });
+        }
+
+        // Count-up
+        var count = document.getElementById('count');
+        if (count && 'IntersectionObserver' in window && !reduce) {
+            var to = +count.dataset.to;
+            count.textContent = '0';
+            new IntersectionObserver(function (entries, obs) {
+                if (!entries[0].isIntersecting) return;
+                obs.disconnect();
+                var t0 = performance.now();
+                (function step(now) {
+                    var x = clamp((now - t0) / 1800, 0, 1);
+                    count.textContent = Math.round(to * (1 - Math.pow(2, -10 * x))).toLocaleString('en-US');
+                    if (x < 1) requestAnimationFrame(step); else count.textContent = to.toLocaleString('en-US');
+                })(t0);
+            }, { threshold: 0.6 }).observe(count);
+        }
+
+        // Scroll-driven pieces
+        var nav = document.getElementById('nav');
+        var film = document.getElementById('film-stage');
+        var story = document.getElementById('story');
+        var mails = story.querySelectorAll('.mail-card');
+        var rows = story.querySelectorAll('.lc-rows li');
+        var bar = document.getElementById('story-bar');
+        var steps = document.querySelector('.steps');
+
+        function onScroll() {
+            var vh = window.innerHeight, y = window.scrollY;
+            nav.classList.toggle('scrolled', y > 24);
+
+            // film flattens out of a tilt as it rises into view
+            var fr = film.getBoundingClientRect();
+            var fp = clamp(1 - (fr.top - vh * 0.12) / (vh * 0.75), 0, 1);
+            film.style.setProperty('--p', reduce ? 1 : fp);
+
+            // story: 4 emails -> 4 rows across the sticky section
+            var sr = story.getBoundingClientRect();
+            var sp = reduce ? 1 : clamp(-sr.top / (sr.height - vh), 0, 1);
+            story.style.setProperty('--sp', sp);
+            story.classList.toggle('phase-b', sp > 0.55);
+            bar.style.transform = 'scaleX(' + sp + ')';
+            var seg = 1 / 4.4;
+            mails.forEach(function (m, i) {
+                var local = clamp((sp - i * seg) / seg, 0, 1);
+                var hl = clamp((local - 0.12) / 0.4, 0, 1);
+                m.style.setProperty('--hl', hl);
+                var active = sp >= i * seg && (i === 3 ? true : sp < (i + 1) * seg);
+                var gone = !active && sp >= (i + 1) * seg;
+                m.classList.toggle('active', active);
+                m.classList.toggle('gone', gone);
+            });
+            rows.forEach(function (r, i) {
+                var on = sp >= i * seg + seg * 0.62;
+                r.classList.toggle('on', on);
+            });
+            rows[0].classList.toggle('done', sp > 0.93);
+
+            // steps connector
+            if (steps) {
+                var st = steps.getBoundingClientRect();
+                steps.style.setProperty('--lp', clamp((vh * 0.8 - st.top) / (st.height + vh * 0.2), 0, 1));
+            }
+        }
+        var ticking = false;
+        window.addEventListener('scroll', function () {
+            if (!ticking) { ticking = true; requestAnimationFrame(function () { onScroll(); ticking = false; }); }
+        }, { passive: true });
+        window.addEventListener('resize', onScroll);
+        onScroll();
+
+        // Spotlight that follows the cursor on tiles
+        document.querySelectorAll('.tile').forEach(function (tile) {
+            tile.addEventListener('pointermove', function (e) {
+                var r = tile.getBoundingClientRect();
+                tile.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+                tile.style.setProperty('--my', (e.clientY - r.top) + 'px');
+            });
+        });
+
+        // Film: poster + play button, native controls once playing
+        var video = document.getElementById('film-video');
+        var play = document.getElementById('film-play');
+        play.addEventListener('click', function () {
+            video.controls = true;
+            video.play();
+            play.classList.add('hidden');
+        });
+        video.addEventListener('ended', function () {
+            video.controls = false;
+            play.classList.remove('hidden');
+        });
+    })();
+    </script>
 </body>
 </html>

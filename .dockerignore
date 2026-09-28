@@ -49,3 +49,6 @@ map.md
 
 # Fly runtime state
 fly.toml
+
+# Marketing sources (film render scripts, master video)
+marketing/

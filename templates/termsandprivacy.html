@@ -5,12 +5,13 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Terms / Privacy Policy</title>
         <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
-        <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='imgs/logo.svg') }}">
+    <link rel="alternate icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
         <style>
             .main-content { max-width: 720px; margin: 40px auto; padding: 0 20px; }
-            .modal-content { background: rgba(58, 53, 96, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
-            .modal-content h2 { color: #e6d7a3; margin-top: 0; }
-            .modal-content p { color: #f0f0f0; white-space: pre-line; }
+            .modal-content { background: #fff; border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); padding: 24px; margin-bottom: 20px; }
+            .modal-content h2 { margin-top: 0; }
+            .modal-content p { color: var(--ink-2); white-space: pre-line; }
         </style>
     </head>
     <body>

@@ -15,8 +15,14 @@ def test_public_pages_render(client):
 def test_landing_shows_oauth_buttons(client):
     resp = client.get("/")
     assert resp.status_code == 200
-    assert b"Sign in with Google" in resp.data
-    assert b"Sign in with Microsoft" in resp.data
+    assert b'href="/google/login"' in resp.data
+    assert b'href="/microsoft/login"' in resp.data
+
+
+def test_landing_points_to_beta_signup(client):
+    resp = client.get("/")
+    assert b"Join the beta" in resp.data
+    assert b'href="https://mailmind.fly.dev/request_access"' in resp.data
 
 
 def test_no_password_login_form_exists(client):
