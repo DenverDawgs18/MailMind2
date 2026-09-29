@@ -3,24 +3,31 @@ Email forwarding: users forward mail to a private MailMind address instead of
 granting Gmail API access (whose restricted scopes need Google's security
 assessment).
 
-Inbound mail arrives via a Postmark inbound webhook. Configuration (all env):
+Mail is received and sent through Mailgun. Configuration (all env):
 
-    INBOUND_ADDRESS_TEMPLATE  e.g. "a1b2c3+{token}@inbound.postmarkapp.com"
-                              or "{token}@in.yourdomain.com" with a custom domain
-    INBOUND_WEBHOOK_USER      basic-auth credentials Postmark sends with each
-    INBOUND_WEBHOOK_PASSWORD  webhook (put them in the webhook URL)
-    POSTMARK_SERVER_TOKEN     outbound API token, for sending digests
-    DIGEST_FROM_ADDRESS       e.g. "MailMind <list@yourdomain.com>" (verified in Postmark)
+    INBOUND_ADDRESS_TEMPLATE      e.g. "{token}@mail.yourdomain.com" (a Mailgun
+                                  receiving domain; MX records point at Mailgun)
+    MAILGUN_WEBHOOK_SIGNING_KEY   verifies inbound route forwards
+    MAILGUN_API_KEY               sending API key
+    MAILGUN_DOMAIN                sending domain, e.g. "mail.yourdomain.com"
+    MAILGUN_API_BASE              optional; "https://api.eu.mailgun.net" for EU accounts
+    DIGEST_FROM_ADDRESS           e.g. "MailMind <list@mail.yourdomain.com>"
+
+Mailgun route: match_recipient(".*@mail.yourdomain.com") ->
+forward("https://mailmind.fly.dev/inbound/mailgun"), stop().
 
 Forwarding is enabled once the inbound settings exist; digests for users with
-no directly-connected inbox go out through Postmark once the outbound
-settings exist.
+no directly-connected inbox go out through Mailgun once the sending settings
+exist.
 """
+import hashlib
 import hmac
+import json
 import logging
 import os
 import re
 import secrets
+import time
 from email.utils import getaddresses, parseaddr
 
 import requests
@@ -29,8 +36,10 @@ from functions.get_emails import _normalize_whitespace, html_converter, is_diges
 
 logger = logging.getLogger(__name__)
 
-POSTMARK_SEND_URL = "https://api.postmarkapp.com/email"
 MAX_BODY_CHARS = 20000
+# Mailgun retries failed forwards for up to 8 hours; accept signatures within
+# a generous window and rely on token de-duplication against replays.
+SIGNATURE_MAX_AGE_SECONDS = 12 * 3600
 _TOKEN_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"  # lowercase, no look-alikes
 
 GMAIL_FORWARDING_SENDER = "forwarding-noreply@google.com"
@@ -41,11 +50,11 @@ def _env(name):
 
 
 def forwarding_enabled() -> bool:
-    return bool(_env("INBOUND_ADDRESS_TEMPLATE") and _env("INBOUND_WEBHOOK_PASSWORD"))
+    return bool(_env("INBOUND_ADDRESS_TEMPLATE") and _env("MAILGUN_WEBHOOK_SIGNING_KEY"))
 
 
 def outbound_enabled() -> bool:
-    return bool(_env("POSTMARK_SERVER_TOKEN") and _env("DIGEST_FROM_ADDRESS"))
+    return bool(_env("MAILGUN_API_KEY") and _env("MAILGUN_DOMAIN") and _env("DIGEST_FROM_ADDRESS"))
 
 
 def new_token() -> str:
@@ -69,50 +78,70 @@ def is_our_address(address: str) -> bool:
     return bool(pattern and pattern.match((address or "").strip().lower()))
 
 
-def check_webhook_auth(authorization) -> bool:
-    """Constant-time check of the webhook's HTTP basic-auth credentials."""
-    expected_user = _env("INBOUND_WEBHOOK_USER")
-    expected_pass = _env("INBOUND_WEBHOOK_PASSWORD")
-    if not authorization or not expected_pass:
+# ---------------------------------------------------------------------------
+# Verifying Mailgun's signature
+# ---------------------------------------------------------------------------
+
+def verify_mailgun_signature(timestamp: str, token: str, signature: str, now: float | None = None) -> bool:
+    key = _env("MAILGUN_WEBHOOK_SIGNING_KEY")
+    if not (key and timestamp and token and signature):
         return False
-    user_ok = hmac.compare_digest(authorization.username or "", expected_user)
-    pass_ok = hmac.compare_digest(authorization.password or "", expected_pass)
-    return user_ok and pass_ok
+    try:
+        age = (now or time.time()) - int(timestamp)
+    except ValueError:
+        return False
+    if abs(age) > SIGNATURE_MAX_AGE_SECONDS:
+        return False
+    expected = hmac.new(key.encode(), f"{timestamp}{token}".encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
 
 
 # ---------------------------------------------------------------------------
-# Parsing Postmark's inbound JSON
+# Normalising Mailgun's inbound form
 # ---------------------------------------------------------------------------
 
-def _headers(payload) -> dict:
-    return {h.get("Name", "").lower(): h.get("Value", "") for h in payload.get("Headers") or []}
+def from_mailgun(form) -> dict:
+    """Turn Mailgun's route-forward form into the provider-neutral shape used below."""
+    try:
+        header_pairs = json.loads(form.get("message-headers") or "[]")
+    except ValueError:
+        header_pairs = []
+    headers = {}
+    for pair in header_pairs:
+        if isinstance(pair, (list, tuple)) and len(pair) == 2:
+            headers.setdefault(str(pair[0]).lower(), str(pair[1]))
+
+    name, addr = parseaddr(form.get("from") or "")
+    recipients = [a for _, a in getaddresses([form.get("recipient") or "", form.get("To") or ""]) if a]
+    return {
+        "recipients": recipients,
+        "sender_email": (addr or form.get("sender") or "").strip(),
+        "sender_name": name.strip(),
+        "subject": form.get("subject") or "",
+        "text": form.get("body-plain") or "",
+        "html": form.get("body-html") or "",
+        "headers": headers,
+    }
 
 
-def extract_token(payload) -> str | None:
-    """Which user this message is for: Postmark's MailboxHash, else a recipient match."""
-    mailbox_hash = (payload.get("MailboxHash") or "").strip().lower()
-    if mailbox_hash and re.fullmatch(r"[a-z0-9]+", mailbox_hash):
-        return mailbox_hash
-
+def extract_token(msg) -> str | None:
+    """Which user this message is for, from the recipient address."""
     pattern = _address_pattern()
     if pattern is None:
         return None
-    recipients = [payload.get("OriginalRecipient") or ""]
-    for field in ("ToFull", "CcFull", "BccFull"):
-        recipients += [r.get("Email", "") for r in payload.get(field) or []]
-    for address in recipients:
+    for address in msg["recipients"]:
         m = pattern.match(address.strip().lower())
         if m:
             return m.group(1)
     return None
 
 
-def source_address(payload, fallback: str) -> str:
+def source_address(msg, fallback: str) -> str:
     """
     The inbox the mail was forwarded from. Gmail auto-forwarding adds
     X-Forwarded-For: <user's address> <our address>.
     """
-    headers = _headers(payload)
+    headers = msg["headers"]
     for candidate in (headers.get("x-forwarded-for", "") or "").split():
         _, addr = parseaddr(candidate)
         if "@" in addr and not is_our_address(addr):
@@ -123,76 +152,73 @@ def source_address(payload, fallback: str) -> str:
     return fallback
 
 
-def gmail_confirmation(payload):
+def gmail_confirmation(msg):
     """
     If this is Gmail's forwarding confirmation, return (code, from_address).
     Subject: "(#123456789) Gmail Forwarding Confirmation - Receive Mail from you@gmail.com"
     """
-    sender = (payload.get("FromFull") or {}).get("Email") or payload.get("From") or ""
-    if GMAIL_FORWARDING_SENDER not in sender.lower():
+    if GMAIL_FORWARDING_SENDER not in msg["sender_email"].lower():
         return None
-    subject = payload.get("Subject") or ""
-    body = payload.get("TextBody") or ""
-    code = re.search(r"\(#(\d{6,12})\)", subject) or re.search(r"[Cc]onfirmation code:\s*(\d{6,12})", body)
+    subject = msg["subject"]
+    code = re.search(r"\(#(\d{6,12})\)", subject) or re.search(r"[Cc]onfirmation code:\s*(\d{6,12})", msg["text"])
     if not code:
         return None
     who = re.search(r"from\s+([^\s]+@[^\s]+)", subject)
     return code.group(1), (who.group(1).strip(".,") if who else "")
 
 
-def parse_message(payload, fallback_source: str) -> dict | None:
-    """Normalise a forwarded email; None if it should be ignored."""
-    headers = _headers(payload)
-    subject = payload.get("Subject") or ""
+def parse_message(msg, fallback_source: str) -> dict | None:
+    """Prepare a forwarded email for the queue; None if it should be ignored."""
+    headers = msg["headers"]
+    subject = msg["subject"]
     if is_digest(subject, {"X-MailMind-Digest": headers.get("x-mailmind-digest")}):
         return None
 
-    body = payload.get("TextBody") or ""
-    if not body.strip() and payload.get("HtmlBody"):
-        body = html_converter.handle(payload["HtmlBody"])
+    body = msg["text"]
+    if not body.strip() and msg["html"]:
+        body = html_converter.handle(msg["html"])
     body = _normalize_whitespace(body)[:MAX_BODY_CHARS]
     if not body:
         return None
 
-    from_full = payload.get("FromFull") or {}
-    name, addr = from_full.get("Name") or "", from_full.get("Email") or payload.get("From") or ""
+    name, addr = msg["sender_name"], msg["sender_email"]
     sender = f"{name} <{addr}>" if name else addr
 
     return {
-        "source_email": source_address(payload, fallback_source),
+        "source_email": source_address(msg, fallback_source),
         "sender": sender[:512],
         "subject": subject,
         "body": body,
-        "message_id": (headers.get("message-id") or payload.get("MessageID") or "")[:998] or None,
+        "message_id": (headers.get("message-id") or "")[:998] or None,
     }
 
 
 # ---------------------------------------------------------------------------
-# Sending digests through Postmark
+# Sending digests through Mailgun
 # ---------------------------------------------------------------------------
 
-def send_via_postmark(to_address: str, subject: str, html_body: str, digest_header: str) -> bool:
+def send_digest_email(to_address: str, subject: str, html_body: str, digest_header: str) -> bool:
     if not outbound_enabled():
-        logger.error("Postmark outbound isn't configured; can't deliver digest")
+        logger.error("Mailgun sending isn't configured; can't deliver digest")
         return False
+    base = (_env("MAILGUN_API_BASE") or "https://api.mailgun.net").rstrip("/")
     try:
         resp = requests.post(
-            POSTMARK_SEND_URL,
-            headers={"X-Postmark-Server-Token": _env("POSTMARK_SERVER_TOKEN"), "Accept": "application/json"},
-            json={
-                "From": _env("DIGEST_FROM_ADDRESS"),
-                "To": to_address,
-                "Subject": subject,
-                "HtmlBody": html_body,
-                "MessageStream": "outbound",
-                "Headers": [{"Name": digest_header, "Value": "1"}],
+            f"{base}/v3/{_env('MAILGUN_DOMAIN')}/messages",
+            auth=("api", _env("MAILGUN_API_KEY")),
+            data={
+                "from": _env("DIGEST_FROM_ADDRESS"),
+                "to": to_address,
+                "subject": subject,
+                "html": html_body,
+                f"h:{digest_header}": "1",
             },
             timeout=30,
         )
     except requests.RequestException as exc:
-        logger.error("Postmark send failed: %s", exc)
+        logger.error("Mailgun send failed: %s", exc)
         return False
     if resp.status_code != 200:
-        logger.error("Postmark send returned %s", resp.status_code)
+        logger.error("Mailgun send returned %s", resp.status_code)
         return False
     return True

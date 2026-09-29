@@ -9,7 +9,7 @@ the public surface:
     /microsoft/login|callback Microsoft OAuth
     /list                     today's list (check items off)
     /settings                 forwarding, inboxes, delivery schedule, billing, account
-    /inbound/postmark         forwarded mail (Postmark inbound webhook)
+    /inbound/mailgun          forwarded mail (Mailgun route forward)
     /settings/accounts/<id>/remove
     /settings/delete          delete the MailMind account
     /subscribe, /create-checkout-session, /create-portal-session, /webhook
@@ -161,8 +161,8 @@ from functions.refresh_token import (  # noqa: E402
 )
 from functions.users import create_email, create_master  # noqa: E402
 from functions.forwarding import (  # noqa: E402
-    address_for, check_webhook_auth, extract_token, forwarding_enabled, gmail_confirmation, new_token,
-    parse_message,
+    SIGNATURE_MAX_AGE_SECONDS, address_for, extract_token, forwarding_enabled, from_mailgun,
+    gmail_confirmation, new_token, parse_message, verify_mailgun_signature,
 )
 from models import (  # noqa: E402
     Digest, DigestItem, EmailAccount, ForwardingAddress, Identity, InboundEmail, Master,
@@ -654,33 +654,49 @@ def _forwarding_for(master):
     return master.forwarding
 
 
-@app.route("/inbound/postmark", methods=["POST"])
+def _seen_webhook_token(token):
+    """Replay protection: remember Mailgun tokens for the signature window."""
+    if _redis_client is None:
+        return False
+    try:
+        return not _redis_client.set(f"mailmind:mg-token:{token}", "1", nx=True, ex=SIGNATURE_MAX_AGE_SECONDS)
+    except Exception:
+        logger.warning("Redis unavailable for webhook replay check", exc_info=True)
+        return False
+
+
+@app.route("/inbound/mailgun", methods=["POST"])
 @csrf.exempt
-def inbound_postmark():
-    """Postmark inbound webhook: one forwarded email per request."""
+def inbound_mailgun():
+    """Mailgun route forward: one forwarded email per request."""
     if not forwarding_enabled():
         return "Not found", 404
-    if not check_webhook_auth(request.authorization):
-        return "Unauthorized", 401, {"WWW-Authenticate": 'Basic realm="inbound"'}
+    form = request.form
+    token_field = form.get("token", "")
+    if not verify_mailgun_signature(form.get("timestamp", ""), token_field, form.get("signature", "")):
+        # 406 tells Mailgun not to retry.
+        return "Bad signature", 406
+    if _seen_webhook_token(token_field):
+        return jsonify({"status": "duplicate"})
 
-    payload = request.get_json(silent=True) or {}
-    token = extract_token(payload)
+    msg = from_mailgun(form)
+    token = extract_token(msg)
     fwd = ForwardingAddress.query.filter_by(token=token).first() if token else None
     if fwd is None:
-        # Unknown address: accept and drop so Postmark doesn't retry.
+        # Unknown address: accept and drop so Mailgun doesn't retry.
         logger.info("Inbound mail for unknown forwarding token")
         return jsonify({"status": "ignored"})
 
     fwd.last_received_at = datetime.now(timezone.utc)
 
-    confirmation = gmail_confirmation(payload)
+    confirmation = gmail_confirmation(msg)
     if confirmation:
         fwd.confirmation_code, fwd.confirmation_for = confirmation
         fwd.confirmation_at = datetime.now(timezone.utc)
         db.session.commit()
         return jsonify({"status": "confirmation"})
 
-    message = parse_message(payload, fallback_source=fwd.master.primary_email)
+    message = parse_message(msg, fallback_source=fwd.master.primary_email)
     if message is None:
         db.session.commit()
         return jsonify({"status": "ignored"})

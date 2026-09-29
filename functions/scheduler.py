@@ -42,7 +42,7 @@ from app import app, db
 from functions.get_emails import DIGEST_HEADER, DIGEST_SUBJECT_PREFIX, get_emails
 from functions.get_one_action import get_an_action
 from functions.refresh_token import TokenRefreshError, refresh
-from functions.forwarding import outbound_enabled, send_via_postmark
+from functions.forwarding import outbound_enabled, send_digest_email
 from models import (
     DIGEST_RETENTION_DAYS, INBOUND_MAX_AGE_HOURS, Digest, DigestItem, InboundEmail, Master, PendingItem,
 )
@@ -507,7 +507,7 @@ def send_email_summary_for_user(user: Master, site_url: str) -> Dict[str, Any]:
 
         # Send from the user's primary inbox when it's connected directly (so
         # the list arrives from themselves); otherwise, e.g. forwarding-only
-        # users, send through Postmark from MailMind's address.
+        # users, send through Mailgun from MailMind's address.
         primary = next((a for a in user.email_accounts if a.email == user.primary_email), None)
         if primary is None or primary.id not in tokens:
             primary = next((a for a in user.email_accounts if a.id in tokens), None)
@@ -523,7 +523,7 @@ def send_email_summary_for_user(user: Master, site_url: str) -> Dict[str, Any]:
         if primary is not None:
             sent = _send_html_email(primary.email, tokens[primary.id], primary.provider, subject, html)
         else:
-            sent = send_via_postmark(user.primary_email, subject, html, DIGEST_HEADER)
+            sent = send_digest_email(user.primary_email, subject, html, DIGEST_HEADER)
         if sent:
             digest.delivered = True
             db.session.commit()
