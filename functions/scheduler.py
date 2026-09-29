@@ -36,7 +36,7 @@ from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from jinja2 import Environment
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 
 from app import app, db
 from functions.get_emails import DIGEST_HEADER, DIGEST_SUBJECT_PREFIX, get_emails
@@ -159,13 +159,13 @@ _DIGEST_TEMPLATE = """
 
         <tr><td style="background:#ffffff;border-radius:24px;padding:36px 32px 28px;border:1px solid #e8e8ed;">
           <p style="margin:0;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#d9480f;">{{ current_date }}</p>
-          <h1 style="margin:8px 0 6px;font-size:34px;line-height:1.1;letter-spacing:-1.2px;font-weight:800;color:#1d1d1f;">Good morning.</h1>
-          <p style="margin:0 0 24px;font-size:17px;color:#6e6e73;">{{ action_count }} thing{{ 's' if action_count != 1 else '' }} need{{ '' if action_count != 1 else 's' }} you today.</p>
+          <h1 style="margin:8px 0 6px;font-size:34px;line-height:1.1;letter-spacing:-1.2px;font-weight:800;color:#1d1d1f;">Here&rsquo;s your list.</h1>
+          <p style="margin:0 0 24px;font-size:17px;color:#6e6e73;">{% if action_count %}{{ action_count }} thing{{ 's' if action_count != 1 else '' }} need{{ '' if action_count != 1 else 's' }} you.{% else %}Nothing needs you right now.{% endif %}</p>
 
           {% for notice in notices %}
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;">
             <tr><td style="background:#fff1ea;border-radius:14px;padding:14px 16px;font-size:15px;color:#d9480f;">
-              We couldn't read <strong>{{ notice }}</strong>. <a href="{{ site_url }}/settings" style="color:#d9480f;font-weight:700;">Reconnect it</a> so it's included tomorrow.
+              We couldn't read <strong>{{ notice }}</strong>. <a href="{{ site_url }}/settings" style="color:#d9480f;font-weight:700;">Reconnect it</a> so it's in your next list.
             </td></tr>
           </table>
           {% endfor %}
@@ -401,7 +401,7 @@ def _users_to_process() -> List[Master]:
         and_(
             Master.timezone.isnot(None),
             Master.time.isnot(None),
-            Master.subscribed.is_(True),
+            or_(Master.subscribed.is_(True), Master.comp_until > now),
         )
     ).all()
 

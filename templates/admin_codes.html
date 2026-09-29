@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% from "_macros.html" import aurora %}
+{% block title %}Invite codes — MailMind{% endblock %}
+{% block content %}
+{{ aurora() }}
+<div class="page">
+    <div class="page-head rise">
+        <p class="kicker">Admin</p>
+        <h1 class="page-title">Invite <span class="shimmer">codes.</span></h1>
+        <p class="lede">Give anyone free access. Send them the link; they sign in and they're in.</p>
+    </div>
+
+    <section class="card rise" style="animation-delay:.06s">
+        <div class="card-head"><div><h2>New code</h2><p class="hint">Leave a box blank for no limit.</p></div></div>
+        <form method="post" action="{{ url_for('admin_codes') }}" class="admin-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="field">
+                <label for="note">Who it's for</label>
+                <input type="text" id="note" name="note" maxlength="255" placeholder="Sam from the climbing gym">
+            </div>
+            <div class="field">
+                <label for="code">Custom code</label>
+                <input type="text" id="code" name="code" maxlength="32" placeholder="Random if blank" autocapitalize="characters" spellcheck="false">
+            </div>
+            <div class="field">
+                <label for="max_uses">Number of people</label>
+                <input type="number" id="max_uses" name="max_uses" min="1" value="1">
+            </div>
+            <div class="field">
+                <label for="access_days">Free access for (days)</label>
+                <input type="number" id="access_days" name="access_days" min="1" placeholder="Forever">
+            </div>
+            <div class="field">
+                <label for="valid_days">Code works for (days)</label>
+                <input type="number" id="valid_days" name="valid_days" min="1" placeholder="Until you turn it off">
+            </div>
+            <div class="card-foot"><button type="submit" class="btn btn-primary">Create code</button></div>
+        </form>
+    </section>
+
+    <section class="card rise" id="codes" style="animation-delay:.1s">
+        <div class="card-head"><div><h2>Codes</h2></div></div>
+        {% if not codes %}<p class="hint">No codes yet.</p>{% endif %}
+        <ul class="admin-list">
+            {% for c in codes %}
+            {% set link = DOMAIN ~ url_for('invite_link', raw_code=c.code) %}
+            <li class="admin-row{% if c.id == new_id %} fresh{% endif %}">
+                <div class="admin-main">
+                    <p><b class="mono">{{ c.code | pretty_code }}</b>
+                        {% set reason = c.unusable_reason() %}
+                        {% if reason %}<span class="tag">{{ 'Off' if not c.active else ('Expired' if 'expired' in reason else 'Used up') }}</span>{% else %}<span class="tag ok">Live</span>{% endif %}
+                        {% if c.note %}<span class="admin-note">{{ c.note }}</span>{% endif %}
+                    </p>
+                    <p class="hint">
+                        {{ c.uses }}{% if c.max_uses %} of {{ c.max_uses }}{% endif %} used
+                        · {{ 'Free forever' if c.access_days is none else c.access_days ~ ' days free' }}
+                        {% if c.expires_at %}· code works until {{ c.expires_at.strftime('%b %-d, %Y') }}{% endif %}
+                    </p>
+                    <div class="copy-row">
+                        <input type="text" readonly value="{{ link }}" aria-label="Invite link for {{ c.code | pretty_code }}">
+                        <button type="button" class="btn btn-secondary btn-sm" data-copy="{{ link }}">Copy link</button>
+                    </div>
+                    {% if c.redeemed_by %}<p class="hint">Used by {{ c.redeemed_by | map(attribute='primary_email') | join(', ') }}</p>{% endif %}
+                </div>
+                <form method="post" action="{{ url_for('admin_toggle_code', code_id=c.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-secondary btn-sm">{{ 'Turn off' if c.active else 'Turn on' }}</button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+
+    <section class="card rise" id="people" style="animation-delay:.14s">
+        <div class="card-head"><div><h2>People</h2><p class="hint">Everyone with a MailMind account.</p></div></div>
+        <ul class="admin-list">
+            {% for m in people %}
+            <li class="admin-row">
+                <div class="admin-main">
+                    <p><b>{{ m.primary_email }}</b></p>
+                    <p class="hint">
+                        {% if m.subscribed %}Paying subscriber{% endif %}
+                        {% if m.subscribed and m.comped %} · {% endif %}
+                        {% if m.comped_forever %}Free forever{% elif m.comped %}Free until {{ m.comp_until.strftime('%b %-d, %Y') }}{% endif %}
+                        {% if not m.has_access %}No access{% endif %}
+                        {% if m.access_code %} · code {{ m.access_code.code | pretty_code }}{% endif %}
+                    </p>
+                </div>
+                {% if m.comped %}
+                <form method="post" action="{{ url_for('admin_revoke_access', master_id=m.id) }}"
+                      onsubmit="return confirm('Remove free access for {{ m.primary_email }}?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger btn-sm">Remove free access</button>
+                </form>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll('[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy link'; }, 1600); };
+        if (navigator.clipboard) { navigator.clipboard.writeText(btn.dataset.copy).then(done); }
+        else { btn.previousElementSibling.select(); document.execCommand('copy'); done(); }
+    });
+});
+</script>
+{% endblock %}

@@ -6,13 +6,18 @@
 <div class="page narrow center">
     <div class="rise">
         <img class="big-mark" src="{{ url_for('static', filename='imgs/logo.svg') }}" alt="" width="84" height="84">
+        {% if invite %}
+        <h1 class="page-title">You're <span class="shimmer">invited.</span></h1>
+        <p class="lede">Sign in to accept your invite. No password needed.</p>
+        {% else %}
         <h1 class="page-title">Welcome <span class="shimmer">back.</span></h1>
         <p class="lede">Sign in with the inbox you use for MailMind. No password needed.</p>
+        {% endif %}
     </div>
     <div class="card auth-card rise" style="animation-delay:.12s">
         {{ provider_buttons() }}
         {% if forwarding_on %}<p class="fine">Signing in with Google only shares your name and email address. You'll forward mail to MailMind in the next step.</p>{% endif %}
-        <p class="fine">New here? MailMind is in private beta. <a href="{{ url_for('request_access') }}">Request access</a>.</p>
+        {% if not invite %}<p class="fine">New here? MailMind is in private beta. <a href="{{ url_for('request_access') }}">Request access</a>.</p>{% endif %}
         <p class="fine">By continuing you agree to the <a href="{{ url_for('terms_and_privacy') }}">Terms &amp; Privacy Policy</a>.</p>
     </div>
 </div>

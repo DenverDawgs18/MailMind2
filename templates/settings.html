@@ -182,23 +182,28 @@
             <section class="card rise" id="plan" style="animation-delay:.15s">
                 <div class="card-head"><div><h2>Plan</h2></div></div>
                 <div class="plan">
-                    <span class="plan-dot{% if not current_user.subscribed %} off{% endif %}"></span>
+                    <span class="plan-dot{% if not current_user.has_access %} off{% endif %}"></span>
                     <div>
-                        {% if current_user.subscribed and current_user.temp %}
-                            <b>Beta access</b><p class="hint">Free while MailMind is in beta. Thanks for testing.</p>
-                        {% elif current_user.subscribed %}
+                        {% if current_user.subscribed %}
                             <b>MailMind monthly</b><p class="hint">Your subscription is active.</p>
+                        {% elif current_user.comped_forever %}
+                            <b>Free access</b><p class="hint">You were invited to MailMind, with no end date. Enjoy.</p>
+                        {% elif current_user.comped %}
+                            <b>Free access</b><p class="hint">Your invite runs until {{ current_user.comp_until.strftime('%B %-d, %Y') }}. <a href="{{ url_for('subscribe') }}">Subscribe</a> any time to keep your list coming after that.</p>
                         {% else %}
                             <b>No active plan</b><p class="hint">Subscribe to keep your list coming.</p>
                         {% endif %}
                     </div>
                 </div>
-                {% if current_user.stripe_customer_id and not current_user.temp %}
+                {% if current_user.stripe_customer_id or is_admin %}
                 <div class="card-foot">
+                    {% if is_admin %}<a class="btn btn-secondary" href="{{ url_for('admin_codes') }}">Invite codes</a>{% endif %}
+                    {% if current_user.stripe_customer_id %}
                     <form method="POST" action="{{ url_for('customer_portal') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-secondary">Manage billing</button>
                     </form>
+                    {% endif %}
                 </div>
                 {% endif %}
             </section>

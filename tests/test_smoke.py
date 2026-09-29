@@ -38,6 +38,8 @@ def _login_as(app, client, primary_email="me@example.com", subscribed=True, acco
         uid = m.id
     with client.session_transaction() as sess:
         sess["_user_id"] = str(uid)
+    from flask import g
+    g.pop("_login_user", None)  # flask-login caches the user on the shared app context
     return uid, ids
 
 
@@ -586,23 +588,132 @@ def test_scheduler_stores_list_and_purges_old(app, monkeypatch):
 # Beta code & billing
 # ---------------------------------------------------------------------------
 
-def test_code_route_grants_temp(app, client, monkeypatch):
-    monkeypatch.setenv("TEMP_CODE", "letmein")
-    _login_as(app, client, primary_email="beta@x.com", subscribed=False)
-    resp = client.post("/code", data={"code": "letmein"})
-    assert resp.status_code == 302
-    from models import Master
+def _make_code(app, code="FRIENDS1", **kw):
+    from app import db as _db
+    from models import AccessCode
     with app.app_context():
-        m = Master.query.filter_by(primary_email="beta@x.com").one()
-        assert m.subscribed is True and m.temp is True
+        c = AccessCode(code=code, **kw)
+        _db.session.add(c)
+        _db.session.commit()
+        return c.id
 
 
-def test_wrong_code_is_rejected(app, client, monkeypatch):
-    monkeypatch.setenv("TEMP_CODE", "letmein")
-    monkeypatch.delenv("CODE", raising=False)
+def _master(app, email):
+    from models import Master
+    return Master.query.filter_by(primary_email=email).one()
+
+
+def test_invite_code_grants_free_access_forever(app, client):
+    _make_code(app, "FRIENDS1", max_uses=2)
+    _login_as(app, client, primary_email="beta@x.com", subscribed=False)
+    assert client.get("/list").status_code == 302  # no access yet
+
+    resp = client.post("/code", data={"code": "frie-nds1 "})  # case, spaces and dashes don't matter
+    assert resp.status_code == 302 and resp.headers["Location"].endswith("/settings")
+    m = _master(app, "beta@x.com")
+    assert m.comped_forever and m.has_access and not m.subscribed
+    assert m.access_code.uses == 1
+    assert client.get("/list").status_code == 200
+    assert b"Free access" in client.get("/settings").data
+
+
+def test_used_up_off_and_unknown_codes_are_rejected(app, client):
+    from datetime import datetime, timedelta, timezone
+    _make_code(app, "ONCEONLY", max_uses=1, uses=1)
+    _make_code(app, "SWITCHEDOFF", active=False)
+    _make_code(app, "OLDCODE", expires_at=datetime.now(timezone.utc) - timedelta(days=1))
     _login_as(app, client, primary_email="nope@x.com", subscribed=False)
-    resp = client.post("/code", data={"code": "guess"})
-    assert resp.status_code == 400
+    for code, words in (("ONCEONLY", b"already been used"), ("SWITCHEDOFF", b"switched off"),
+                        ("OLDCODE", b"expired"), ("guess", b"didn&#39;t work")):
+        resp = client.post("/code", data={"code": code})
+        assert resp.status_code == 400 and words in resp.data, code
+    assert not _master(app, "nope@x.com").has_access
+
+
+def test_timed_code_expires(app, client):
+    from datetime import datetime, timedelta, timezone
+    from app import db as _db
+    _make_code(app, "TRIAL30", access_days=30)
+    _login_as(app, client, primary_email="t@x.com", subscribed=False)
+    client.post("/code", data={"code": "TRIAL30"})
+    m = _master(app, "t@x.com")
+    left = m.comp_until.replace(tzinfo=m.comp_until.tzinfo or timezone.utc) - datetime.now(timezone.utc)
+    assert timedelta(days=29) < left <= timedelta(days=30) and not m.comped_forever
+
+    m.comp_until = datetime.now(timezone.utc) - timedelta(minutes=1)
+    _db.session.commit()
+    assert not m.has_access
+    assert client.get("/list").headers["Location"].endswith("/subscribe")
+
+
+def test_invite_link_survives_sign_in(app, client):
+    _make_code(app, "LINKCODE")
+    resp = client.get("/i/linkcode")
+    assert resp.headers["Location"].endswith("/login")
+    assert b"invited" in client.get("/login").data
+    _login_as(app, client, primary_email="link@x.com", subscribed=False)
+    page = client.get("/code").data
+    assert b'value="LINK-CODE"' in page and b"invite is" in page
+
+
+def test_stripe_cancellation_leaves_free_access_alone(app, client, monkeypatch):
+    import app as app_module
+    from app import db as _db
+    from models import FOREVER, Master
+    m = Master(primary_email="both@x.com", subscribed=True, temp=False, stripe_customer_id="cus_9",
+               comp_until=FOREVER)
+    _db.session.add(m)
+    _db.session.commit()
+    event = {"type": "customer.subscription.deleted", "data": {"object": {"customer": "cus_9", "status": "canceled"}}}
+    monkeypatch.setattr(app_module.stripe.Webhook, "construct_event", lambda **k: event)
+    assert client.post("/webhook", data="{}", headers={"stripe-signature": "t=1,v1=x"}).status_code == 200
+    _db.session.refresh(m)
+    assert not m.subscribed and m.has_access
+
+
+def test_admin_codes_page_is_admin_only(app, client, monkeypatch):
+    monkeypatch.setenv("ADMIN_EMAILS", "boss@x.com")
+    _login_as(app, client, primary_email="someone@x.com")
+    assert client.get("/admin/codes").status_code == 404
+    assert client.post("/admin/codes", data={"note": "x"}).status_code == 404
+
+
+def test_admin_creates_toggles_and_revokes(app, client, monkeypatch):
+    from app import db as _db
+    from models import AccessCode
+    monkeypatch.setenv("ADMIN_EMAILS", "Boss@x.com, other@x.com")
+    _login_as(app, client, primary_email="boss@x.com")
+    assert b"Invite codes" in client.get("/settings").data
+
+    resp = client.post("/admin/codes", data={"note": "Sam", "max_uses": "3", "access_days": "", "valid_days": "7"})
+    assert resp.status_code == 303
+    code = AccessCode.query.one()
+    assert len(code.code) == 8 and code.max_uses == 3 and code.access_days is None and code.expires_at
+    page = client.get("/admin/codes").data
+    assert f"/i/{code.code}".encode() in page and b"Sam" in page
+
+    assert client.post("/admin/codes", data={"code": "no!"}).status_code == 303
+    assert client.post("/admin/codes", data={"max_uses": "lots"}).status_code == 303
+    client.post("/admin/codes", data={"code": "vip-2026"})
+    assert AccessCode.query.filter_by(code="VIP2026").one()
+    assert AccessCode.query.count() == 2
+
+    client.post(f"/admin/codes/{code.id}/toggle")
+    _db.session.refresh(code)
+    assert code.active is False
+
+    code.active = True
+    _db.session.commit()
+    guest_client = app.test_client()
+    uid, _ = _login_as(app, guest_client, primary_email="guest@x.com", subscribed=False)
+    guest_client.post("/code", data={"code": code.code})
+    assert _master(app, "guest@x.com").comped
+    from flask import g
+    g.pop("_login_user", None)
+    assert client.post(f"/admin/people/{uid}/revoke").status_code == 303
+    guest = _master(app, "guest@x.com")
+    _db.session.refresh(guest)
+    assert not guest.has_access
 
 
 def test_checkout_ignores_client_supplied_price(app, client, monkeypatch):
@@ -665,7 +776,7 @@ def test_digest_render_escapes_email_content():
           "items": [{"action": "<script>x</script>", "from": "Sam", "subject": "Hi", "calendar_url": None}]}],
         ["b@x.com"], "a@x.com", "https://mailmind.test", "Tuesday, October 6")
     assert "<script>x</script>" not in html and "&lt;script&gt;" in html
-    assert "Reconnect it" in html and "1 thing needs you today" in html
+    assert "Reconnect it" in html and "1 thing needs you." in html and "Here&rsquo;s your list." in html and "morning" not in html
 
 
 def test_microsoft_digest_is_sent_through_graph(monkeypatch):

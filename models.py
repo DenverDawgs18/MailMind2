@@ -24,10 +24,67 @@ class Master(db.Model, UserMixin):
     )
     time = db.Column(db.Text())
     timezone = db.Column(db.Text())
+    # Set only by Stripe webhooks: an active or trialing subscription.
     subscribed = db.Column(db.Boolean, default=False, nullable=False)
-    # Whether this account was comped via TEMP_CODE during beta.
+    # Legacy beta flag; access granted by codes now lives in comp_until.
     temp = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=_utcnow)
+    # Free access from an invite code (or granted by hand) lasts until this
+    # moment; FOREVER for no end date. Independent of Stripe.
+    comp_until = db.Column(db.DateTime(timezone=True))
+    access_code_id = db.Column(
+        db.Integer, db.ForeignKey('access_code.id', ondelete='SET NULL'), index=True
+    )
+    access_code = db.relationship('AccessCode', backref=db.backref('redeemed_by', order_by='Master.id'))
+
+    @property
+    def comped(self) -> bool:
+        if self.comp_until is None:
+            return False
+        until = self.comp_until if self.comp_until.tzinfo else self.comp_until.replace(tzinfo=timezone.utc)
+        return until > _utcnow()
+
+    @property
+    def comped_forever(self) -> bool:
+        return self.comped and self.comp_until.year >= FOREVER.year
+
+    @property
+    def has_access(self) -> bool:
+        return bool(self.subscribed or self.comped)
+
+
+# "No end date" for comped access.
+FOREVER = datetime(9999, 12, 31, tzinfo=timezone.utc)
+
+
+class AccessCode(db.Model):
+    """
+    An invite code the owner hands out for free access. Codes can be limited
+    to a number of uses, stop working after a date, grant access for a fixed
+    number of days (or forever), and be switched off at any time.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(64), unique=True, nullable=False, index=True)  # stored upper-case
+    note = db.Column(db.String(255))            # who it's for, e.g. "Sam from the climbing gym"
+    max_uses = db.Column(db.Integer)            # None = unlimited
+    uses = db.Column(db.Integer, default=0, nullable=False)
+    access_days = db.Column(db.Integer)         # None = forever
+    expires_at = db.Column(db.DateTime(timezone=True))  # code stops working after this
+    active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=_utcnow)
+
+    def unusable_reason(self):
+        """None if the code can be redeemed now, otherwise why not."""
+        if not self.active:
+            return "That code has been switched off."
+        if self.expires_at is not None:
+            exp = self.expires_at if self.expires_at.tzinfo else self.expires_at.replace(tzinfo=timezone.utc)
+            if exp <= _utcnow():
+                return "That code has expired."
+        if self.max_uses is not None and self.uses >= self.max_uses:
+            return "That code has already been used."
+        return None
 
 
 class EmailAccount(db.Model):

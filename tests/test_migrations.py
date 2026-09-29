@@ -50,6 +50,8 @@ def test_fresh_database(tmp_path):
     assert {"token", "confirmation_code", "last_received_at"} <= _columns(conn, "forwarding_address")
     assert {"body", "source_email", "message_id"} <= _columns(conn, "inbound_email")
     assert {"action", "source_email"} <= _columns(conn, "pending_item")
+    assert {"code", "max_uses", "uses", "access_days", "expires_at", "active"} <= _columns(conn, "access_code")
+    assert {"comp_until", "access_code_id"} <= _columns(conn, "master")
 
 
 def test_legacy_database_is_adopted_without_data_loss(tmp_path):
@@ -80,3 +82,7 @@ def test_legacy_database_is_adopted_without_data_loss(tmp_path):
     assert accounts == [(10, "google", 0, None), (11, "microsoft", 0, None)]
     assert conn.execute("SELECT item FROM todo").fetchone() == ("keep me",)
     assert "username" in _columns(conn, "master")  # legacy columns kept, just unused
+    # People let in by the old shared beta codes keep access as comped-forever;
+    # `subscribed` is left to Stripe.
+    access = {row[0]: row[1:] for row in conn.execute("SELECT id, subscribed, comp_until IS NOT NULL FROM master")}
+    assert access == {1: (0, 0), 2: (0, 1), 3: (0, 1)}

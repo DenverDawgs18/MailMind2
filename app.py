@@ -18,10 +18,12 @@ the public surface:
     /logout                   (POST)
 """
 import base64
+import functools
 import hashlib
 import hmac
 import logging
 import os
+import re
 import secrets
 import urllib.parse
 from datetime import datetime, timedelta, timezone
@@ -30,7 +32,7 @@ import pytz
 import requests
 import stripe
 from flask import (
-    Flask, flash, jsonify, redirect, render_template, request, session, url_for,
+    Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for,
 )
 from flask_login import (
     LoginManager,
@@ -156,11 +158,15 @@ def redirect_to_canonical_host():
 def inject_globals():
     from flask_wtf.csrf import generate_csrf
     from functions.forwarding import forwarding_enabled as _fwd_on
-    return {"csrf_token": generate_csrf, "DOMAIN": DOMAIN, "forwarding_on": _fwd_on()}
+    return {"csrf_token": generate_csrf, "DOMAIN": DOMAIN, "forwarding_on": _fwd_on(),
+            "is_admin": is_admin(current_user)}
 
 
 stripe.api_key = os.getenv("STRIPE_API_KEY")
 STRIPE_PRICE_LOOKUP_KEY = os.getenv("STRIPE_PRICE_LOOKUP_KEY", "One_Month_of_MailMind-ae39e51")
+
+from functions.stripe_setup import register as _register_stripe_setup  # noqa: E402
+_register_stripe_setup(app, DOMAIN, STRIPE_PRICE_LOOKUP_KEY)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -183,7 +189,8 @@ from functions.forwarding import (  # noqa: E402
     gmail_confirmation, new_token, parse_message, verify_mailgun_signature,
 )
 from models import (  # noqa: E402
-    Digest, DigestItem, EmailAccount, ForwardingAddress, Identity, InboundEmail, Master,
+    FOREVER, AccessCode, Digest, DigestItem, EmailAccount, ForwardingAddress, Identity, InboundEmail,
+    Master,
 )
 
 # ---------------------------------------------------------------------------
@@ -307,7 +314,7 @@ def index():
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('todo_list'))
-    return render_template('login.html')
+    return render_template('login.html', invite=session.get("invite_code"))
 
 
 @app.route("/request_access")
@@ -609,7 +616,7 @@ def _finish_oauth(provider: str, subject: str, user_email: str, refresh_token):
     db.session.commit()
     _start_session_for(master)
 
-    if not master.subscribed:
+    if not master.has_access:
         return redirect(url_for('code'))
     return redirect(url_for('todo_list'))
 
@@ -653,7 +660,7 @@ def _finish_signin(provider: str, subject: str, user_email: str):
     db.session.commit()
     _start_session_for(master)
 
-    if not master.subscribed:
+    if not master.has_access:
         return redirect(url_for('code'))
     return redirect(url_for('todo_list'))
 
@@ -826,7 +833,7 @@ def clock_filter(dt):
 @app.route("/list")
 @login_required
 def todo_list():
-    if not current_user.subscribed:
+    if not current_user.has_access:
         return redirect(url_for('subscribe'))
 
     latest = (Digest.query.filter_by(master_id=current_user.id)
@@ -915,7 +922,7 @@ MAX_DELIVERY_TIMES = 3
 @app.route("/settings", methods=["GET", "POST"])
 @login_required
 def settings():
-    if not current_user.subscribed:
+    if not current_user.has_access:
         return redirect(url_for('subscribe'))
 
     if request.method == "POST":
@@ -1010,7 +1017,7 @@ def delete_mailmind_account():
 @app.route("/subscribe")
 @login_required
 def subscribe():
-    if current_user.subscribed:
+    if current_user.subscribed or current_user.comped_forever:
         return redirect(url_for('settings'))
     return render_template("subscribe.html")
 
@@ -1021,6 +1028,8 @@ def create_checkout_session():
     if not request.form.get("accept_tos"):
         flash("Please accept the Terms of Service to continue.", "error")
         return redirect(url_for('subscribe')), 303
+    if current_user.subscribed:
+        return redirect(url_for('settings')), 303
     try:
         prices = stripe.Price.list(lookup_keys=[STRIPE_PRICE_LOOKUP_KEY], expand=['data.product'])
         if not prices.data:
@@ -1038,6 +1047,7 @@ def create_checkout_session():
             success_url=DOMAIN + url_for('settings'),
             cancel_url=DOMAIN + url_for('subscribe'),
             subscription_data={'trial_period_days': 7},
+            allow_promotion_codes=True,
         )
         return redirect(checkout_session.url, code=303)
     except Exception:
@@ -1105,40 +1115,173 @@ def webhook_received():
 
 
 # ---------------------------------------------------------------------------
-# Beta access code
+# Invite codes
 # ---------------------------------------------------------------------------
 
-def _code_matches(submitted, expected):
-    return bool(expected) and hmac.compare_digest(str(submitted or ""), str(expected))
+_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I/L
+_CUSTOM_CODE_RE = re.compile(r"^[A-Z0-9]{4,32}$")
+
+
+def _admin_emails():
+    return {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
+
+
+def is_admin(user) -> bool:
+    return bool(getattr(user, "is_authenticated", False)) and user.primary_email.lower() in _admin_emails()
+
+
+def admin_required(view):
+    @functools.wraps(view)
+    def wrapped(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return login_manager.unauthorized()
+        if not is_admin(current_user):
+            abort(404)
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def normalize_code(raw) -> str:
+    return re.sub(r"[\s\-]", "", str(raw or "")).upper()
+
+
+def new_access_code() -> str:
+    while True:
+        candidate = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(8))
+        if AccessCode.query.filter_by(code=candidate).first() is None:
+            return candidate
+
+
+def pretty_code(code: str) -> str:
+    return f"{code[:4]}-{code[4:]}" if len(code) == 8 else code
+
+
+app.jinja_env.filters["pretty_code"] = pretty_code
+
+
+def redeem_access_code(master, raw):
+    """Apply an invite code to `master`. Returns (ok, message)."""
+    wanted = normalize_code(raw)
+    code = AccessCode.query.filter_by(code=wanted).with_for_update().first() if wanted else None
+    if code is None:
+        return False, "That code didn't work. Check it and try again."
+    reason = code.unusable_reason()
+    if reason:
+        return False, reason
+    if master.access_code_id == code.id and master.comped:
+        return True, "That code is already active on your account."
+
+    now = datetime.now(timezone.utc)
+    if code.access_days is None or master.comped_forever:
+        until = FOREVER
+    else:
+        start = master.comp_until if master.comped else now
+        start = start if start.tzinfo else start.replace(tzinfo=timezone.utc)
+        until = start + timedelta(days=code.access_days)
+    master.comp_until = until
+    master.access_code = code
+    code.uses += 1
+    db.session.commit()
+    logger.info("Access code %s redeemed by master %s", code.id, master.id)
+    return True, "You're in. Pick when you'd like your list delivered."
+
+
+@app.route("/i/<raw_code>")
+def invite_link(raw_code):
+    """Shareable invite link: remembers the code through sign-in, then offers to apply it."""
+    session["invite_code"] = normalize_code(raw_code)[:64]
+    if current_user.is_authenticated:
+        return redirect(url_for('code'))
+    return redirect(url_for('login'))
 
 
 @app.route("/code", methods=["POST", "GET"])
 @login_required
 def code():
-    if current_user.subscribed:
+    if current_user.subscribed or current_user.comped_forever:
+        session.pop("invite_code", None)
         return redirect(url_for('settings'))
     if request.method != "POST":
-        return render_template("code.html", message=None)
+        return render_template("code.html", message=None, prefill=pretty_code(session.get("invite_code") or ""))
 
-    submitted = (request.form.get("code") or "").strip()
-    real_code = os.getenv("CODE")
-
-    if _code_matches(submitted, os.getenv("TEMP_CODE")):
-        logger.info("TEMP CODE granted to master %s", current_user.id)
-        current_user.subscribed = True
-        current_user.temp = True
-        db.session.commit()
-        flash("You're in. Pick when you'd like your list delivered.", "success")
+    ok, message = redeem_access_code(current_user, request.form.get("code"))
+    if ok:
+        session.pop("invite_code", None)
+        flash(message, "success")
         return redirect(url_for('settings'))
+    return render_template("code.html", message=message, prefill=request.form.get("code", "")), 400
 
-    if real_code != "DISABLED" and _code_matches(submitted, real_code):
-        logger.info("CODE granted to master %s", current_user.id)
-        current_user.subscribed = True
+
+# ---------------------------------------------------------------------------
+# Admin: invite codes and who has access
+# ---------------------------------------------------------------------------
+
+def _optional_int(name, lo, hi):
+    raw = (request.form.get(name) or "").strip()
+    if not raw:
+        return None
+    value = int(raw)  # ValueError handled by caller
+    if not lo <= value <= hi:
+        raise ValueError(name)
+    return value
+
+
+@app.route("/admin/codes", methods=["GET", "POST"])
+@admin_required
+def admin_codes():
+    if request.method == "POST":
+        try:
+            max_uses = _optional_int("max_uses", 1, 100000)
+            access_days = _optional_int("access_days", 1, 3650)
+            valid_days = _optional_int("valid_days", 1, 3650)
+        except ValueError:
+            flash("Uses and days must be whole numbers (leave blank for no limit).", "error")
+            return redirect(url_for('admin_codes')), 303
+
+        custom = normalize_code(request.form.get("code"))
+        if custom and not _CUSTOM_CODE_RE.match(custom):
+            flash("Custom codes are 4–32 letters and numbers.", "error")
+            return redirect(url_for('admin_codes')), 303
+        if custom and AccessCode.query.filter_by(code=custom).first():
+            flash(f"{custom} already exists.", "error")
+            return redirect(url_for('admin_codes')), 303
+
+        code_row = AccessCode(
+            code=custom or new_access_code(),
+            note=(request.form.get("note") or "").strip()[:255] or None,
+            max_uses=max_uses,
+            access_days=access_days,
+            expires_at=(datetime.now(timezone.utc) + timedelta(days=valid_days)) if valid_days else None,
+        )
+        db.session.add(code_row)
         db.session.commit()
-        flash("You're in. Pick when you'd like your list delivered.", "success")
-        return redirect(url_for('settings'))
+        flash(f"Created {pretty_code(code_row.code)}.", "success")
+        return redirect(url_for('admin_codes', new=code_row.id)), 303
 
-    return render_template("code.html", message="That code didn't work. Check it and try again."), 400
+    codes = AccessCode.query.order_by(AccessCode.created_at.desc(), AccessCode.id.desc()).all()
+    people = Master.query.order_by(Master.created_at.desc(), Master.id.desc()).all()
+    return render_template("admin_codes.html", codes=codes, people=people,
+                           new_id=request.args.get("new", type=int), now=datetime.now(timezone.utc))
+
+
+@app.route("/admin/codes/<int:code_id>/toggle", methods=["POST"])
+@admin_required
+def admin_toggle_code(code_id):
+    code_row = db.session.get(AccessCode, code_id) or abort(404)
+    code_row.active = not code_row.active
+    db.session.commit()
+    flash(f"{pretty_code(code_row.code)} is {'on' if code_row.active else 'off'}.", "success")
+    return redirect(url_for('admin_codes')), 303
+
+
+@app.route("/admin/people/<int:master_id>/revoke", methods=["POST"])
+@admin_required
+def admin_revoke_access(master_id):
+    master = db.session.get(Master, master_id) or abort(404)
+    master.comp_until = None
+    db.session.commit()
+    flash(f"Removed free access for {master.primary_email}.", "success")
+    return redirect(url_for('admin_codes') + "#people"), 303
 
 
 # ---------------------------------------------------------------------------

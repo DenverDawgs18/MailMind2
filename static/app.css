@@ -308,3 +308,24 @@ section[id] { scroll-margin-top: 100px; }
     .fwd-address code { font-size: 14px; white-space: normal; word-break: break-all; }
     .fwd-code { flex-direction: column; }
 }
+
+/* ---------- admin: invite codes ---------- */
+.admin-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 20px; }
+.admin-form .field + .field { margin-top: 0; }
+.admin-form .field:first-of-type, .admin-form .card-foot { grid-column: 1 / -1; }
+.admin-form input[type="number"] { width: 100%; }
+.admin-list { list-style: none; margin: 0; padding: 0; }
+.admin-row { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; padding: 18px 0; border-top: 1px solid var(--line); }
+.admin-row:first-child { border-top: none; padding-top: 4px; }
+.admin-row.fresh { background: var(--accent-soft); margin: 0 -16px; padding: 18px 16px; border-radius: 14px; }
+.admin-main { min-width: 0; flex: 1; }
+.admin-main p { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.admin-main .hint { margin-top: 6px; display: block; }
+.admin-note { color: var(--gray); font-weight: 550; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; }
+.copy-row { display: flex; gap: 8px; margin-top: 12px; }
+.copy-row input { flex: 1; min-width: 0; font-size: 14px !important; color: var(--gray); }
+@media (max-width: 640px) {
+    .admin-form { grid-template-columns: 1fr; }
+    .admin-row { flex-direction: column; }
+}
