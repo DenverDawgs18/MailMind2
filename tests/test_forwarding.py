@@ -1,5 +1,7 @@
 """Email forwarding: inbound webhook, queue processing, delivery, and basic sign-in."""
 import base64
+import json
+import os
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
@@ -7,15 +9,14 @@ import pytest
 
 from tests.test_smoke import _login_as, anon
 
-TEMPLATE = "hash123+{token}@inbound.postmarkapp.com"
-AUTH = {"Authorization": "Basic " + base64.b64encode(b"postmark:s3cret").decode()}
+TEMPLATE = "{token}@mail.mailmind.test"
+SIGNING_KEY = "mg-signing-key"
 
 
 @pytest.fixture
 def forwarding_env(monkeypatch):
     monkeypatch.setenv("INBOUND_ADDRESS_TEMPLATE", TEMPLATE)
-    monkeypatch.setenv("INBOUND_WEBHOOK_USER", "postmark")
-    monkeypatch.setenv("INBOUND_WEBHOOK_PASSWORD", "s3cret")
+    monkeypatch.setenv("MAILGUN_WEBHOOK_SIGNING_KEY", SIGNING_KEY)
 
 
 def _forwarding_user(app, email="fwd@example.com", token="abc123def456"):
@@ -29,16 +30,32 @@ def _forwarding_user(app, email="fwd@example.com", token="abc123def456"):
     return m
 
 
-def _payload(token="abc123def456", **overrides):
-    p = {
-        "From": "sarah@client.com", "FromFull": {"Email": "sarah@client.com", "Name": "Sarah Chen"},
-        "To": f"hash123+{token}@inbound.postmarkapp.com", "MailboxHash": token,
-        "Subject": "Proposal feedback", "TextBody": "Could you send the final version by Thursday?",
-        "Headers": [{"Name": "X-Forwarded-For", "Value": f"me@gmail.com hash123+{token}@inbound.postmarkapp.com"},
-                    {"Name": "Message-ID", "Value": "<m1@client.com>"}],
+def _sign(form, key=SIGNING_KEY, timestamp=None, token=None):
+    import hashlib
+    import hmac
+    import time
+    ts = str(int(timestamp if timestamp is not None else time.time()))
+    tok = token or base64.b16encode(os.urandom(12)).decode().lower()
+    form.update(timestamp=ts, token=tok,
+                signature=hmac.new(key.encode(), f"{ts}{tok}".encode(), hashlib.sha256).hexdigest())
+    return form
+
+
+def _form(token="abc123def456", headers=None, **overrides):
+    headers = headers if headers is not None else [
+        ["X-Forwarded-For", f"me@gmail.com {token}@mail.mailmind.test"],
+        ["Message-Id", "<m1@client.com>"],
+    ]
+    form = {
+        "recipient": f"{token}@mail.mailmind.test",
+        "sender": "sarah@client.com",
+        "from": "Sarah Chen <sarah@client.com>",
+        "subject": "Proposal feedback",
+        "body-plain": "Could you send the final version by Thursday?",
+        "message-headers": json.dumps(headers),
     }
-    p.update(overrides)
-    return p
+    form.update(overrides)
+    return _sign(form)
 
 
 # ---------------------------------------------------------------------------
@@ -46,19 +63,22 @@ def _payload(token="abc123def456", **overrides):
 # ---------------------------------------------------------------------------
 
 def test_webhook_is_off_until_configured(client):
-    assert client.post("/inbound/postmark", json=_payload()).status_code == 404
+    assert client.post("/inbound/mailgun", data=_form()).status_code == 404
 
 
-def test_webhook_requires_basic_auth(client, forwarding_env):
-    assert client.post("/inbound/postmark", json=_payload()).status_code == 401
-    bad = {"Authorization": "Basic " + base64.b64encode(b"postmark:nope").decode()}
-    assert client.post("/inbound/postmark", json=_payload(), headers=bad).status_code == 401
+def test_webhook_rejects_bad_or_stale_signatures(client, forwarding_env):
+    assert client.post("/inbound/mailgun", data=_sign(_form(), key="wrong-key")).status_code == 406
+    stale = _sign(_form(), timestamp=1_000_000_000)
+    assert client.post("/inbound/mailgun", data=stale).status_code == 406
+    unsigned = _form()
+    unsigned.pop("signature")
+    assert client.post("/inbound/mailgun", data=unsigned).status_code == 406
 
 
 def test_webhook_queues_forwarded_mail(app, client, forwarding_env):
     from models import InboundEmail
     m = _forwarding_user(app)
-    resp = client.post("/inbound/postmark", json=_payload(), headers=AUTH)
+    resp = client.post("/inbound/mailgun", data=_form())
     assert resp.get_json() == {"status": "queued"}
     row = InboundEmail.query.filter_by(master_id=m.id).one()
     assert row.source_email == "me@gmail.com"
@@ -66,45 +86,56 @@ def test_webhook_queues_forwarded_mail(app, client, forwarding_env):
     assert "final version" in row.body
     assert m.forwarding.last_received_at is not None
 
-    # Same Message-ID again (e.g. a Postmark retry) isn't queued twice.
-    client.post("/inbound/postmark", json=_payload(), headers=AUTH)
+    # Same Message-Id again (e.g. a Mailgun retry) isn't queued twice.
+    client.post("/inbound/mailgun", data=_form())
     assert InboundEmail.query.filter_by(master_id=m.id).count() == 1
 
 
-def test_webhook_matches_recipient_without_mailbox_hash(app, client, monkeypatch, forwarding_env):
-    monkeypatch.setenv("INBOUND_ADDRESS_TEMPLATE", "{token}@in.mailmind.test")
+def test_webhook_rejects_replayed_tokens(app, client, forwarding_env):
+    import app as app_module
+    from tests.conftest import _FakeRedis
+    app_module._redis_client = _FakeRedis()
+    try:
+        _forwarding_user(app)
+        form = _form()
+        assert client.post("/inbound/mailgun", data=form).get_json()["status"] == "queued"
+        assert client.post("/inbound/mailgun", data=form).get_json()["status"] == "duplicate"
+    finally:
+        app_module._redis_client = None
+
+
+def test_webhook_falls_back_to_account_email_without_forward_headers(app, client, forwarding_env):
     from models import InboundEmail
     m = _forwarding_user(app, token="zzz999yyy888")
-    payload = _payload(token="zzz999yyy888", MailboxHash="", To="zzz999yyy888@in.mailmind.test",
-                       ToFull=[{"Email": "ZZZ999YYY888@in.mailmind.test"}], Headers=[])
-    assert client.post("/inbound/postmark", json=payload, headers=AUTH).get_json()["status"] == "queued"
+    form = _form(token="zzz999yyy888", headers=[], recipient="ZZZ999YYY888@mail.mailmind.test")
+    assert client.post("/inbound/mailgun", data=form).get_json()["status"] == "queued"
     assert InboundEmail.query.filter_by(master_id=m.id).one().source_email == "fwd@example.com"
 
 
 def test_webhook_ignores_unknown_tokens_and_digests(app, client, forwarding_env):
     from models import InboundEmail
     _forwarding_user(app)
-    assert client.post("/inbound/postmark", json=_payload(token="nobody"), headers=AUTH).get_json()["status"] == "ignored"
-    digest = _payload(Subject="Your MailMind list: 3 things for Tuesday")
-    assert client.post("/inbound/postmark", json=digest, headers=AUTH).get_json()["status"] == "ignored"
+    assert client.post("/inbound/mailgun", data=_form(token="nobody")).get_json()["status"] == "ignored"
+    digest = _form(subject="Your MailMind list: 3 things for Tuesday")
+    assert client.post("/inbound/mailgun", data=digest).get_json()["status"] == "ignored"
     assert InboundEmail.query.count() == 0
 
 
 def test_gmail_confirmation_code_is_captured_and_shown(app, client, forwarding_env):
     m = _forwarding_user(app)
-    payload = _payload(
-        From="forwarding-noreply@google.com", FromFull={"Email": "forwarding-noreply@google.com"},
-        Subject="(#482913657) Gmail Forwarding Confirmation - Receive Mail from me@gmail.com",
-        TextBody="me@gmail.com has requested to automatically forward mail...\nConfirmation code: 482913657",
-    )
-    assert client.post("/inbound/postmark", json=payload, headers=AUTH).get_json()["status"] == "confirmation"
+    form = _form(**{
+        "from": "Gmail Team <forwarding-noreply@google.com>", "sender": "forwarding-noreply@google.com",
+        "subject": "(#482913657) Gmail Forwarding Confirmation - Receive Mail from me@gmail.com",
+        "body-plain": "me@gmail.com has requested to automatically forward mail...\nConfirmation code: 482913657",
+    })
+    assert client.post("/inbound/mailgun", data=form).get_json()["status"] == "confirmation"
     assert m.forwarding.confirmation_code == "482913657"
     assert m.forwarding.confirmation_for == "me@gmail.com"
 
     with client.session_transaction() as sess:
         sess["_user_id"] = str(m.id)
     html = client.get("/settings").data.decode()
-    assert "482913657" in html and "hash123+abc123def456@inbound.postmarkapp.com" in html
+    assert "482913657" in html and "abc123def456@mail.mailmind.test" in html
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +148,7 @@ def test_settings_creates_address_and_rotates_it(app, client, forwarding_env):
     from app import db as _db
     from models import Master
     token = _db.session.get(Master, uid).forwarding.token
-    assert f"hash123+{token}@inbound.postmarkapp.com" in html
+    assert f"{token}@mail.mailmind.test" in html
 
     assert client.post("/settings/forwarding/rotate").status_code == 303
     assert _db.session.get(Master, uid).forwarding.token != token
@@ -176,7 +207,7 @@ def test_queue_retries_failures_then_drops_old_rows(app, monkeypatch):
     assert remaining == [fresh] and old not in remaining
 
 
-def test_forwarding_only_user_gets_list_via_postmark(app, monkeypatch):
+def test_forwarding_only_user_gets_list_via_mailgun(app, monkeypatch):
     from app import db as _db
     from functions import scheduler
     from models import Digest, PendingItem
@@ -186,9 +217,10 @@ def test_forwarding_only_user_gets_list_via_postmark(app, monkeypatch):
     _db.session.commit()
 
     sent = {}
-    monkeypatch.setenv("POSTMARK_SERVER_TOKEN", "pm-token")
-    monkeypatch.setenv("DIGEST_FROM_ADDRESS", "MailMind <list@mailmind.test>")
-    monkeypatch.setattr(scheduler, "send_via_postmark", lambda to, subject, html, header: sent.update(to=to) or True)
+    monkeypatch.setenv("MAILGUN_API_KEY", "key-1")
+    monkeypatch.setenv("MAILGUN_DOMAIN", "mail.mailmind.test")
+    monkeypatch.setenv("DIGEST_FROM_ADDRESS", "MailMind <list@mail.mailmind.test>")
+    monkeypatch.setattr(scheduler, "send_digest_email", lambda to, subject, html, header: sent.update(to=to) or True)
     result = scheduler.send_email_summary_for_user(m, "https://mailmind.test")
 
     assert result["success"] and sent["to"] == "fwd@example.com"
@@ -198,23 +230,37 @@ def test_forwarding_only_user_gets_list_via_postmark(app, monkeypatch):
     assert PendingItem.query.filter_by(master_id=m.id).count() == 0
 
 
-def test_postmark_send_payload(monkeypatch):
+def test_mailgun_send_payload(monkeypatch):
     from functions import forwarding
-    monkeypatch.setenv("POSTMARK_SERVER_TOKEN", "pm-token")
-    monkeypatch.setenv("DIGEST_FROM_ADDRESS", "MailMind <list@mailmind.test>")
+    monkeypatch.setenv("MAILGUN_API_KEY", "key-1")
+    monkeypatch.setenv("MAILGUN_DOMAIN", "mail.mailmind.test")
+    monkeypatch.setenv("DIGEST_FROM_ADDRESS", "MailMind <list@mail.mailmind.test>")
     calls = {}
 
     class Resp:
         status_code = 200
 
-    def fake_post(url, headers=None, json=None, timeout=None):
-        calls.update(url=url, headers=headers, json=json)
+    def fake_post(url, auth=None, data=None, timeout=None):
+        calls.update(url=url, auth=auth, data=data)
         return Resp()
 
     monkeypatch.setattr(forwarding.requests, "post", fake_post)
-    assert forwarding.send_via_postmark("me@x.com", "Subj", "<p>hi</p>", "X-MailMind-Digest")
-    assert calls["headers"]["X-Postmark-Server-Token"] == "pm-token"
-    assert calls["json"]["To"] == "me@x.com" and calls["json"]["From"] == "MailMind <list@mailmind.test>"
+    assert forwarding.send_digest_email("me@x.com", "Subj", "<p>hi</p>", "X-MailMind-Digest")
+    assert calls["url"] == "https://api.mailgun.net/v3/mail.mailmind.test/messages"
+    assert calls["auth"] == ("api", "key-1")
+    assert calls["data"]["to"] == "me@x.com" and calls["data"]["h:X-MailMind-Digest"] == "1"
+
+
+def test_mailgun_eu_region(monkeypatch):
+    from functions import forwarding
+    for k, v in (("MAILGUN_API_KEY", "k"), ("MAILGUN_DOMAIN", "d.test"), ("DIGEST_FROM_ADDRESS", "a@d.test"),
+                 ("MAILGUN_API_BASE", "https://api.eu.mailgun.net")):
+        monkeypatch.setenv(k, v)
+    seen = {}
+    monkeypatch.setattr(forwarding.requests, "post",
+                        lambda url, **kw: seen.update(url=url) or type("R", (), {"status_code": 200})())
+    forwarding.send_digest_email("x@y.z", "s", "h", "X-MailMind-Digest")
+    assert seen["url"].startswith("https://api.eu.mailgun.net/v3/d.test/")
 
 
 # ---------------------------------------------------------------------------
