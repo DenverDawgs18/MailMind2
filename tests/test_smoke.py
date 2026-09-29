@@ -713,3 +713,20 @@ def test_production_flag_respects_env(monkeypatch):
     monkeypatch.setenv("MAILMIND_PRODUCTION", "0")
     monkeypatch.delenv("FLASK_ENV", raising=False)
     assert prod_mod.production() is False
+
+
+def test_alias_hosts_redirect_to_canonical_domain(client, monkeypatch):
+    import app as app_module
+    monkeypatch.setattr(app_module, "PRODUCTION", True)
+    monkeypatch.setattr(app_module, "DOMAIN", "https://mailmind.dev")
+    monkeypatch.setattr(app_module, "CANONICAL_HOST", "mailmind.dev")
+
+    resp = client.get("/login?next=%2Flist", base_url="https://mailmind.fly.dev")
+    assert resp.status_code == 301
+    assert resp.headers["Location"] == "https://mailmind.dev/login?next=%2Flist"
+    assert client.get("/", base_url="https://www.mailmind.dev").headers["Location"] == "https://mailmind.dev/"
+
+    # Canonical host, machine-address health checks, and POSTs are untouched.
+    assert client.get("/", base_url="https://mailmind.dev").status_code == 200
+    assert client.get("/", base_url="http://172.19.0.2:8080").status_code == 200
+    assert client.post("/inbound/mailgun", base_url="https://mailmind.fly.dev").status_code != 301

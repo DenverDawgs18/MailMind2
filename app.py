@@ -63,7 +63,9 @@ if not PRODUCTION:
         # Allow the OAuth libraries to run against a plain-http localhost.
         os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
 else:
-    DOMAIN = os.getenv("DOMAIN", "https://mailmind.fly.dev")
+    DOMAIN = os.getenv("DOMAIN", "https://mailmind.dev")
+DOMAIN = DOMAIN.rstrip("/")
+CANONICAL_HOST = urllib.parse.urlsplit(DOMAIN).netloc
 
 # Google's granular consent lets people untick scopes; we check what was
 # actually granted ourselves instead of letting oauthlib raise.
@@ -132,6 +134,22 @@ else:
 Session(app)
 
 csrf = CSRFProtect(app)
+
+
+@app.before_request
+def redirect_to_canonical_host():
+    """
+    Send page views on other hostnames (mailmind.fly.dev, www.) to DOMAIN, so
+    sessions and OAuth callbacks all live on one host. POSTs (Stripe and
+    Mailgun webhooks, forms) are left alone: a redirect would drop the body.
+    """
+    if not PRODUCTION or request.method not in ("GET", "HEAD"):
+        return None
+    host = request.host.lower()
+    # Only known aliases: health checks arrive on the machine's own address.
+    if host != CANONICAL_HOST and (host.endswith(".fly.dev") or host == "www." + CANONICAL_HOST):
+        return redirect(DOMAIN + request.full_path.rstrip("?"), code=301)
+    return None
 
 
 @app.context_processor

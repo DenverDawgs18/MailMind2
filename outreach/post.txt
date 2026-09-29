@@ -18,4 +18,4 @@ Loads your inbox and shows you your top senders, allowing for quick removal and 
 We're really targeting people like personal trainers who just want to check their email and get out ASAP,
 not spend hours learning Superhuman macros or digging through their inbox for the actionable emails.
 
-Currently in beta, join the beta at https://mailmind.fly.dev/request_access
+Currently in beta, join the beta at https://mailmind.dev/request_access

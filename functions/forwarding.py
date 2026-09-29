@@ -14,7 +14,7 @@ Mail is received and sent through Mailgun. Configuration (all env):
     DIGEST_FROM_ADDRESS           e.g. "MailMind <list@mail.yourdomain.com>"
 
 Mailgun route: match_recipient(".*@mail.yourdomain.com") ->
-forward("https://mailmind.fly.dev/inbound/mailgun"), stop().
+forward("https://mailmind.dev/inbound/mailgun"), stop().
 
 Forwarding is enabled once the inbound settings exist; digests for users with
 no directly-connected inbox go out through Mailgun once the sending settings

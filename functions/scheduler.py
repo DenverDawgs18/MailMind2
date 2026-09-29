@@ -577,7 +577,7 @@ def process_inbound_queue(batch: int = 300) -> int:
 def check_and_send_emails():
     """Called by the cron trigger every 15 minutes."""
     import os
-    site_url = os.getenv("DOMAIN", "https://mailmind.fly.dev")
+    site_url = os.getenv("DOMAIN", "https://mailmind.dev").rstrip("/")
 
     if not flask_app:
         logger.error("Flask app not available")
