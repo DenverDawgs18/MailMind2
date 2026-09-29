@@ -8,7 +8,12 @@
 
 {% macro provider_buttons(verb='Continue') -%}
 <a class="provider-btn" href="{{ url_for('google_login') }}">{{ provider_icon('google') }}<span>{{ verb }} with Google</span></a>
+{% if microsoft_on %}
 <a class="provider-btn" href="{{ url_for('microsoft_login') }}">{{ provider_icon('microsoft') }}<span>{{ verb }} with Microsoft</span></a>
+{% else %}
+<div class="provider-btn soon" aria-disabled="true">{{ provider_icon('microsoft') }}<span>Microsoft <em>coming soon</em></span></div>
+<p class="fine soon-note">Using Outlook? Forward it to a Gmail account for now and sign in with Google.</p>
+{% endif %}
 {%- endmacro %}
 
 {% macro aurora() -%}

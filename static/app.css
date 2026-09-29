@@ -150,6 +150,10 @@ section[id] { scroll-margin-top: 100px; }
 }
 .provider-btn:hover { box-shadow: 0 0 0 1px var(--ink), 0 12px 28px rgba(0, 0, 0, .08); transform: translateY(-1px); }
 .provider-btn + .provider-btn { margin-top: 12px; }
+.provider-btn.soon, .provider-btn.soon:hover { cursor: default; color: var(--gray-2); box-shadow: 0 0 0 1px var(--line); transform: none; }
+.provider-btn.soon svg { filter: grayscale(1); opacity: .45; }
+.provider-btn.soon em { font-style: normal; font-size: 12px; font-weight: 650; padding: 3px 9px; margin-left: 6px; border-radius: 999px; background: var(--soft); color: var(--gray); }
+.soon-note { margin-top: 12px; text-align: center; }
 .divider { display: flex; align-items: center; gap: 14px; margin: 26px 0; color: var(--gray-2); font-size: 13px; }
 .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .fine { font-size: 14px; color: var(--gray-2); margin: 18px 0 0; line-height: 1.5; }

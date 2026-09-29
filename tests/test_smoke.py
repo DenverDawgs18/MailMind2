@@ -841,3 +841,16 @@ def test_alias_hosts_redirect_to_canonical_domain(client, monkeypatch):
     assert client.get("/", base_url="https://mailmind.dev").status_code == 200
     assert client.get("/", base_url="http://172.19.0.2:8080").status_code == 200
     assert client.post("/inbound/mailgun", base_url="https://mailmind.fly.dev").status_code != 301
+
+
+def test_microsoft_sign_in_can_be_parked(app, client, monkeypatch):
+    monkeypatch.setenv("MICROSOFT_SIGNIN", "0")
+    page = client.get("/login").data
+    assert b"coming soon" in page and b"Forward it to a Gmail account" in page
+    assert b'href="/microsoft/login"' not in page
+    assert client.get("/microsoft/login").headers["Location"].endswith("/google/login")
+    assert client.get("/microsoft/callback?code=x&state=y").status_code == 302
+
+    _login_as(app, client, primary_email="ms@x.com")
+    assert client.get("/microsoft/login").headers["Location"].endswith("/settings#forwarding")
+    assert b"Outlook: coming soon" in client.get("/settings").data

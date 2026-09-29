@@ -129,7 +129,8 @@
                 </ul>
                 <div class="connect-row">
                     <a class="btn btn-secondary btn-sm" href="{{ url_for('google_login', connect=1) }}">{{ provider_icon('google', 16) }} Connect Gmail</a>
-                    <a class="btn btn-secondary btn-sm" href="{{ url_for('microsoft_login') }}">{{ provider_icon('microsoft', 16) }} Connect Outlook</a>
+                    {% if microsoft_on %}<a class="btn btn-secondary btn-sm" href="{{ url_for('microsoft_login') }}">{{ provider_icon('microsoft', 16) }} Connect Outlook</a>
+                    {% else %}<span class="hint">Outlook: coming soon. Forward it to a Gmail account for now.</span>{% endif %}
                 </div>
             </section>
 

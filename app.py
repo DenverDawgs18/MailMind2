@@ -159,7 +159,7 @@ def inject_globals():
     from flask_wtf.csrf import generate_csrf
     from functions.forwarding import forwarding_enabled as _fwd_on
     return {"csrf_token": generate_csrf, "DOMAIN": DOMAIN, "forwarding_on": _fwd_on(),
-            "is_admin": is_admin(current_user)}
+            "is_admin": is_admin(current_user), "microsoft_on": microsoft_enabled()}
 
 
 stripe.api_key = os.getenv("STRIPE_API_KEY")
@@ -445,8 +445,22 @@ def google_callback():
 # OAuth: Microsoft
 # ---------------------------------------------------------------------------
 
+def microsoft_enabled() -> bool:
+    """Microsoft sign-in is parked until it's ready; MICROSOFT_SIGNIN=1 turns it back on."""
+    return os.getenv("MICROSOFT_SIGNIN", "").strip().lower() in ("1", "true", "yes")
+
+
+MICROSOFT_PAUSED_MESSAGE = ("Microsoft sign-in is coming soon. Using Outlook? Forward it to a Gmail "
+                            "account for now and sign in with Google.")
+
+
 @app.route("/microsoft/login")
 def microsoft_login():
+    if not microsoft_enabled():
+        flash(MICROSOFT_PAUSED_MESSAGE, "info")
+        if current_user.is_authenticated:
+            return redirect(url_for('settings') + "#forwarding")
+        return redirect(url_for('google_login'))
     state = secrets.token_urlsafe(32)
     verifier, challenge = _pkce_pair()
     session["microsoft_oauth"] = {"state": state, "verifier": verifier}
@@ -466,6 +480,8 @@ def microsoft_login():
 
 @app.route('/microsoft/callback')
 def microsoft_callback():
+    if not microsoft_enabled():
+        return redirect(url_for('microsoft_login'))
     _check_provider_error("microsoft")
     stored = _pop_oauth_state("microsoft_oauth")
 
