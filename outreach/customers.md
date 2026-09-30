@@ -20,10 +20,8 @@ So lead with what they don't do:
    which is a real answer to the "I don't give AI my email" objection.
 4. **It arrives as an email.** Nothing new to open or install.
 
-**Price is the biggest risk.** At $25/month MailMind costs more than Google AI
-Pro, which includes AI Inbox. Consider $9–12/month or ~$99/year before paying
-for traffic. You can test this with a Stripe promo code before changing the
-price.
+**Price:** $10/month (was $25). That's in line with Forage Mail and Summ, and
+half of Google AI Pro, which is where AI Inbox starts.
 
 ## Niche to lead with: parents buried in school email
 
@@ -131,4 +129,4 @@ Offer each one a free account plus a code for their readers. Create the code at
 3. Post in 2–3 local parent groups you already belong to.
 4. Watch `/admin/analytics` for which `ref` gets people through "set up mail"
    and "got a list", not just sign-ups.
-5. Decide on price before Show HN and Product Hunt.
+5. Watch trial-to-paid at $10 before Show HN and Product Hunt.

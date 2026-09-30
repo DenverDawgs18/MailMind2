@@ -23,7 +23,7 @@ WEBHOOK_EVENTS = [
 
 def register(app, domain, lookup_key):
     @app.cli.command("stripe-setup")
-    @click.option("--amount", default=2500, show_default=True, help="Monthly price in cents.")
+    @click.option("--amount", default=1000, show_default=True, help="Monthly price in cents.")
     def stripe_setup(amount):
         mode = "LIVE" if (stripe.api_key or "").startswith(("sk_live_", "rk_live_")) else "test"
         click.echo(f"Stripe {mode} mode")
