@@ -52,6 +52,8 @@ def test_fresh_database(tmp_path):
     assert {"action", "source_email"} <= _columns(conn, "pending_item")
     assert {"code", "max_uses", "uses", "access_days", "expires_at", "active"} <= _columns(conn, "access_code")
     assert {"comp_until", "access_code_id"} <= _columns(conn, "master")
+    assert {"signup_source", "signup_referrer", "signup_landing"} <= _columns(conn, "master")
+    assert {"day", "source", "landing", "visits"} <= _columns(conn, "source_visit")
 
 
 def test_legacy_database_is_adopted_without_data_loss(tmp_path):

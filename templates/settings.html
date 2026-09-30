@@ -198,7 +198,8 @@
                 </div>
                 {% if current_user.stripe_customer_id or is_admin %}
                 <div class="card-foot">
-                    {% if is_admin %}<a class="btn btn-secondary" href="{{ url_for('admin_codes') }}">Invite codes</a>{% endif %}
+                    {% if is_admin %}<a class="btn btn-secondary" href="{{ url_for('admin_codes') }}">Invite codes</a>
+                    <a class="btn btn-secondary" href="{{ url_for('admin_analytics') }}">Analytics</a>{% endif %}
                     {% if current_user.stripe_customer_id %}
                     <form method="POST" action="{{ url_for('customer_portal') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

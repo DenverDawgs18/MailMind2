@@ -16,7 +16,7 @@
     {% if current_user.is_authenticated %}
     <a class="nav-cta" href="{{ url_for('todo_list') }}">Your list</a>
     {% else %}
-    <a class="nav-cta" href="{{ url_for('request_access') }}">Join the beta</a>
+    <a class="nav-cta" href="{{ url_for('login') }}">Start free trial</a>
     {% endif %}
 {% endblock %}
 {% block content %}
@@ -25,9 +25,6 @@
             <div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
             <div class="grid-fade" aria-hidden="true"></div>
 
-            <a class="chip rise" href="{{ url_for('request_access') }}">
-                <span class="chip-dot"></span> Now in private beta <span class="chip-arrow">&rarr;</span>
-            </a>
             <h1 class="hero-title">
                 <span class="w rise">Your</span> <span class="w rise">inbox,</span><br>
                 <span class="w rise">as</span> <span class="w rise">a</span> <span class="w rise shimmer">to-do&nbsp;list.</span>
@@ -42,12 +39,12 @@
                     <span class="beta-arrow" aria-hidden="true">&rarr;</span>
                 </a>
                 {% else %}
-                <a class="beta-btn" href="{{ url_for('request_access') }}">
+                <a class="beta-btn" href="{{ url_for('login') }}">
                     <span class="beta-ring" aria-hidden="true"></span>
-                    <span class="beta-label">Join the beta</span>
+                    <span class="beta-label">Start your free week</span>
                     <span class="beta-arrow" aria-hidden="true">&rarr;</span>
                 </a>
-                <p class="signin-line">Already in the beta? <a href="{{ url_for('login') }}">Log in</a>.</p>
+                <p class="signin-line">Already have an account? <a href="{{ url_for('login') }}">Log in</a>.</p>
                 {% endif %}
             </div>
         </section>
@@ -181,8 +178,8 @@
                 <div class="steps-line" aria-hidden="true"><span></span></div>
                 <div class="step reveal">
                     <span class="num">01</span>
-                    <h3>Join.</h3>
-                    <p>Request a spot in the beta. When you're in, sign in with Google. That's the whole setup.</p>
+                    <h3>Forward.</h3>
+                    <p>Sign in with Google and forward your mail to your private MailMind address. That's the whole setup.</p>
                 </div>
                 <div class="step reveal">
                     <span class="num">02</span>
@@ -259,7 +256,7 @@
         <!-- ============ CLOSING ============ -->
         <section class="closing">
             <div class="aurora small" aria-hidden="true"><i></i><i></i><i></i></div>
-            <p class="kicker reveal">Private beta · Limited spots</p>
+            <p class="kicker reveal">7 days free · Cancel any time</p>
             <h2 class="closing-title reveal">Your inbox,<br><span class="shimmer">handled.</span></h2>
             <div class="hero-cta reveal">
                 {% if current_user.is_authenticated %}
@@ -269,12 +266,12 @@
                     <span class="beta-arrow" aria-hidden="true">&rarr;</span>
                 </a>
                 {% else %}
-                <a class="beta-btn big" href="{{ url_for('request_access') }}">
+                <a class="beta-btn big" href="{{ url_for('login') }}">
                     <span class="beta-ring" aria-hidden="true"></span>
-                    <span class="beta-label">Join the beta</span>
+                    <span class="beta-label">Start your free week</span>
                     <span class="beta-arrow" aria-hidden="true">&rarr;</span>
                 </a>
-                <p class="signin-line">Already in the beta? <a href="{{ url_for('login') }}">Log in</a>.</p>
+                <p class="signin-line">Already have an account? <a href="{{ url_for('login') }}">Log in</a>.</p>
                 {% endif %}
             </div>
         </section>

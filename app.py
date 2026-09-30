@@ -32,7 +32,7 @@ import pytz
 import requests
 import stripe
 from flask import (
-    Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for,
+    Flask, abort, flash, g, jsonify, redirect, render_template, request, session, url_for,
 )
 from flask_login import (
     LoginManager,
@@ -190,8 +190,51 @@ from functions.forwarding import (  # noqa: E402
 )
 from models import (  # noqa: E402
     FOREVER, AccessCode, Digest, DigestItem, EmailAccount, ForwardingAddress, Identity, InboundEmail,
-    Master,
+    Master, SourceVisit,
 )
+from functions import analytics  # noqa: E402
+
+
+def _record_visit(day, source, landing):
+    try:
+        row = SourceVisit.query.filter_by(day=day, source=source, landing=landing).first()
+        if row is None:
+            row = SourceVisit(day=day, source=source, landing=landing, visits=0)
+            db.session.add(row)
+        row.visits += 1
+        db.session.commit()
+    except Exception:  # analytics must never break a page view
+        db.session.rollback()
+        logger.warning("Couldn't record visit", exc_info=True)
+
+
+@app.before_request
+def track_source():
+    if PRODUCTION and request.host.lower() != CANONICAL_HOST:
+        return None  # health checks and aliases (which redirect anyway)
+    g.mm_src = analytics.track_visit(app.config["SECRET_KEY"], CANONICAL_HOST, _record_visit)
+    return None
+
+
+@app.after_request
+def set_source_cookie(response):
+    value = g.pop("mm_src", None)
+    if value:
+        response.set_cookie(analytics.COOKIE, value, max_age=analytics.COOKIE_MAX_AGE,
+                            httponly=True, samesite="Lax", secure=PRODUCTION)
+    return response
+
+
+def _new_account(email):
+    master = create_master(email)
+    analytics.attribute(master, app.config["SECRET_KEY"])
+    db.session.commit()
+    return master
+
+
+def _no_access_redirect():
+    """New people start a trial; someone holding an invite link goes to redeem it."""
+    return redirect(url_for('code') if session.get("invite_code") else url_for('subscribe'))
 
 # ---------------------------------------------------------------------------
 # OAuth configuration
@@ -624,7 +667,7 @@ def _finish_oauth(provider: str, subject: str, user_email: str, refresh_token):
                                  f"{user_email} already has a MailMind account. Sign in with Google instead.",
                                  provider="google", status=409)
         if master is None:
-            master = create_master(user_email)
+            master = _new_account(user_email)
         create_email(user_email, encrypt_token(refresh_token), provider=provider,
                      master=master, provider_subject=subject)
 
@@ -633,7 +676,7 @@ def _finish_oauth(provider: str, subject: str, user_email: str, refresh_token):
     _start_session_for(master)
 
     if not master.has_access:
-        return redirect(url_for('code'))
+        return _no_access_redirect()
     return redirect(url_for('todo_list'))
 
 
@@ -669,7 +712,7 @@ def _finish_signin(provider: str, subject: str, user_email: str):
                                      f"{user_email} already has a MailMind account. Sign in with Google instead.",
                                      provider="google", status=409)
             if master is None:
-                master = create_master(user_email)
+                master = _new_account(user_email)
         db.session.add(Identity(provider=provider, subject=subject, email=user_email, master=master))
 
     master.last_login = datetime.now(timezone.utc)
@@ -677,7 +720,7 @@ def _finish_signin(provider: str, subject: str, user_email: str):
     _start_session_for(master)
 
     if not master.has_access:
-        return redirect(url_for('code'))
+        return _no_access_redirect()
     return redirect(url_for('todo_list'))
 
 
@@ -1278,6 +1321,57 @@ def admin_codes():
     people = Master.query.order_by(Master.created_at.desc(), Master.id.desc()).all()
     return render_template("admin_codes.html", codes=codes, people=people,
                            new_id=request.args.get("new", type=int), now=datetime.now(timezone.utc))
+
+
+_ANALYTICS_WINDOWS = (7, 30, 90, 365)
+
+
+@app.route("/admin/analytics")
+@admin_required
+def admin_analytics():
+    days = request.args.get("days", 30, type=int)
+    days = days if days in _ANALYTICS_WINDOWS else 30
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    visits = {}
+    landings = {}
+    daily = {}
+    for row in SourceVisit.query.filter(SourceVisit.day >= since.date()).all():
+        visits[row.source] = visits.get(row.source, 0) + row.visits
+        landings[row.landing] = landings.get(row.landing, 0) + row.visits
+        daily[row.day] = daily.get(row.day, 0) + row.visits
+
+    has_list = {mid for (mid,) in db.session.query(Digest.master_id).distinct()}
+    sources = {}
+    recent = []
+    for m in Master.query.filter(Master.created_at >= since).order_by(Master.created_at.desc()).all():
+        src = m.signup_source or "before tracking"
+        fwd = m.forwarding is not None and m.forwarding.last_received_at is not None
+        set_up = fwd or any(not a.needs_reauth for a in m.email_accounts)
+        got_list = m.id in has_list
+        row = sources.setdefault(src, {"signups": 0, "set_up": 0, "got_list": 0, "paying": 0, "free": 0})
+        row["signups"] += 1
+        row["set_up"] += set_up
+        row["got_list"] += got_list
+        row["paying"] += bool(m.subscribed)
+        row["free"] += bool(m.comped and not m.subscribed)
+        recent.append({"m": m, "source": src, "set_up": set_up, "got_list": got_list})
+
+    names = sorted(set(visits) | set(sources),
+                   key=lambda n: (-(sources.get(n, {}).get("signups", 0)), -visits.get(n, 0), n))
+    table = [{"source": n, "visitors": visits.get(n, 0),
+              **sources.get(n, {"signups": 0, "set_up": 0, "got_list": 0, "paying": 0, "free": 0})}
+             for n in names]
+    totals = {k: sum(r[k] for r in table) for k in ("visitors", "signups", "set_up", "got_list", "paying", "free")}
+
+    today = datetime.now(timezone.utc).date()
+    span = min(days, 90)
+    series = [(today - timedelta(days=i), daily.get(today - timedelta(days=i), 0)) for i in range(span - 1, -1, -1)]
+    return render_template(
+        "admin_analytics.html", days=days, windows=_ANALYTICS_WINDOWS, table=table, totals=totals,
+        recent=recent[:25], series=series, peak=max([v for _, v in series] + [1]),
+        landings=sorted(landings.items(), key=lambda kv: -kv[1])[:8],
+    )
 
 
 @app.route("/admin/codes/<int:code_id>/toggle", methods=["POST"])

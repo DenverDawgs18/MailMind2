@@ -55,9 +55,8 @@ def test_public_pages_render(client, path):
 
 def test_landing_ctas(client):
     resp = client.get("/")
-    assert b"Join the beta" in resp.data
-    assert b'href="/request_access"' in resp.data
-    assert b'href="/login"' in resp.data
+    assert b"Start your free week" in resp.data
+    assert b'href="/login"' in resp.data and b'href="/request_access"' not in resp.data
 
 
 def test_login_page_offers_both_providers(client):
@@ -175,7 +174,7 @@ def test_finish_oauth_creates_master(app):
 
     with anon(app):
         resp = _finish_oauth("google", "sub-1", "new-user@example.com", "refresh-1")
-        assert resp.status_code == 302 and resp.headers["Location"].endswith("/code")
+        assert resp.status_code == 302 and resp.headers["Location"].endswith("/subscribe")
 
         master = Master.query.filter_by(primary_email="new-user@example.com").one()
         assert master.subscribed is False
@@ -854,3 +853,72 @@ def test_microsoft_sign_in_can_be_parked(app, client, monkeypatch):
     _login_as(app, client, primary_email="ms@x.com")
     assert client.get("/microsoft/login").headers["Location"].endswith("/settings#forwarding")
     assert b"Outlook: coming soon" in client.get("/settings").data
+
+
+# ---------------------------------------------------------------------------
+# Analytics
+# ---------------------------------------------------------------------------
+
+def test_first_visit_is_counted_once_and_sticks_to_the_account(app, client):
+    from models import Master, SourceVisit
+    client.get("/?ref=HN!", headers={"User-Agent": "Mozilla/5.0"})
+    client.get("/login?ref=reddit", headers={"User-Agent": "Mozilla/5.0"})  # first touch wins
+    client.get("/", headers={"User-Agent": "Mozilla/5.0"})
+    rows = SourceVisit.query.all()
+    assert [(r.source, r.landing, r.visits) for r in rows] == [("hn", "/", 1)]
+
+    import app as app_module
+    with app.test_request_context("/", headers={"Cookie": client.get_cookie("mm_src").value and
+                                                f"mm_src={client.get_cookie('mm_src').value}"}):
+        m = app_module._new_account("new@x.com")
+    m = Master.query.filter_by(primary_email="new@x.com").one()
+    assert m.signup_source == "hn" and m.signup_landing == "/"
+
+
+def test_referrer_and_direct_sources(app, client):
+    from models import SourceVisit
+    ua = {"User-Agent": "Mozilla/5.0"}
+    client.get("/", headers={**ua, "Referer": "https://www.reddit.com/r/productivity/"})
+    app.test_client().get("/request_access", headers=ua)
+    app.test_client().get("/", headers={"User-Agent": "Googlebot/2.1"})
+    app.test_client().get("/static/universal.css", headers=ua)
+    app.test_client().post("/contact", headers=ua)
+    got = sorted((r.source, r.landing) for r in SourceVisit.query.all())
+    assert got == [("direct", "/request_access"), ("reddit.com", "/")]
+
+
+def test_tampered_source_cookie_is_ignored(app, client):
+    from models import SourceVisit
+    client.set_cookie("mm_src", "not-a-signed-value")
+    client.get("/?ref=x", headers={"User-Agent": "Mozilla/5.0"})
+    assert SourceVisit.query.one().source == "x"
+
+
+def test_new_people_go_to_the_trial_and_invitees_to_their_code(app, client):
+    import app as app_module
+    with app.test_request_context("/"):
+        assert app_module._no_access_redirect().headers["Location"].endswith("/subscribe")
+        from flask import session
+        session["invite_code"] = "ABC"
+        assert app_module._no_access_redirect().headers["Location"].endswith("/code")
+
+
+def test_landing_page_is_no_longer_private_beta(client):
+    page = client.get("/").data
+    assert b"private beta" not in page.lower() and b"Join the beta" not in page
+    assert b"Start your free week" in page
+
+
+def test_analytics_dashboard(app, client, monkeypatch):
+    from app import db as _db
+    from models import Master
+    monkeypatch.setenv("ADMIN_EMAILS", "boss@x.com")
+    app.test_client().get("/?ref=hn", headers={"User-Agent": "Mozilla/5.0"})
+    _db.session.add(Master(primary_email="lead@x.com", signup_source="hn"))
+    _db.session.commit()
+    _login_as(app, client, primary_email="someone@x.com")
+    assert client.get("/admin/analytics").status_code == 404
+    _login_as(app, client, primary_email="boss@x.com")
+    page = client.get("/admin/analytics?days=7").data
+    assert b"lead@x.com" in page and b"<th scope=\"row\">hn</th>" in page
+    assert client.get("/admin/analytics?days=999").status_code == 200

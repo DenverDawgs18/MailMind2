@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "_macros.html" import aurora %}
+{% block title %}Analytics — MailMind{% endblock %}
+{% macro pct(n, d) %}{% if d %}{{ ((n / d) * 100) | round | int }}%{% else %}–{% endif %}{% endmacro %}
+{% block content %}
+{{ aurora() }}
+<div class="page">
+    <div class="page-head rise">
+        <p class="kicker">Admin</p>
+        <h1 class="page-title">Where people <span class="shimmer">come from.</span></h1>
+        <p class="lede">Tag every link you share with <code>?ref=</code>, e.g. <code>mailmind.dev/?ref=hn</code>. First visit wins; it sticks to the browser for 90 days and to the account at sign-up.</p>
+        <nav class="seg" aria-label="Time range">
+            {% for w in windows %}<a href="{{ url_for('admin_analytics', days=w) }}"{% if w == days %} aria-current="page"{% endif %}>{{ w }} days</a>{% endfor %}
+            <a href="{{ url_for('admin_codes') }}" class="seg-link">Invite codes &rarr;</a>
+        </nav>
+    </div>
+
+    <section class="tiles rise" style="animation-delay:.05s">
+        <div class="tile"><span>New visitors</span><b>{{ totals.visitors }}</b></div>
+        <div class="tile"><span>Signed up</span><b>{{ totals.signups }}</b><em>{{ pct(totals.signups, totals.visitors) }} of visitors</em></div>
+        <div class="tile"><span>Set up mail</span><b>{{ totals.set_up }}</b><em>{{ pct(totals.set_up, totals.signups) }} of sign-ups</em></div>
+        <div class="tile"><span>Got a list</span><b>{{ totals.got_list }}</b><em>{{ pct(totals.got_list, totals.signups) }} of sign-ups</em></div>
+        <div class="tile"><span>Paying</span><b>{{ totals.paying }}</b><em>{{ totals.free }} on free access</em></div>
+    </section>
+
+    <section class="card rise" style="animation-delay:.1s">
+        <div class="card-head"><div><h2>New visitors per day</h2><p class="hint">Last {{ series|length }} days · bots and health checks excluded</p></div></div>
+        <div class="bars" role="img" aria-label="New visitors per day, peak {{ peak }}">
+            {% for day, n in series %}
+            <div class="bar-slot" tabindex="0" data-tip="{{ day.strftime('%a %b %-d') }} · {{ n }} visitor{{ 's' if n != 1 }}">
+                <span class="bar" style="height:{{ (n / peak * 100) if n else 0 }}%"></span>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="bars-axis"><span>{{ series[0][0].strftime('%b %-d') }}</span><span>peak {{ peak }}</span><span>Today</span></div>
+    </section>
+
+    <section class="card rise" style="animation-delay:.14s">
+        <div class="card-head"><div><h2>By source</h2><p class="hint">Sign-ups and later steps count people who signed up in this period.</p></div></div>
+        {% if table %}
+        <div class="table-wrap">
+            <table class="data">
+                <thead><tr><th>Source</th><th>Visitors</th><th>Signed up</th><th>Set up mail</th><th>Got a list</th><th>Paying</th><th>Free</th></tr></thead>
+                <tbody>
+                {% for r in table %}
+                <tr>
+                    <th scope="row">{{ r.source }}</th>
+                    <td>{{ r.visitors }}</td>
+                    <td>{{ r.signups }}{% if r.visitors %} <em>{{ pct(r.signups, r.visitors) }}</em>{% endif %}</td>
+                    <td>{{ r.set_up }}</td>
+                    <td>{{ r.got_list }}</td>
+                    <td>{{ r.paying }}</td>
+                    <td>{{ r.free }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}<p class="hint">Nothing yet. Share a tagged link and check back.</p>{% endif %}
+    </section>
+
+    <div class="two-up">
+        <section class="card rise" style="animation-delay:.18s">
+            <div class="card-head"><div><h2>Landing pages</h2></div></div>
+            {% if landings %}
+            <table class="data compact">
+                <tbody>{% for path, n in landings %}<tr><th scope="row">{{ path }}</th><td>{{ n }}</td></tr>{% endfor %}</tbody>
+            </table>
+            {% else %}<p class="hint">No visits yet.</p>{% endif %}
+        </section>
+        <section class="card rise" style="animation-delay:.22s">
+            <div class="card-head"><div><h2>Recent sign-ups</h2></div></div>
+            {% if recent %}
+            <table class="data compact">
+                <tbody>
+                {% for r in recent %}
+                <tr>
+                    <th scope="row">{{ r.m.primary_email }}<br><span class="hint">{{ r.source }} · {{ r.m.created_at.strftime('%b %-d') }}</span></th>
+                    <td>{% if r.m.subscribed %}<span class="tag ok">Paying</span>{% elif r.got_list %}<span class="tag ok">Got a list</span>{% elif r.set_up %}<span class="tag">Set up</span>{% else %}<span class="tag warn">Not set up</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}<p class="hint">No sign-ups in this period.</p>{% endif %}
+        </section>
+    </div>
+</div>
+{% endblock %}

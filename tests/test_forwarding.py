@@ -285,7 +285,7 @@ def test_finish_signin_creates_account_and_reuses_identity(app):
     from models import Identity, Master
     with anon(app):
         resp = _finish_signin("google", "g-new", "new@example.com")
-        assert resp.headers["Location"].endswith("/code")
+        assert resp.headers["Location"].endswith("/subscribe")
     with anon(app):
         _finish_signin("google", "g-new", "new@example.com")
     master = Master.query.filter_by(primary_email="new@example.com").one()
