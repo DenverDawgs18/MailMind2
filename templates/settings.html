@@ -1,167 +1,297 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='time.css') }}">
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='imgs/logo.svg') }}">
-    <link rel="alternate icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
-    <title>Settings — MailMind</title>
-    <style>
-        .settings-wrapper { max-width: 720px; margin: 40px auto; padding: 0 20px; display: flex; flex-direction: column; gap: 32px; }
-        .card-block { background: #fff; border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); padding: 24px; }
-        .card-block h2 { margin-top: 0; color: var(--ink); font-size: 1.4rem; }
-        .account-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); }
-        .account-row:last-child { border-bottom: none; }
-        .account-email { color: var(--ink); font-weight: 500; }
-        .account-provider { color: var(--gray-2); font-size: 0.85em; margin-left: 8px; }
-        .btn { display: inline-block; padding: 9px 16px; border-radius: 999px; font-weight: 600; text-decoration: none; border: none; cursor: pointer; font-size: 14px; }
-        .btn-primary { background: var(--ink); color: #fff; }
-        .btn-secondary { background: #fff; color: var(--ink); border: 1px solid #d2d2d7; }
-        .btn-secondary:hover { border-color: var(--ink); }
-        .btn-danger { background: #fff; color: var(--danger); border: 1px solid #f4c7cb; }
-        .btn-primary-inline { background: var(--ink); color: #fff; }
-        .link-button-form { display: inline; }
-        .msg { padding: 10px 14px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-ink); margin-bottom: 16px; }
-        select, .time-checkboxes { width: 100%; padding: 10px 12px; border-radius: 12px; background: #fff; color: var(--ink); border: 1px solid #d2d2d7; }
-        .time-checkboxes { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; padding: 12px; }
-        .time-checkboxes label { display: flex; align-items: center; gap: 6px; font-size: 14px; }
-        .hint { color: var(--gray-2); font-size: 0.9em; margin-top: 6px; }
-    </style>
-</head>
-<body>
-    <div class="navbar">
-        <a href="{{ url_for('index') }}" class="home">MailMind</a>
-        <div class="navwrap">
-            <a href="{{ url_for('settings') }}">Settings</a>
-            <a href="{{ url_for('contact') }}">Contact</a>
-            <a href="{{ url_for('logout') }}">Log out</a>
-        </div>
-        <div class="empty"></div>
+{% extends "base.html" %}
+{% from "_macros.html" import provider_icon, aurora %}
+{% block title %}Settings — MailMind{% endblock %}
+{% block content %}
+{{ aurora() }}
+<div class="page">
+    <div class="page-head rise">
+        <p class="kicker">Settings</p>
+        <h1 class="page-title">Your <span class="shimmer">MailMind.</span></h1>
     </div>
 
-    <div class="settings-wrapper">
-        <h1 style="margin: 0; font-size: 48px; letter-spacing: -0.045em;">Settings</h1>
+    <div class="settings-grid">
+        <nav class="side-nav rise" aria-label="Settings sections">
+            <div class="who"><b>{{ current_user.primary_email }}</b><span>Signed in</span></div>
+            {% if forwarding %}<a href="#forwarding">Forwarding</a>{% endif %}
+            <a href="#inboxes">Inboxes</a>
+            <a href="#schedule">Delivery</a>
+            <a href="#plan">Plan</a>
+            <a href="#danger">Account</a>
+        </nav>
 
-        {% if message %}
-            <div class="msg">{{ message }}</div>
-        {% endif %}
-
-        <!-- Email accounts -->
-        <div class="card-block">
-            <h2>Connected email accounts</h2>
-            <p class="hint">
-                MailMind reads these inboxes and sends your daily digest from your
-                primary account ({{ current_user.primary_email }}).
-            </p>
-            {% for account in accounts %}
-                <div class="account-row">
+        <div class="stack">
+            {% if forwarding %}
+            <!-- Forwarding -->
+            <section class="card rise" id="forwarding" style="animation-delay:.05s">
+                <div class="card-head">
                     <div>
-                        <span class="account-email">{{ account.email }}</span>
-                        <span class="account-provider">{{ account.provider }}</span>
-                        {% if account.email == current_user.primary_email %}
-                            <span class="account-provider">(primary — login)</span>
+                        <h2>Forwarding</h2>
+                        <p class="hint">Forward your email to this private address and MailMind builds your list from it. No inbox access needed.</p>
+                    </div>
+                    {% if forwarding.last_received_at %}<span class="tag ok">Receiving</span>{% else %}<span class="tag warn">Not set up yet</span>{% endif %}
+                </div>
+
+                <div class="fwd-address">
+                    <code id="fwd-address">{{ forward_address }}</code>
+                    <button type="button" class="btn btn-primary btn-sm" id="copy-fwd" data-copy="{{ forward_address }}">Copy</button>
+                </div>
+                <p class="hint fwd-status">
+                    {% if forwarding.last_received_at %}Last email received {{ forwarding.last_received_at | ago }}.
+                    {% else %}Waiting for your first forwarded email.{% endif %}
+                </p>
+
+                {% if forwarding.confirmation_code %}
+                <div class="fwd-code" role="status">
+                    <div>
+                        <p class="label">Gmail confirmation code{% if forwarding.confirmation_for %} for {{ forwarding.confirmation_for }}{% endif %}</p>
+                        <p class="code-big">{{ forwarding.confirmation_code }}</p>
+                        <p class="hint">Paste this into Gmail's forwarding settings and click <b>Verify</b>.</p>
+                    </div>
+                    <form method="post" action="{{ url_for('dismiss_forwarding_code') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-quiet btn-sm">Done</button>
+                    </form>
+                </div>
+                {% endif %}
+
+                <div class="fwd-guides">
+                    <details class="guide" {% if not forwarding.last_received_at %}open{% endif %}>
+                        <summary>{{ provider_icon('google', 18) }} Set up in Gmail</summary>
+                        <ol>
+                            <li>Open <a href="https://mail.google.com/mail/u/0/#settings/fwdandpop" target="_blank" rel="noopener">Gmail → Settings → Forwarding and POP/IMAP</a>.</li>
+                            <li>Click <b>Add a forwarding address</b> and paste the address above.</li>
+                            <li>Gmail sends a confirmation code to MailMind. It will appear on this page within a few seconds; refresh if you don't see it.</li>
+                            <li>Enter the code in Gmail, choose <b>Forward a copy of incoming mail</b> and <b>keep Gmail's copy in the Inbox</b>, then <b>Save changes</b>.</li>
+                        </ol>
+                        <p class="hint">Only want some mail? Instead of forwarding everything, create a <a href="https://support.google.com/mail/answer/6579" target="_blank" rel="noopener">filter</a> and pick "Forward it to" this address.</p>
+                    </details>
+                    <details class="guide">
+                        <summary>{{ provider_icon('microsoft', 18) }} Set up in Outlook</summary>
+                        <ol>
+                            <li>Open <a href="https://outlook.live.com/mail/0/options/mail/forwarding" target="_blank" rel="noopener">Outlook → Settings → Mail → Forwarding</a>.</li>
+                            <li>Turn on <b>Enable forwarding</b> and paste the address above.</li>
+                            <li>Tick <b>Keep a copy of forwarded messages</b> and click <b>Save</b>.</li>
+                        </ol>
+                        <p class="hint">Work account? Your IT admin may need to allow forwarding to outside addresses.</p>
+                    </details>
+                </div>
+
+                <div class="connect-row">
+                    <form method="post" action="{{ url_for('rotate_forwarding') }}"
+                          data-confirm="Create a new address? The current one stops working, so you'll need to update your forwarding settings.">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-quiet btn-sm">Get a new address</button>
+                    </form>
+                </div>
+            </section>
+            {% endif %}
+
+            <!-- Inboxes -->
+            <section class="card rise" id="inboxes" style="animation-delay:.05s">
+                <div class="card-head">
+                    <div>
+                        {% if forwarding %}
+                        <h2>Connected inboxes</h2>
+                        <p class="hint">Optional. Connect an inbox directly and MailMind reads it itself{% if accounts %}, sending your list from {{ current_user.primary_email }}{% endif %}. Gmail direct access is limited during the beta.</p>
+                        {% else %}
+                        <h2>Inboxes</h2>
+                        <p class="hint">MailMind reads the last day of mail from each inbox and sends your list from {{ current_user.primary_email }}.</p>
                         {% endif %}
                     </div>
-                    {% if account.email != current_user.primary_email %}
-                        <button class="btn btn-danger delete-account-btn" data-id="{{ account.id }}">Remove</button>
+                </div>
+                {% if not accounts %}<p class="hint">No inboxes connected directly.</p>{% endif %}
+                <ul class="acct-list">
+                    {% for account in accounts %}
+                    <li class="acct">
+                        <span class="acct-icon">{{ provider_icon(account.provider, 24) }}</span>
+                        <div class="acct-main">
+                            <div class="acct-email" title="{{ account.email }}">{{ account.email }}</div>
+                            <div class="acct-meta">
+                                <span>{{ account.provider | provider_name }}</span>
+                                {% if account.email == current_user.primary_email %}<span class="tag">Sign-in address</span>{% endif %}
+                                {% if account.needs_reauth %}<span class="tag warn">Needs reconnecting</span>{% else %}<span class="tag ok">Connected</span>{% endif %}
+                            </div>
+                        </div>
+                        <div class="acct-actions">
+                            {% if account.needs_reauth %}
+                            <a class="btn btn-primary btn-sm" href="{{ url_for(account.provider ~ '_login', consent=1, connect=1 if account.provider == 'google' else None) }}">Reconnect</a>
+                            {% endif %}
+                            {% if account.email != current_user.primary_email %}
+                            <form method="post" action="{{ url_for('remove_email_account', account_id=account.id) }}"
+                                  data-confirm="Disconnect {{ account.email }}? MailMind will stop reading it.">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-quiet btn-sm">Disconnect</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <div class="connect-row">
+                    <a class="btn btn-secondary btn-sm" href="{{ url_for('google_login', connect=1) }}">{{ provider_icon('google', 16) }} Connect Gmail</a>
+                    {% if microsoft_on %}<a class="btn btn-secondary btn-sm" href="{{ url_for('microsoft_login') }}">{{ provider_icon('microsoft', 16) }} Connect Outlook</a>
+                    {% else %}<span class="hint">Outlook: coming soon. Forward it to a Gmail account for now.</span>{% endif %}
+                </div>
+            </section>
+
+            <!-- Delivery -->
+            <section class="card rise" id="schedule" style="animation-delay:.1s">
+                <form method="post" action="{{ url_for('settings') }}" id="schedule-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="card-head">
+                        <div>
+                            <h2>Delivery</h2>
+                            <p class="hint">Pick up to {{ max_times }} times a day for your list to arrive.</p>
+                        </div>
+                    </div>
+                    <div class="sched-top">
+                        <div class="field">
+                            <label for="timezone">Timezone</label>
+                            <select name="timezone" id="timezone" required>
+                                <option value="" disabled {% if not current_timezone %}selected{% endif %}>Choose your timezone</option>
+                                {% for value, label in timezones %}
+                                <option value="{{ value }}" {% if value == current_timezone %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <span class="count" id="count" aria-live="polite"></span>
+                    </div>
+
+                    <div class="picked" id="picked"></div>
+
+                    <div class="time-grid" role="group" aria-label="Delivery times">
+                        {% for label, opts in hour_rows %}
+                        <div class="hour-row">
+                            <span class="hr">{{ label }}</span>
+                            {% for opt in opts %}
+                            <label class="slot">
+                                <input type="checkbox" name="time" value="{{ opt }}" {% if opt in current_times %}checked{% endif %}>
+                                <span>:{{ opt.split(':')[1][:2] }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="card-foot">
+                        <button type="submit" class="btn btn-primary">Save schedule</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Plan -->
+            <section class="card rise" id="plan" style="animation-delay:.15s">
+                <div class="card-head"><div><h2>Plan</h2></div></div>
+                <div class="plan">
+                    <span class="plan-dot{% if not current_user.has_access %} off{% endif %}"></span>
+                    <div>
+                        {% if current_user.subscribed %}
+                            <b>MailMind monthly</b><p class="hint">Your subscription is active.</p>
+                        {% elif current_user.comped_forever %}
+                            <b>Free access</b><p class="hint">You were invited to MailMind, with no end date. Enjoy.</p>
+                        {% elif current_user.comped %}
+                            <b>Free access</b><p class="hint">Your invite runs until {{ current_user.comp_until.strftime('%B %-d, %Y') }}. <a href="{{ url_for('subscribe') }}">Subscribe</a> any time to keep your list coming after that.</p>
+                        {% else %}
+                            <b>No active plan</b><p class="hint">Subscribe to keep your list coming.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if current_user.stripe_customer_id or is_admin %}
+                <div class="card-foot">
+                    {% if is_admin %}<a class="btn btn-secondary" href="{{ url_for('admin_codes') }}">Invite codes</a>{% endif %}
+                    {% if current_user.stripe_customer_id %}
+                    <form method="POST" action="{{ url_for('customer_portal') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-secondary">Manage billing</button>
+                    </form>
                     {% endif %}
                 </div>
-            {% endfor %}
-            <div style="margin-top: 16px; display: flex; gap: 10px;">
-                <a class="btn btn-secondary" href="{{ url_for('google_login') }}">+ Add Google account</a>
-                <a class="btn btn-secondary" href="{{ url_for('microsoft_login') }}">+ Add Microsoft account</a>
-            </div>
-        </div>
-
-        <!-- Delivery time -->
-        <div class="card-block">
-            <h2>When to send your digest</h2>
-            <form method="POST" action="{{ url_for('settings') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                <label for="timezone">Timezone</label>
-                <select name="timezone" id="timezone" required>
-                    <option value="">Choose...</option>
-                    {% for value, label in timezones %}
-                        <option value="{{ value }}" {% if value == current_timezone %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
-
-                <p style="margin-top: 20px; margin-bottom: 6px;">Delivery times (up to 3)</p>
-                <div class="time-checkboxes">
-                    {% for opt in time_options %}
-                        <label>
-                            <input type="checkbox" name="time" value="{{ opt }}"
-                                   {% if opt in current_times %}checked{% endif %}>
-                            {{ opt }}
-                        </label>
-                    {% endfor %}
-                </div>
-
-                <button type="submit" class="btn btn-primary" style="margin-top: 20px;">Save</button>
-            </form>
-        </div>
-
-        <!-- Billing -->
-        <div class="card-block">
-            <h2>Subscription</h2>
-            <p>
-                Status:
-                {% if current_user.subscribed and current_user.temp %}
-                    <strong>Comped (beta)</strong>
-                {% elif current_user.subscribed %}
-                    <strong>Active</strong>
-                {% else %}
-                    <strong>Not subscribed</strong>
                 {% endif %}
-            </p>
-            {% if current_user.stripe_customer_id and not current_user.temp %}
-                <form method="POST" action="{{ url_for('customer_portal') }}" class="link-button-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-secondary">Manage billing</button>
-                </form>
-            {% endif %}
+            </section>
+
+            <!-- Danger -->
+            <section class="card danger rise" id="danger" style="animation-delay:.2s">
+                <details>
+                    <summary class="card-head" style="margin:0">
+                        <div>
+                            <h2>Delete account</h2>
+                            <p class="hint">Disconnects every inbox, cancels billing, and erases your MailMind data.</p>
+                        </div>
+                        <span class="btn btn-danger btn-sm">Delete…</span>
+                    </summary>
+                    <form class="confirm" method="post" action="{{ url_for('delete_mailmind_account') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="field">
+                            <label for="confirm">Type <b>{{ current_user.primary_email }}</b> to confirm</label>
+                            <input type="text" id="confirm" name="confirm" autocomplete="off" spellcheck="false" required>
+                        </div>
+                        <button type="submit" class="btn btn-danger solid">Permanently delete my account</button>
+                    </form>
+                </details>
+            </section>
         </div>
     </div>
+</div>
+{% endblock %}
 
-    <footer>
-        <a href="{{ url_for('terms_and_privacy') }}">Terms of Use and Privacy Policy</a>
-    </footer>
+{% block scripts %}
+<script>
+(function () {
+    var max = {{ max_times }};
+    var boxes = Array.prototype.slice.call(document.querySelectorAll('input[name="time"]'));
+    var picked = document.getElementById('picked');
+    var count = document.getElementById('count');
+    var order = boxes.map(function (b) { return b.value; });
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            document.querySelectorAll('.delete-account-btn').forEach(function(btn) {
-                btn.addEventListener('click', async function() {
-                    if (!confirm('Remove this account? MailMind will stop reading it.')) return;
-                    const id = this.dataset.id;
-                    const form = new FormData();
-                    form.append('id', id);
-                    const res = await fetch("{{ url_for('delete_email_account') }}", {
-                        method: 'POST', body: form,
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        window.location.reload();
-                    } else {
-                        alert(data.error || 'Delete failed');
-                    }
-                });
-            });
-
-            // Prevent more than 3 time checkboxes from being ticked.
-            const timeBoxes = document.querySelectorAll('input[name="time"]');
-            timeBoxes.forEach(function(box) {
-                box.addEventListener('change', function() {
-                    const checked = document.querySelectorAll('input[name="time"]:checked');
-                    if (checked.length > 3) {
-                        this.checked = false;
-                        alert('Pick at most 3 delivery times.');
-                    }
-                });
-            });
+    function render() {
+        var on = boxes.filter(function (b) { return b.checked; });
+        on.sort(function (a, b) { return order.indexOf(a.value) - order.indexOf(b.value); });
+        picked.innerHTML = '';
+        if (!on.length) {
+            picked.innerHTML = '<span class="empty-note">No times yet. Pick one below.</span>';
+        }
+        on.forEach(function (b) {
+            var chip = document.createElement('span');
+            chip.className = 'chip-on';
+            chip.textContent = b.value + ' ';
+            var x = document.createElement('button');
+            x.type = 'button';
+            x.setAttribute('aria-label', 'Remove ' + b.value);
+            x.textContent = '×';
+            x.addEventListener('click', function () { b.checked = false; render(); });
+            chip.appendChild(x);
+            picked.appendChild(chip);
         });
-    </script>
-</body>
-</html>
+        count.textContent = on.length + ' of ' + max + ' selected';
+        count.classList.toggle('full', on.length >= max);
+        boxes.forEach(function (b) { b.disabled = !b.checked && on.length >= max; });
+    }
+    boxes.forEach(function (b) { b.addEventListener('change', render); });
+    render();
+
+    // Scroll the grid to the first chosen time (or 6 AM).
+    var first = boxes.filter(function (b) { return b.checked; })[0] || boxes[24];
+    if (first) {
+        var grid = document.querySelector('.time-grid');
+        var row = first.closest('.hour-row');
+        grid.scrollTop = Math.max(0, row.offsetTop - grid.offsetTop - 8);
+    }
+
+    var copy = document.getElementById('copy-fwd');
+    if (copy) {
+        copy.addEventListener('click', function () {
+            var done = function () { copy.textContent = 'Copied'; setTimeout(function () { copy.textContent = 'Copy'; }, 1800); };
+            if (navigator.clipboard) { navigator.clipboard.writeText(copy.dataset.copy).then(done); }
+            else {
+                var r = document.createRange(); r.selectNodeContents(document.getElementById('fwd-address'));
+                var sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); document.execCommand('copy'); done();
+            }
+        });
+    }
+
+    document.querySelectorAll('form[data-confirm]').forEach(function (f) {
+        f.addEventListener('submit', function (e) { if (!confirm(f.dataset.confirm)) e.preventDefault(); });
+    });
+})();
+</script>
+{% endblock %}

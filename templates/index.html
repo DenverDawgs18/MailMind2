@@ -1,36 +1,31 @@
-{% set beta_url = 'https://mailmind.fly.dev/request_access' %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">
-    <meta name="google-site-verification" content="bvGZgZ2rn-5Nz7flQHwTl779qpJhdXLk3ztmwAY8ZZ8" />
-    <meta name="description" content="Every morning, MailMind reads your inbox and emails you one short list of what actually needs you. Join the beta.">
-    <meta name="theme-color" content="#ffffff">
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='imgs/logo.svg') }}">
-    <link rel="alternate icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
-    <title>MailMind — Your inbox, as a to-do list.</title>
-</head>
-<body class="home-page">
-    <div class="navbar" id="nav">
-        <a href="{{ url_for('index') }}" class="home">MailMind</a>
-        <div class="navwrap">
-            <a href="#film">Film</a>
-            <a href="#story">How it works</a>
-            <a href="{{ url_for('contact') }}">Contact</a>
-        </div>
-        <a class="nav-cta" href="{{ beta_url }}">Join the beta</a>
-    </div>
-
-    <main class="main-content">
+{% extends "base.html" %}
+{% block title %}MailMind — Your inbox, as a to-do list.{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">{% endblock %}
+{% block head %}<meta name="google-site-verification" content="bvGZgZ2rn-5Nz7flQHwTl779qpJhdXLk3ztmwAY8ZZ8" />{% endblock %}
+{% block body_class %}home-page{% endblock %}
+{% block nav_links %}
+    <a href="#film">Film</a>
+    <a href="#story">How it works</a>
+    {% if current_user.is_authenticated %}
+    <a href="{{ url_for('settings') }}">Settings</a>
+    {% else %}
+    <a href="{{ url_for('login') }}">Log in</a>
+    {% endif %}
+{% endblock %}
+{% block nav_cta %}
+    {% if current_user.is_authenticated %}
+    <a class="nav-cta" href="{{ url_for('todo_list') }}">Your list</a>
+    {% else %}
+    <a class="nav-cta" href="{{ url_for('request_access') }}">Join the beta</a>
+    {% endif %}
+{% endblock %}
+{% block content %}
         <!-- ============ HERO ============ -->
         <section class="hero">
             <div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
             <div class="grid-fade" aria-hidden="true"></div>
 
-            <a class="chip rise" href="{{ beta_url }}">
+            <a class="chip rise" href="{{ url_for('request_access') }}">
                 <span class="chip-dot"></span> Now in private beta <span class="chip-arrow">&rarr;</span>
             </a>
             <h1 class="hero-title">
@@ -40,14 +35,20 @@
             <p class="hero-sub rise">Every morning, MailMind reads the last 24 hours of your email
                 and sends you one short list of what actually needs you.</p>
             <div class="hero-cta rise">
-                <a class="beta-btn" href="{{ beta_url }}">
+                {% if current_user.is_authenticated %}
+                <a class="beta-btn" href="{{ url_for('todo_list') }}">
+                    <span class="beta-ring" aria-hidden="true"></span>
+                    <span class="beta-label">Open your list</span>
+                    <span class="beta-arrow" aria-hidden="true">&rarr;</span>
+                </a>
+                {% else %}
+                <a class="beta-btn" href="{{ url_for('request_access') }}">
                     <span class="beta-ring" aria-hidden="true"></span>
                     <span class="beta-label">Join the beta</span>
                     <span class="beta-arrow" aria-hidden="true">&rarr;</span>
                 </a>
-                <p class="signin-line">Already in? Sign in with
-                    <a href="{{ url_for('google_login') }}">Google</a> or
-                    <a href="{{ url_for('microsoft_login') }}">Microsoft</a>.</p>
+                <p class="signin-line">Already in the beta? <a href="{{ url_for('login') }}">Log in</a>.</p>
+                {% endif %}
             </div>
         </section>
 
@@ -181,7 +182,7 @@
                 <div class="step reveal">
                     <span class="num">01</span>
                     <h3>Join.</h3>
-                    <p>Request a spot in the beta. When you're in, sign in with Google or Microsoft. That's the whole setup.</p>
+                    <p>Request a spot in the beta. When you're in, sign in with Google. That's the whole setup.</p>
                 </div>
                 <div class="step reveal">
                     <span class="num">02</span>
@@ -261,28 +262,25 @@
             <p class="kicker reveal">Private beta · Limited spots</p>
             <h2 class="closing-title reveal">Your inbox,<br><span class="shimmer">handled.</span></h2>
             <div class="hero-cta reveal">
-                <a class="beta-btn big" href="{{ beta_url }}">
+                {% if current_user.is_authenticated %}
+                <a class="beta-btn big" href="{{ url_for('todo_list') }}">
+                    <span class="beta-ring" aria-hidden="true"></span>
+                    <span class="beta-label">Open your list</span>
+                    <span class="beta-arrow" aria-hidden="true">&rarr;</span>
+                </a>
+                {% else %}
+                <a class="beta-btn big" href="{{ url_for('request_access') }}">
                     <span class="beta-ring" aria-hidden="true"></span>
                     <span class="beta-label">Join the beta</span>
                     <span class="beta-arrow" aria-hidden="true">&rarr;</span>
                 </a>
-                <p class="signin-line">Already in? Sign in with
-                    <a href="{{ url_for('google_login') }}">Google</a> or
-                    <a href="{{ url_for('microsoft_login') }}">Microsoft</a>.</p>
+                <p class="signin-line">Already in the beta? <a href="{{ url_for('login') }}">Log in</a>.</p>
+                {% endif %}
             </div>
         </section>
-    </main>
-
-    <footer>
-        <a href="{{ url_for('index') }}" class="foot-brand">MailMind</a>
-        <span class="foot-links">
-            <a href="{{ beta_url }}">Join the beta</a>
-            <a href="{{ url_for('contact') }}">Contact</a>
-            <a href="{{ url_for('terms_and_privacy') }}">Terms &amp; Privacy</a>
-        </span>
-    </footer>
-
-    <script>
+{% endblock %}
+{% block scripts %}
+<script>
     (function () {
         var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         var clamp = function (x, a, b) { return Math.min(b, Math.max(a, x)); };
@@ -318,7 +316,6 @@
         }
 
         // Scroll-driven pieces
-        var nav = document.getElementById('nav');
         var film = document.getElementById('film-stage');
         var story = document.getElementById('story');
         var mails = story.querySelectorAll('.mail-card');
@@ -328,7 +325,6 @@
 
         function onScroll() {
             var vh = window.innerHeight, y = window.scrollY;
-            nav.classList.toggle('scrolled', y > 24);
 
             // film flattens out of a tilt as it rises into view
             var fr = film.getBoundingClientRect();
@@ -392,6 +388,5 @@
             play.classList.remove('hidden');
         });
     })();
-    </script>
-</body>
-</html>
+</script>
+{% endblock %}

@@ -2,11 +2,12 @@ from app import db
 from models import EmailAccount, Master
 
 
-def create_email(email, oauth_token, provider, master):
+def create_email(email, oauth_token, provider, master, provider_subject=None):
     account = EmailAccount(
         email=email,
         oauth_token=oauth_token,
         provider=provider,
+        provider_subject=provider_subject,
         master=master,
     )
     db.session.add(account)

@@ -8,6 +8,11 @@ primary_region = "ord"
 
 [build]
 
+[deploy]
+  # fly.toml's [processes] override the Dockerfile CMD, so migrations have to
+  # run here or they never run in production.
+  release_command = "flask db upgrade"
+
 [env]
   PORT = "8080"
   FLASK_ENV = "production"

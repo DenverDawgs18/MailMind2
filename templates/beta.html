@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "_macros.html" import aurora %}
+{% block title %}You're on the list — MailMind{% endblock %}
+{% block content %}
+{{ aurora() }}
+<div class="page narrow center rise">
+    <img class="big-mark" src="{{ url_for('static', filename='imgs/logo.svg') }}" alt="" width="96" height="96">
+    <h1 class="page-title">You're on <span class="shimmer">the&nbsp;list.</span></h1>
+    <p class="lede">You'll receive an email shortly with instructions on how to join the MailMind beta. Thank you for your interest!</p>
+    <div class="actions"><a class="btn btn-secondary" href="{{ url_for('index') }}">&larr; Back to MailMind</a></div>
+</div>
+{% endblock %}

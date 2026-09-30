@@ -23,6 +23,7 @@ os.environ.setdefault("MICROSOFT_CLIENT_SECRET", "test-ms-secret")
 os.environ.setdefault("DOMAIN", "http://localhost:5000")
 os.environ.setdefault("REDIS_HOST", "localhost")
 os.environ.setdefault("TEST_WEBHOOK", "whsec_test_dummy")
+os.environ.setdefault("MICROSOFT_SIGNIN", "1")  # parked in production; tests keep covering it
 
 
 class _FakeRedis:

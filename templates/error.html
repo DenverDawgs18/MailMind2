@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "_macros.html" import aurora %}
+{% block title %}{{ title }} — MailMind{% endblock %}
+{% block content %}
+{{ aurora() }}
+<div class="page narrow center rise">
+    <p class="err-code">{{ code }}</p>
+    <h1 class="page-title" style="font-size:clamp(36px,5vw,56px)">{{ title }}</h1>
+    <p class="lede">{{ message }}</p>
+    <div class="actions">
+        <a class="btn btn-primary" href="{{ url_for('settings') if current_user.is_authenticated else url_for('index') }}">
+            {{ 'Go to settings' if current_user.is_authenticated else 'Go home' }}
+        </a>
+        <a class="btn btn-secondary" href="{{ url_for('contact') }}">Contact us</a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="description" content="{% block description %}Every morning, MailMind reads your inbox and emails you one short list of what actually needs you.{% endblock %}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='imgs/logo.svg') }}">
+    <link rel="alternate icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
+    {% block styles %}<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">{% endblock %}
+    {% block head %}{% endblock %}
+    <title>{% block title %}MailMind{% endblock %}</title>
+</head>
+<body class="{% block body_class %}app-page{% endblock %}">
+    <div class="navbar" id="nav">
+        <a href="{{ url_for('index') }}" class="home">MailMind</a>
+        <div class="navwrap">
+            {% block nav_links %}
+            {% if current_user.is_authenticated %}
+                <a href="{{ url_for('todo_list') }}"{% if request.endpoint == 'todo_list' %} aria-current="page"{% endif %}>Your list</a>
+                <a href="{{ url_for('settings') }}"{% if request.endpoint == 'settings' %} aria-current="page"{% endif %}>Settings</a>
+                <a class="nav-optional" href="{{ url_for('contact') }}"{% if request.endpoint == 'contact' %} aria-current="page"{% endif %}>Contact</a>
+            {% else %}
+                <a href="{{ url_for('contact') }}"{% if request.endpoint == 'contact' %} aria-current="page"{% endif %}>Contact</a>
+                <a href="{{ url_for('login') }}"{% if request.endpoint == 'login' %} aria-current="page"{% endif %}>Log in</a>
+            {% endif %}
+            {% endblock %}
+        </div>
+        {% block nav_cta %}
+        {% if current_user.is_authenticated %}
+            <form action="{{ url_for('logout') }}" method="post" class="nav-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="nav-cta ghost">Log out</button>
+            </form>
+        {% else %}
+            <a class="nav-cta" href="{{ url_for('request_access') }}">Join the beta</a>
+        {% endif %}
+        {% endblock %}
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="toasts" role="status" aria-live="polite">
+        {% for category, message in messages %}
+        <div class="toast {{ category }}">
+            <span class="toast-dot" aria-hidden="true"></span>
+            <span>{{ message }}</span>
+            <button type="button" class="toast-close" aria-label="Dismiss">&times;</button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        <a href="{{ url_for('index') }}" class="foot-brand">MailMind</a>
+        <span class="foot-links">
+            {% if not current_user.is_authenticated %}<a href="{{ url_for('request_access') }}">Join the beta</a>{% endif %}
+            <a href="{{ url_for('contact') }}">Contact</a>
+            <a href="{{ url_for('terms_and_privacy') }}">Terms &amp; Privacy</a>
+        </span>
+    </footer>
+
+    <script>
+        (function () {
+            var nav = document.getElementById('nav');
+            function onScroll() { nav.classList.toggle('scrolled', window.scrollY > 24); }
+            window.addEventListener('scroll', onScroll, { passive: true });
+            onScroll();
+
+            document.querySelectorAll('.toast').forEach(function (t, i) {
+                var close = function () { t.classList.add('out'); setTimeout(function () { t.remove(); }, 400); };
+                t.querySelector('.toast-close').addEventListener('click', close);
+                if (!t.classList.contains('error')) setTimeout(close, 5000 + i * 800);
+            });
+        })();
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

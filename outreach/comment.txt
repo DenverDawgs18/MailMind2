@@ -1,2 +1,2 @@
 I built something that has really helped me with inbox management.
-https://mailmind.fly.dev Inbox -> To-Do List in <5 minutes, automatically.
+https://mailmind.dev Inbox -> To-Do List in <5 minutes, automatically.

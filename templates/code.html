@@ -1,42 +1,28 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Code</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='code.css') }}">
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='imgs/logo.svg') }}">
-    <link rel="alternate icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
-</head>
-<body>
-    <div class="navbar">
-        <a href="{{ url_for('index') }}" class="home">MailMind</a>
-        <div class="navwrap">
-            {% if current_user.is_authenticated %}
-                <a href="{{ url_for('settings') }}">Settings</a>
-                <a href="{{ url_for('logout') }}">Log out</a>
-            {% else %}
-                <a href="{{ url_for('contact') }}">Contact</a>
-            {% endif %}
-        </div>
-        <div class="empty"></div>
+{% extends "base.html" %}
+{% from "_macros.html" import aurora %}
+{% block title %}Beta access — MailMind{% endblock %}
+{% block content %}
+{{ aurora() }}
+<div class="page narrow center">
+    <div class="rise">
+        <p class="kicker">Private beta</p>
+        {% if prefill %}
+        <h1 class="page-title">Your invite is <span class="shimmer">ready.</span></h1>
+        <p class="lede">Tap below to turn on MailMind for {{ current_user.primary_email }}.</p>
+        {% else %}
+        <h1 class="page-title">Enter your <span class="shimmer">code.</span></h1>
+        <p class="lede">You'll find it in your invite.</p>
+        {% endif %}
     </div>
-    <div class="main-content">
-        <div class="container">
-            {% if message %}
-                <h1 class="message">{{message}}</h1>
-            {% endif %}
-            <form action="/code" method="post">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <h1>Enter code below</h1>
-                <input type="text" name="code">
-                <button type="submit">Submit</button>
-            </form>
+    <form class="card auth-card rise" style="animation-delay:.12s" action="{{ url_for('code') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if message %}<p class="inline-error" role="alert">{{ message }}</p>{% endif %}
+        <div class="field">
+            <label for="code">Invite code</label>
+            <input class="code-input" type="text" id="code" name="code" value="{{ prefill or '' }}" autocomplete="off" autocapitalize="characters" spellcheck="false" required autofocus>
         </div>
-    </div>
-    <footer>
-        <a href="{{url_for('terms_and_privacy')}}">Terms of Use and Privacy Policy</a>
-    </footer>
-</body>
-</html>
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:20px;min-height:52px;font-size:17px">Unlock MailMind</button>
+        <p class="fine" style="text-align:center">No code? <a href="{{ url_for('subscribe') }}">Start a free trial</a> or <a href="{{ url_for('request_access') }}">join the waitlist</a>.</p>
+    </form>
+</div>
+{% endblock %}

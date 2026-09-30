@@ -1,87 +1,99 @@
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Terms / Privacy Policy</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
-        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='imgs/logo.svg') }}">
-    <link rel="alternate icon" href="{{ url_for('static', filename='imgs/MailMindTempLogo.ico') }}">
-        <style>
-            .main-content { max-width: 720px; margin: 40px auto; padding: 0 20px; }
-            .modal-content { background: #fff; border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); padding: 24px; margin-bottom: 20px; }
-            .modal-content h2 { margin-top: 0; }
-            .modal-content p { color: var(--ink-2); white-space: pre-line; }
-        </style>
-    </head>
-    <body>
-        <div class="navbar">
-            <a href="{{ url_for('index') }}" class="home">MailMind</a>
-            <div class="navwrap">
-                {% if current_user.is_authenticated %}
-                    <a href="{{ url_for('settings') }}">Settings</a>
-                    <a href="{{ url_for('logout') }}">Log out</a>
-                {% else %}
-                    <a href="{{ url_for('contact') }}">Contact</a>
-                {% endif %}
-            </div>
-            <div class="empty"></div>
+{% extends "base.html" %}
+{% from "_macros.html" import aurora %}
+{% block title %}Terms &amp; Privacy — MailMind{% endblock %}
+{% block content %}
+{{ aurora() }}
+<div class="page narrow">
+    <div class="page-head rise">
+        <p class="kicker">Legal</p>
+        <h1 class="page-title">Terms &amp; <span class="shimmer">Privacy.</span></h1>
+        <p class="lede">Plain English, no surprises.</p>
+        <div class="toc">
+            <a class="btn btn-secondary btn-sm" href="#terms">Terms of Service</a>
+            <a class="btn btn-secondary btn-sm" href="#privacy">Privacy Policy</a>
         </div>
-        <div class="main-content">
-            <div class="wrapper">
-                <div class="modal-content">
-                        <h2 id="modal-tos-title">Terms of Service (Plain English)</h2>
-                        <p>
-                            Use at Your Own Risk: This service is provided "as is" and may not always be accurate or reliable. Use it carefully.
+    </div>
 
-                            No Lawsuits: By using this service, you agree not to sue me (the developer) for any loss or damage caused by using the service.
+    <section class="card prose rise" id="terms" style="animation-delay:.08s">
+        <h2>Terms of Service</h2>
+        <h3>Use at your own risk</h3>
+        <p>This service is provided "as is" and may not always be accurate or reliable. Use it carefully.</p>
+        <h3>No lawsuits</h3>
+        <p>By using this service, you agree not to sue me (the developer) for any loss or damage caused by using the service.</p>
+        <h3>Limitation of liability</h3>
+        <p>To the maximum extent allowed by law, I am not responsible for any direct, indirect, special, incidental, or consequential damages resulting from your use of the service.</p>
+        <h3>Age requirement</h3>
+        <p>You must be at least 13 years old (or the minimum age required by your country) to use this service.</p>
+        <h3>Governing law and jurisdiction</h3>
+        <p>These terms are governed by the laws of the United States. Any disputes will be handled in the courts located in the United States.</p>
+        <h3>Changes to terms</h3>
+        <p>I may update these terms at any time. If I do, the new terms will be posted here. Using the service after changes means you agree to the updated terms.</p>
+        <p>Thanks for using the service!</p>
+    </section>
 
-                            Limitation of Liability: To the maximum extent allowed by law, I am not responsible for any direct, indirect, special, incidental, or consequential damages resulting from your use of the service.
+    <section class="card prose rise" id="privacy" style="animation-delay:.14s">
+        <h2>Privacy Policy</h2>
+        <p class="updated">Last updated September 28, 2026</p>
 
-                            Age Requirement: You must be at least 13 years old (or the minimum age required by your country) to use this service.
+        <h3>What MailMind does</h3>
+        <p>MailMind reads the email you forward to it, or the last 24 hours of mail in inboxes you connect directly, finds the things that need you, and emails you a short list at the times you choose.</p>
 
-                            Governing Law and Jurisdiction: These terms are governed by the laws of the United States. Any disputes will be handled in the courts located in the United States.
+        <h3>What we store</h3>
+        <ul>
+            <li>The email addresses of the inboxes you connect, and which provider (Google or Microsoft) each uses.</li>
+            <li>An OAuth refresh token for each inbox, encrypted at rest. We never see or store your password.</li>
+            <li>Your delivery times and timezone.</li>
+            <li>If you subscribe, a Stripe customer ID. Card details are handled by Stripe and never reach us.</li>
+            <li>Your lists: each action item with the sender's name and the email's subject line, so you can see and check them off on the website. Lists are deleted automatically after 14 days.</li>
+        </ul>
 
-                            Changes to Terms: I may update these terms at any time. If I do, the new terms will be posted here. Using the service after changes means you agree to the updated terms.
+        <h3>Your email content</h3>
+        <ul>
+            <li>When your list is due, we fetch the last day of messages, pass each one to OpenAI's API to pick out action items, and email the result to you from your own inbox.</li>
+            <li>We don't keep your email bodies. They're processed in memory and discarded once your list is built; only the list itself is saved, as described above.</li>
+            <li>Under OpenAI's API terms, content sent through the API isn't used to train their models. OpenAI may retain it for up to 30 days for abuse monitoring.</li>
+            <li>No person at MailMind reads your email, except when you explicitly share a message with us for support.</li>
+        </ul>
 
-                            Thanks for using the service!
-                        </p>
-                </div>
-                <div class="modal-content">
-                    <h2 id="modal-privacy-title">Privacy Policy</h2>
-                    <p>
-                        Your privacy matters. Here’s how I handle your information:
+        <h3>Forwarded email</h3>
+        <ul>
+            <li>If you forward mail to your MailMind address, we receive those messages through Mailgun, our email provider.</li>
+            <li>Each forwarded message is held only until it's read, normally within 15 minutes, and then deleted. At most we keep it for 24 hours if processing fails.</li>
+            <li>What we keep is the same as for connected inboxes: the action item, sender name and subject, as part of your list.</li>
+            <li>You control what's forwarded. You can forward everything, use a filter, or turn forwarding off in your email settings at any time.</li>
+        </ul>
 
-                        1. Your Messages and Emails:
-                        - When you type a message or email, it is not stored permanently in any database.
-                        - Your message may be temporarily stored during your session to keep the service working smoothly — this storage is on the server side and works like a cookie, but the data is cleared when your session ends.
-                        - I cannot see your messages or emails unless you choose to share them with me. Beta testers sometimes share messages to help improve the service, but this is optional.
+        <h3>Signing in</h3>
+        <p>When you sign in with Google without connecting your inbox, MailMind receives only your name and email address.</p>
 
-                        2. Use of AI (OpenAI):
-                        - Your messages are sent securely to OpenAI’s API to generate responses.
-                        - OpenAI does not use your messages to train their models or keep your data.
-                        - Your messages are used only to provide you with real-time answers.
+        <h3>Google user data</h3>
+        <p>MailMind's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements. Gmail data is used only to build and deliver your list. It is never sold, never used for advertising, and never used to train general AI models.</p>
 
-                        3. No Tracking or Ads:
-                        - I do not use tracking cookies, ads, or analytics tools.
-                        - Your data is never sold or shared with third parties.
+        <h3>Who else is involved</h3>
+        <ul>
+            <li><b>Google and Microsoft</b>, to access the inboxes you connect.</li>
+            <li><b>OpenAI</b>, to extract action items.</li>
+            <li><b>Stripe</b>, for billing.</li>
+            <li><b>Mailgun</b>, which receives forwarded email and delivers your list.</li>
+            <li><b>Fly.io</b>, which hosts the app and database.</li>
+        </ul>
+        <p>We don't use advertising, sell data, or share it with anyone else.</p>
 
-                        4. Security:
-                        - I take reasonable steps to protect your temporary data during your session.
+        <h3>Your controls</h3>
+        <ul>
+            <li>Disconnect any inbox from Settings. For Google accounts we also revoke MailMind's access with Google.</li>
+            <li>Delete your MailMind account from Settings. This cancels billing and permanently deletes your stored data, lists and tokens.</li>
+            <li>You can also remove MailMind's access directly from your <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">Google account</a> or <a href="https://account.live.com/consent/Manage" target="_blank" rel="noopener">Microsoft account</a>.</li>
+        </ul>
 
-                        5. Your Consent:
-                        - By using this service, you consent to the collection and use of your information as described in this policy.
+        <h3>Security</h3>
+        <p>Tokens are encrypted at rest, all traffic uses HTTPS, and access tokens are created on demand and never stored.</p>
 
-                        6. Age Restriction:
-                        - This service is not intended for children under 13 (or the minimum age in your region).
+        <h3>Children</h3>
+        <p>MailMind isn't intended for children under 13 (or the minimum age in your region).</p>
 
-                        7. Policy Updates:
-                        - If this policy changes, I will update this page. Using the service after updates means you agree to the changes.
-                    </p>
-                </div>
-            </div>
-        </div>
-    
-
-    </body>
-</html>
+        <h3>Changes</h3>
+        <p>If this policy changes, we'll update this page. Questions? <a href="{{ url_for('contact') }}">Contact us</a>.</p>
+    </section>
+</div>
+{% endblock %}
