@@ -383,6 +383,38 @@ def terms_and_privacy():
     return render_template("termsandprivacy.html")
 
 
+_SAMPLE_GROUPS = [
+    {"account_email": "alex@gmail.com", "items": [
+        {"action": "Send Sarah the final version of the proposal by Thursday", "from": "Sarah Chen",
+         "subject": "Proposal feedback", "calendar_url": None},
+        {"action": "Sign the lease renewal form by Friday to keep your rate", "from": "Oakwood Properties",
+         "subject": "Lease renewal", "calendar_url": None},
+        {"action": "Sign up for team snacks before tonight", "from": "Coach Dana",
+         "subject": "Saturday game", "calendar_url": None},
+    ]},
+    {"account_email": "alex@company.com", "items": [
+        {"action": "Pull the Q3 numbers for Mark before Monday's meeting", "from": "Mark Rivera",
+         "subject": "Q3 numbers", "calendar_url": "https://calendar.google.com/calendar/render?action=TEMPLATE"
+                                                  "&text=Pull%20Q3%20numbers%20for%20Mark"},
+    ]},
+]
+
+
+@app.route("/sample")
+def sample_list():
+    """The real list email, rendered from the production template with example data."""
+    from functions.scheduler import _render_digest
+    html = _render_digest(_SAMPLE_GROUPS, [], "alex@gmail.com", DOMAIN, "Tuesday, October 6")
+    banner = (
+        '<div style="background:#1d1d1f;color:#fff;text-align:center;padding:12px 16px;font-size:14px;'
+        'font-family:-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;">'
+        'A sample MailMind email, made from example messages. '
+        f'<a href="{url_for("index")}" style="color:#ff9a6b;font-weight:600;text-decoration:none;">Back to MailMind</a></div>'
+    )
+    at = html.index(">", html.index("<body")) + 1
+    return html[:at] + banner + html[at:]
+
+
 @app.route('/logout', methods=["POST"])
 @login_required
 def logout():

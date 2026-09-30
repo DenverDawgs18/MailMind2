@@ -44,7 +44,8 @@
                     <span class="beta-label">Start your free week</span>
                     <span class="beta-arrow" aria-hidden="true">&rarr;</span>
                 </a>
-                <p class="signin-line">7 days free, then {{ price_monthly }}/month. Cancel any time.<br>Already have an account? <a href="{{ url_for('login') }}">Log in</a>.</p>
+                <p class="signin-line">7 days free, then {{ price_monthly }}/month. Cancel any time. Setup takes about two minutes.<br>Already have an account? <a href="{{ url_for('login') }}">Log in</a>.</p>
+                <p class="assure"><span>No inbox access</span><span>Email deleted after reading</span><span>Never used for training</span><a href="#privacy">Privacy&nbsp;&rarr;</a></p>
                 {% endif %}
             </div>
         </section>
@@ -168,6 +169,7 @@
                     </div>
                 </div>
                 <div class="story-progress" aria-hidden="true"><span id="story-bar"></span></div>
+                <p class="story-sample"><a href="{{ url_for('sample_list') }}" target="_blank" rel="noopener">See the real email this becomes &rarr;</a></p>
             </div>
         </section>
 
@@ -225,7 +227,7 @@
                 <p class="tile-kicker">Quiet by design</p>
                 <h3>No noise.</h3>
                 <div class="noise-list" aria-hidden="true">
-                    <span class="n">40% off everything — today only</span>
+                    <span class="n">Brightline Outfitters: weekend sale inside</span>
                     <span class="n">Your weekly roundup is here</span>
                     <span class="keep"><b>Sign the lease renewal</b><em>Fri</em></span>
                     <span class="n">You have 12 new notifications</span>
@@ -292,7 +294,7 @@
                 </div>
                 <div class="trust-item reveal">
                     <h3>Read, then deleted.</h3>
-                    <p>A forwarded email is held only until it's read, usually within 15 minutes, then deleted. What's kept is the to-do itself, with the sender and subject. Lists are erased after 14 days.</p>
+                    <p>A forwarded email is held only until it's read, usually within 15 minutes, then deleted. Attachments are never opened. What's kept is the to-do itself, with the sender and subject, and lists are erased after 14 days.</p>
                 </div>
                 <div class="trust-item reveal">
                     <h3>Never used for training.</h3>
@@ -312,6 +314,37 @@
                 </div>
             </div>
             <p class="trust-more reveal"><a href="{{ url_for('terms_and_privacy') }}#privacy">Read the full privacy policy &rarr;</a></p>
+        </section>
+
+        <!-- ============ FAQ ============ -->
+        <section class="faq">
+            <h2 class="faq-title reveal">Questions.</h2>
+            <div class="faq-list reveal">
+                <details>
+                    <summary>Which email works with MailMind?</summary>
+                    <p>Any inbox that can forward mail: Gmail, Outlook.com, Microsoft 365, iCloud, and most school and work accounts. You sign in with a Google account, get one private MailMind address, and forward to it from as many inboxes as you like. They all end up in one list. Some work accounts only allow forwarding if IT turns it on.</p>
+                </details>
+                <details>
+                    <summary>Do I have to forward everything?</summary>
+                    <p>No. You can forward everything, or use a filter so only some mail goes to MailMind, like messages from your kids' school or one client. MailMind only ever sees what you forward.</p>
+                </details>
+                <details>
+                    <summary>What if it gets something wrong?</summary>
+                    <p>MailMind suggests what looks like it needs you; you stay in charge. It never replies to, moves, or deletes anything in your inbox, and your email stays exactly where it is. If something's missing from the list, it's still in your inbox.</p>
+                </details>
+                <details>
+                    <summary>What does it cost?</summary>
+                    <p>The first 7 days are free. After that it's {{ price_monthly }} a month, and you can cancel from Settings any time.</p>
+                </details>
+                <details>
+                    <summary>Who's behind MailMind?</summary>
+                    <p>MailMind is built and run by an independent developer, not a big company. If you have a question or something breaks, <a href="{{ url_for('contact') }}">write in</a> and you'll hear back from the person who built it.</p>
+                </details>
+                <details>
+                    <summary>What does the list actually look like?</summary>
+                    <p>One short email with each to-do, who it's from, and a calendar button when there's a date. <a href="{{ url_for('sample_list') }}" target="_blank" rel="noopener">See a sample</a>. The same list is on the web, where you can check things off.</p>
+                </details>
+            </div>
         </section>
 
         <!-- ============ CLOSING ============ -->

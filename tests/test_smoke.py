@@ -922,3 +922,16 @@ def test_analytics_dashboard(app, client, monkeypatch):
     page = client.get("/admin/analytics?days=7").data
     assert b"lead@x.com" in page and b"<th scope=\"row\">hn</th>" in page
     assert client.get("/admin/analytics?days=999").status_code == 200
+
+
+def test_sample_list_renders_the_real_digest(client):
+    page = client.get("/sample").data
+    assert b"A sample MailMind email" in page and b"Pull the Q3 numbers" in page
+    assert b"Add to calendar" in page
+
+
+def test_landing_page_answers_trust_and_pricing(client):
+    page = client.get("/").data
+    for text in (b"No inbox access", b"Never used for training", b"/month", b"Which email works",
+                 b"What if it gets something wrong", b'href="/sample"'):
+        assert text in page, text
