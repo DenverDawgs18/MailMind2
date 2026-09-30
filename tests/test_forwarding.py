@@ -91,6 +91,17 @@ def test_webhook_queues_forwarded_mail(app, client, forwarding_env):
     assert InboundEmail.query.filter_by(master_id=m.id).count() == 1
 
 
+def test_webhook_drops_mail_for_people_without_a_plan(app, client, forwarding_env):
+    from app import db as _db
+    from models import InboundEmail
+    m = _forwarding_user(app)
+    m.subscribed = False
+    _db.session.commit()
+    assert client.post("/inbound/mailgun", data=_form()).get_json() == {"status": "ignored"}
+    assert InboundEmail.query.count() == 0
+    assert m.forwarding.last_received_at is not None  # settings can still show forwarding works
+
+
 def test_webhook_rejects_replayed_tokens(app, client, forwarding_env):
     import app as app_module
     from tests.conftest import _FakeRedis

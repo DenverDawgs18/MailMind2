@@ -159,10 +159,13 @@ def inject_globals():
     from flask_wtf.csrf import generate_csrf
     from functions.forwarding import forwarding_enabled as _fwd_on
     return {"csrf_token": generate_csrf, "DOMAIN": DOMAIN, "forwarding_on": _fwd_on(),
-            "is_admin": is_admin(current_user), "microsoft_on": microsoft_enabled()}
+            "is_admin": is_admin(current_user), "microsoft_on": microsoft_enabled(),
+            "price_monthly": PRICE_MONTHLY}
 
 
 stripe.api_key = os.getenv("STRIPE_API_KEY")
+# What the page says the plan costs; the Stripe price behind the lookup key must match.
+PRICE_MONTHLY = os.getenv("PRICE_MONTHLY", "$10")
 STRIPE_PRICE_LOOKUP_KEY = os.getenv("STRIPE_PRICE_LOOKUP_KEY", "One_Month_of_MailMind-ae39e51")
 
 from functions.stripe_setup import register as _register_stripe_setup  # noqa: E402
@@ -779,6 +782,11 @@ def inbound_mailgun():
         fwd.confirmation_at = datetime.now(timezone.utc)
         db.session.commit()
         return jsonify({"status": "confirmation"})
+
+    if not fwd.master.has_access:
+        # No plan: nothing would ever deliver it, so don't read or keep it.
+        db.session.commit()
+        return jsonify({"status": "ignored"})
 
     message = parse_message(msg, fallback_source=fwd.master.primary_email)
     if message is None:
