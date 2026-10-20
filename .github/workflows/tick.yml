@@ -1,0 +1,35 @@
+# The 15-minute MailMind tick: reads forwarded mail and sends lists that are
+# due. Running it from here lets every Fly machine scale to zero; the request
+# wakes the app. The app catches up on lists up to 2 hours late, so a delayed
+# or skipped run only means a later list, never a lost or duplicate one.
+name: Tick
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Run the tick
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          for attempt in 1 2 3; do
+            out=$(curl -sS --fail-with-body --max-time 600 -X POST \
+                  -H "Authorization: Bearer $CRON_SECRET" https://mailmind.dev/cron/tick) && {
+              echo "$out" | tr -d ' '
+              case "$out" in *error*) exit 1 ;; esac
+              exit 0
+            }
+            echo "attempt $attempt failed: $out"
+            sleep 20
+          done
+          exit 1

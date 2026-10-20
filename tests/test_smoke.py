@@ -804,12 +804,39 @@ def test_calendar_deep_link_provider_split():
     assert "outlook.live.com" in m and "subject=Meet%20Sarah%20Tuesday" in m
 
 
-def test_scheduler_time_match_boundaries():
+def test_due_slot_catches_up_on_late_ticks():
     from datetime import datetime, timezone
-    from functions.scheduler import _is_time_match
-    now = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
-    assert _is_time_match("7:00 AM", now, "America/New_York") is True
-    assert _is_time_match("9:00 AM", now, "America/New_York") is False
+    from functions.scheduler import _due_slot
+    ny = "America/New_York"  # 7:00 AM EST = 12:00 UTC on Jan 15
+    seven = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
+    at = lambda h, m: datetime(2026, 1, 15, h, m, tzinfo=timezone.utc)
+    assert _due_slot("7:00 AM", at(12, 0), ny) == seven      # on time
+    assert _due_slot("7:00 AM", at(11, 59), ny) == seven     # a tick a few seconds early
+    assert _due_slot("7:00 AM", at(13, 40), ny) == seven     # a late tick still delivers
+    assert _due_slot("7:00 AM", at(14, 1), ny) is None       # more than 2h late: skipped
+    assert _due_slot("9:00 AM", at(12, 0), ny) is None       # not yet
+    # 11:45 PM yesterday is still due just after midnight.
+    assert _due_slot("11:45 PM", datetime(2026, 1, 16, 5, 30, tzinfo=timezone.utc), ny) == \
+        datetime(2026, 1, 16, 4, 45, tzinfo=timezone.utc)
+
+
+def test_each_delivery_slot_is_sent_once(app):
+    from datetime import datetime, timedelta, timezone
+    from app import db as _db
+    from functions.scheduler import _users_to_process
+    from models import Digest, Master
+    m = Master(primary_email="slot@x.com", subscribed=True, timezone="UTC", time="7:00 AM,5:00 PM")
+    _db.session.add(m)
+    _db.session.commit()
+    seven = datetime.now(timezone.utc).replace(hour=7, minute=0, second=0, microsecond=0)
+
+    due = _users_to_process(seven + timedelta(minutes=20))
+    assert [(u.id, s) for u, s in due] == [(m.id, seven)]
+
+    _db.session.add(Digest(master_id=m.id, created_at=seven + timedelta(minutes=21)))
+    _db.session.commit()
+    assert _users_to_process(seven + timedelta(minutes=35)) == []           # already sent
+    assert _users_to_process(seven + timedelta(hours=10, minutes=1))[0][0].id == m.id  # 5 PM is new
 
 
 # ---------------------------------------------------------------------------
@@ -935,3 +962,28 @@ def test_landing_page_answers_trust_and_pricing(client):
     for text in (b"No inbox access", b"Never used for training", b"/month", b"Which email works",
                  b"What if it gets something wrong", b'href="/sample"'):
         assert text in page, text
+
+
+def test_cron_tick_needs_the_secret_and_runs_a_tick(app, client, monkeypatch):
+    from functions import scheduler
+    calls = []
+    monkeypatch.setattr(scheduler, "check_and_send_emails", lambda a=None: calls.append(a))
+    monkeypatch.delenv("CRON_SECRET", raising=False)
+    assert client.post("/cron/tick", headers={"Authorization": "Bearer x"}).status_code == 404
+
+    monkeypatch.setenv("CRON_SECRET", "s3cret")
+    assert client.post("/cron/tick", headers={"Authorization": "Bearer wrong"}).status_code == 404
+    assert client.get("/cron/tick").status_code == 405
+    resp = client.post("/cron/tick", headers={"Authorization": "Bearer s3cret"})
+    assert resp.status_code == 200 and resp.get_data(as_text=True).strip() == "ok"
+    assert len(calls) == 1
+
+
+def test_cron_tick_skips_while_another_runs(app, client, monkeypatch):
+    import app as app_module
+    from functions import scheduler
+    monkeypatch.setattr(scheduler, "check_and_send_emails", lambda a=None: None)
+    monkeypatch.setenv("CRON_SECRET", "s3cret")
+    app_module._redis_client.set(app_module._TICK_LOCK, "1")
+    resp = client.post("/cron/tick", headers={"Authorization": "Bearer s3cret"})
+    assert resp.get_json() == {"status": "busy"}

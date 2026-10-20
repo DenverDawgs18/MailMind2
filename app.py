@@ -833,6 +833,64 @@ def inbound_mailgun():
     return jsonify({"status": "queued"})
 
 
+# ---------------------------------------------------------------------------
+# Cron tick
+# ---------------------------------------------------------------------------
+
+_TICK_LOCK = "mailmind:tick-lock"
+
+
+@app.route("/cron/tick", methods=["POST"])
+@csrf.exempt
+def cron_tick():
+    """
+    The 15-minute tick (read forwarded mail, send due lists), called by an
+    external cron so no machine has to stay running. Needs
+    `Authorization: Bearer <CRON_SECRET>`. Streams a heartbeat byte while it
+    works so the request (and the machine) stays alive until it's done.
+    """
+    secret = os.getenv("CRON_SECRET", "")
+    supplied = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if not secret or not hmac.compare_digest(supplied, secret):
+        return "Not found", 404
+
+    if _redis_client is not None:
+        try:
+            if not _redis_client.set(_TICK_LOCK, "1", nx=True, ex=600):
+                return jsonify({"status": "busy"})
+        except Exception:
+            logger.warning("Tick lock unavailable; running anyway", exc_info=True)
+
+    import threading
+    from functions.scheduler import check_and_send_emails
+
+    done = threading.Event()
+    failed = []
+
+    def work():
+        try:
+            check_and_send_emails(app)
+        except Exception:
+            logger.exception("Cron tick failed")
+            failed.append(True)
+        finally:
+            if _redis_client is not None:
+                try:
+                    _redis_client.delete(_TICK_LOCK)
+                except Exception:
+                    pass
+            done.set()
+
+    threading.Thread(target=work, daemon=True).start()
+
+    def stream():
+        while not done.wait(15):
+            yield " "
+        yield "error\n" if failed else "ok\n"
+
+    return app.response_class(stream(), mimetype="text/plain")
+
+
 @app.route("/settings/forwarding/rotate", methods=["POST"])
 @login_required
 def rotate_forwarding():
