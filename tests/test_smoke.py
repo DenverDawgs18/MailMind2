@@ -987,3 +987,51 @@ def test_cron_tick_skips_while_another_runs(app, client, monkeypatch):
     app_module._redis_client.set(app_module._TICK_LOCK, "1")
     resp = client.post("/cron/tick", headers={"Authorization": "Bearer s3cret"})
     assert resp.get_json() == {"status": "busy"}
+
+
+def test_tick_is_only_needed_when_someone_has_a_schedule(app):
+    from datetime import datetime, timedelta, timezone
+    from app import db as _db
+    from functions import tick_control
+    from models import InboundEmail, Master
+    assert tick_control.tick_needed() is False
+    m = Master(primary_email="t@x.com", subscribed=False, timezone="UTC", time="7:00 AM")
+    _db.session.add(m)
+    _db.session.commit()
+    assert tick_control.tick_needed() is False        # a schedule but no plan
+    m.comp_until = datetime.now(timezone.utc) + timedelta(days=3)
+    _db.session.commit()
+    assert tick_control.tick_needed() is True
+    m.comp_until, m.time = None, None
+    _db.session.add(InboundEmail(master_id=m.id, source_email="a@b.c", body="hi"))
+    _db.session.commit()
+    assert tick_control.tick_needed() is True         # forwarded mail waiting to be read
+
+
+def test_tick_reports_idle_only_when_it_can_be_resumed(app, client, monkeypatch):
+    from functions import scheduler
+    monkeypatch.setattr(scheduler, "check_and_send_emails", lambda a=None: None)
+    monkeypatch.setenv("CRON_SECRET", "s3cret")
+    hdrs = {"Authorization": "Bearer s3cret"}
+    monkeypatch.delenv("GITHUB_WORKFLOW_TOKEN", raising=False)
+    assert client.post("/cron/tick", headers=hdrs).get_data(as_text=True).strip() == "ok"
+    monkeypatch.setenv("GITHUB_WORKFLOW_TOKEN", "ghp_test")
+    assert client.post("/cron/tick", headers=hdrs).get_data(as_text=True).strip() == "ok idle"
+
+
+def test_saving_a_schedule_turns_the_tick_back_on(app, client, monkeypatch):
+    import threading
+    from functions import tick_control
+    calls = []
+    monkeypatch.setenv("GITHUB_WORKFLOW_TOKEN", "ghp_test")
+    monkeypatch.setattr(tick_control, "_enable", lambda: calls.append("enable"))
+    monkeypatch.setattr(tick_control, "RE_ENABLE_AFTER_SECONDS", 0)
+    monkeypatch.setattr(threading, "Thread", lambda target, daemon: type("T", (), {"start": lambda self: target()})())
+    _login_as(app, client, primary_email="sched@x.com")
+    client.post("/settings", data={"timezone": "UTC", "time": ["7:00 AM"]})
+    assert calls == ["enable", "enable"]
+
+    calls.clear()
+    monkeypatch.delenv("GITHUB_WORKFLOW_TOKEN")
+    client.post("/settings", data={"timezone": "UTC", "time": ["8:00 AM"]})
+    assert calls == []

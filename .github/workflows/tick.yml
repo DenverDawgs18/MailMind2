@@ -2,12 +2,19 @@
 # due. Running it from here lets every Fly machine scale to zero; the request
 # wakes the app. The app catches up on lists up to 2 hours late, so a delayed
 # or skipped run only means a later list, never a lost or duplicate one.
+#
+# When a tick answers "idle" (nobody has a delivery time and no forwarded
+# mail is waiting), this workflow disables itself; the app re-enables it
+# through the GitHub API as soon as someone sets a schedule or starts a plan.
 name: Tick
 
 on:
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
+
+permissions:
+  actions: write
 
 concurrency:
   group: tick
@@ -21,12 +28,18 @@ jobs:
       - name: Run the tick
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           for attempt in 1 2 3; do
             out=$(curl -sS --fail-with-body --max-time 600 -X POST \
                   -H "Authorization: Bearer $CRON_SECRET" https://mailmind.dev/cron/tick) && {
               echo "$out" | tr -d ' '
-              case "$out" in *error*) exit 1 ;; esac
+              case "$out" in
+                *error*) exit 1 ;;
+                *idle*)
+                  echo "Nobody needs a list right now; pausing until the app turns this back on."
+                  gh workflow disable tick.yml --repo "$GITHUB_REPOSITORY" ;;
+              esac
               exit 0
             }
             echo "attempt $attempt failed: $out"
