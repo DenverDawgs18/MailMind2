@@ -36,6 +36,11 @@ class Master(db.Model, UserMixin):
         db.Integer, db.ForeignKey('access_code.id', ondelete='SET NULL'), index=True
     )
     access_code = db.relationship('AccessCode', backref=db.backref('redeemed_by', order_by='Master.id'))
+    # Where this person came from (see functions/analytics.py): the ?ref= tag,
+    # else the referring site, else "direct".
+    signup_source = db.Column(db.String(120), index=True)
+    signup_referrer = db.Column(db.String(120))
+    signup_landing = db.Column(db.String(120))
 
     @property
     def comped(self) -> bool:
@@ -238,3 +243,15 @@ class PendingItem(db.Model):
 # Forwarded mail that can't be processed (e.g. the model is down) is dropped
 # after this long rather than kept indefinitely.
 INBOUND_MAX_AGE_HOURS = 24
+
+
+class SourceVisit(db.Model):
+    """New visitors per day, by source and landing page. No personal data."""
+
+    __table_args__ = (db.UniqueConstraint('day', 'source', 'landing', name='uq_source_visit'),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    day = db.Column(db.Date, nullable=False, index=True)
+    source = db.Column(db.String(120), nullable=False)
+    landing = db.Column(db.String(120), nullable=False)
+    visits = db.Column(db.Integer, default=0, nullable=False)

@@ -32,7 +32,7 @@ import pytz
 import requests
 import stripe
 from flask import (
-    Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for,
+    Flask, abort, flash, g, jsonify, redirect, render_template, request, session, url_for,
 )
 from flask_login import (
     LoginManager,
@@ -159,10 +159,13 @@ def inject_globals():
     from flask_wtf.csrf import generate_csrf
     from functions.forwarding import forwarding_enabled as _fwd_on
     return {"csrf_token": generate_csrf, "DOMAIN": DOMAIN, "forwarding_on": _fwd_on(),
-            "is_admin": is_admin(current_user), "microsoft_on": microsoft_enabled()}
+            "is_admin": is_admin(current_user), "microsoft_on": microsoft_enabled(),
+            "price_monthly": PRICE_MONTHLY}
 
 
 stripe.api_key = os.getenv("STRIPE_API_KEY")
+# What the page says the plan costs; the Stripe price behind the lookup key must match.
+PRICE_MONTHLY = os.getenv("PRICE_MONTHLY", "$10")
 STRIPE_PRICE_LOOKUP_KEY = os.getenv("STRIPE_PRICE_LOOKUP_KEY", "One_Month_of_MailMind-ae39e51")
 
 from functions.stripe_setup import register as _register_stripe_setup  # noqa: E402
@@ -190,8 +193,51 @@ from functions.forwarding import (  # noqa: E402
 )
 from models import (  # noqa: E402
     FOREVER, AccessCode, Digest, DigestItem, EmailAccount, ForwardingAddress, Identity, InboundEmail,
-    Master,
+    Master, SourceVisit,
 )
+from functions import analytics, tick_control  # noqa: E402
+
+
+def _record_visit(day, source, landing):
+    try:
+        row = SourceVisit.query.filter_by(day=day, source=source, landing=landing).first()
+        if row is None:
+            row = SourceVisit(day=day, source=source, landing=landing, visits=0)
+            db.session.add(row)
+        row.visits += 1
+        db.session.commit()
+    except Exception:  # analytics must never break a page view
+        db.session.rollback()
+        logger.warning("Couldn't record visit", exc_info=True)
+
+
+@app.before_request
+def track_source():
+    if PRODUCTION and request.host.lower() != CANONICAL_HOST:
+        return None  # health checks and aliases (which redirect anyway)
+    g.mm_src = analytics.track_visit(app.config["SECRET_KEY"], CANONICAL_HOST, _record_visit)
+    return None
+
+
+@app.after_request
+def set_source_cookie(response):
+    value = g.pop("mm_src", None)
+    if value:
+        response.set_cookie(analytics.COOKIE, value, max_age=analytics.COOKIE_MAX_AGE,
+                            httponly=True, samesite="Lax", secure=PRODUCTION)
+    return response
+
+
+def _new_account(email):
+    master = create_master(email)
+    analytics.attribute(master, app.config["SECRET_KEY"])
+    db.session.commit()
+    return master
+
+
+def _no_access_redirect():
+    """New people start a trial; someone holding an invite link goes to redeem it."""
+    return redirect(url_for('code') if session.get("invite_code") else url_for('subscribe'))
 
 # ---------------------------------------------------------------------------
 # OAuth configuration
@@ -335,6 +381,38 @@ def contact():
 @app.route("/termsandprivacy")
 def terms_and_privacy():
     return render_template("termsandprivacy.html")
+
+
+_SAMPLE_GROUPS = [
+    {"account_email": "alex@gmail.com", "items": [
+        {"action": "Send Sarah the final version of the proposal by Thursday", "from": "Sarah Chen",
+         "subject": "Proposal feedback", "calendar_url": None},
+        {"action": "Sign the lease renewal form by Friday to keep your rate", "from": "Oakwood Properties",
+         "subject": "Lease renewal", "calendar_url": None},
+        {"action": "Sign up for team snacks before tonight", "from": "Coach Dana",
+         "subject": "Saturday game", "calendar_url": None},
+    ]},
+    {"account_email": "alex@company.com", "items": [
+        {"action": "Pull the Q3 numbers for Mark before Monday's meeting", "from": "Mark Rivera",
+         "subject": "Q3 numbers", "calendar_url": "https://calendar.google.com/calendar/render?action=TEMPLATE"
+                                                  "&text=Pull%20Q3%20numbers%20for%20Mark"},
+    ]},
+]
+
+
+@app.route("/sample")
+def sample_list():
+    """The real list email, rendered from the production template with example data."""
+    from functions.scheduler import _render_digest
+    html = _render_digest(_SAMPLE_GROUPS, [], "alex@gmail.com", DOMAIN, "Tuesday, October 6")
+    banner = (
+        '<div style="background:#1d1d1f;color:#fff;text-align:center;padding:12px 16px;font-size:14px;'
+        'font-family:-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;">'
+        'A sample MailMind email, made from example messages. '
+        f'<a href="{url_for("index")}" style="color:#ff9a6b;font-weight:600;text-decoration:none;">Back to MailMind</a></div>'
+    )
+    at = html.index(">", html.index("<body")) + 1
+    return html[:at] + banner + html[at:]
 
 
 @app.route('/logout', methods=["POST"])
@@ -624,7 +702,7 @@ def _finish_oauth(provider: str, subject: str, user_email: str, refresh_token):
                                  f"{user_email} already has a MailMind account. Sign in with Google instead.",
                                  provider="google", status=409)
         if master is None:
-            master = create_master(user_email)
+            master = _new_account(user_email)
         create_email(user_email, encrypt_token(refresh_token), provider=provider,
                      master=master, provider_subject=subject)
 
@@ -633,7 +711,7 @@ def _finish_oauth(provider: str, subject: str, user_email: str, refresh_token):
     _start_session_for(master)
 
     if not master.has_access:
-        return redirect(url_for('code'))
+        return _no_access_redirect()
     return redirect(url_for('todo_list'))
 
 
@@ -669,7 +747,7 @@ def _finish_signin(provider: str, subject: str, user_email: str):
                                      f"{user_email} already has a MailMind account. Sign in with Google instead.",
                                      provider="google", status=409)
             if master is None:
-                master = create_master(user_email)
+                master = _new_account(user_email)
         db.session.add(Identity(provider=provider, subject=subject, email=user_email, master=master))
 
     master.last_login = datetime.now(timezone.utc)
@@ -677,7 +755,7 @@ def _finish_signin(provider: str, subject: str, user_email: str):
     _start_session_for(master)
 
     if not master.has_access:
-        return redirect(url_for('code'))
+        return _no_access_redirect()
     return redirect(url_for('todo_list'))
 
 
@@ -737,6 +815,11 @@ def inbound_mailgun():
         db.session.commit()
         return jsonify({"status": "confirmation"})
 
+    if not fwd.master.has_access:
+        # No plan: nothing would ever deliver it, so don't read or keep it.
+        db.session.commit()
+        return jsonify({"status": "ignored"})
+
     message = parse_message(msg, fallback_source=fwd.master.primary_email)
     if message is None:
         db.session.commit()
@@ -747,7 +830,95 @@ def inbound_mailgun():
     if not duplicate:
         db.session.add(InboundEmail(master_id=fwd.master_id, **message))
     db.session.commit()
+    _read_inbound_soon()
     return jsonify({"status": "queued"})
+
+
+def _read_inbound_soon():
+    """
+    Read queued forwarded mail now, after the response goes back to Mailgun,
+    rather than waiting for the next tick (which may be paused). Anything that
+    fails stays queued, and the tick is turned back on to retry it.
+    """
+    import threading
+    from functions.scheduler import process_inbound_queue
+
+    def work():
+        with app.app_context():
+            try:
+                process_inbound_queue(batch=20)
+            except Exception:
+                logger.exception("Reading forwarded mail failed; leaving it for the tick")
+                db.session.rollback()
+            if InboundEmail.query.first() is not None:
+                tick_control.ensure_running()
+
+    if app.config.get("TESTING"):
+        return  # tests drive the queue directly
+    threading.Thread(target=work, daemon=True).start()
+
+
+# ---------------------------------------------------------------------------
+# Cron tick
+# ---------------------------------------------------------------------------
+
+_TICK_LOCK = "mailmind:tick-lock"
+
+
+@app.route("/cron/tick", methods=["POST"])
+@csrf.exempt
+def cron_tick():
+    """
+    The 15-minute tick (read forwarded mail, send due lists), called by an
+    external cron so no machine has to stay running. Needs
+    `Authorization: Bearer <CRON_SECRET>`. Streams a heartbeat byte while it
+    works so the request (and the machine) stays alive until it's done.
+    """
+    secret = os.getenv("CRON_SECRET", "")
+    supplied = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if not secret or not hmac.compare_digest(supplied, secret):
+        return "Not found", 404
+
+    if _redis_client is not None:
+        try:
+            if not _redis_client.set(_TICK_LOCK, "1", nx=True, ex=600):
+                return jsonify({"status": "busy"})
+        except Exception:
+            logger.warning("Tick lock unavailable; running anyway", exc_info=True)
+
+    import threading
+    from functions.scheduler import check_and_send_emails
+
+    done = threading.Event()
+    failed = []
+
+    idle = []
+
+    def work():
+        try:
+            check_and_send_emails(app)
+            with app.app_context():
+                if tick_control.can_resume() and not tick_control.tick_needed():
+                    idle.append(True)
+        except Exception:
+            logger.exception("Cron tick failed")
+            failed.append(True)
+        finally:
+            if _redis_client is not None:
+                try:
+                    _redis_client.delete(_TICK_LOCK)
+                except Exception:
+                    pass
+            done.set()
+
+    threading.Thread(target=work, daemon=True).start()
+
+    def stream():
+        while not done.wait(15):
+            yield " "
+        yield "error\n" if failed else ("ok idle\n" if idle else "ok\n")
+
+    return app.response_class(stream(), mimetype="text/plain")
 
 
 @app.route("/settings/forwarding/rotate", methods=["POST"])
@@ -953,6 +1124,7 @@ def settings():
             current_user.timezone = tz
             current_user.time = ",".join(times[:MAX_DELIVERY_TIMES])
             db.session.commit()
+            tick_control.ensure_running()
             flash("Delivery schedule saved.", "success")
         return redirect(url_for('settings'))
 
@@ -1126,6 +1298,8 @@ def webhook_received():
         elif event_type == 'customer.subscription.deleted':
             user.subscribed = False
         db.session.commit()
+        if user.subscribed:
+            tick_control.ensure_running()
 
     return jsonify({'status': 'success'})
 
@@ -1199,6 +1373,7 @@ def redeem_access_code(master, raw):
     code.uses += 1
     db.session.commit()
     logger.info("Access code %s redeemed by master %s", code.id, master.id)
+    tick_control.ensure_running()
     return True, "You're in. Pick when you'd like your list delivered."
 
 
@@ -1278,6 +1453,57 @@ def admin_codes():
     people = Master.query.order_by(Master.created_at.desc(), Master.id.desc()).all()
     return render_template("admin_codes.html", codes=codes, people=people,
                            new_id=request.args.get("new", type=int), now=datetime.now(timezone.utc))
+
+
+_ANALYTICS_WINDOWS = (7, 30, 90, 365)
+
+
+@app.route("/admin/analytics")
+@admin_required
+def admin_analytics():
+    days = request.args.get("days", 30, type=int)
+    days = days if days in _ANALYTICS_WINDOWS else 30
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    visits = {}
+    landings = {}
+    daily = {}
+    for row in SourceVisit.query.filter(SourceVisit.day >= since.date()).all():
+        visits[row.source] = visits.get(row.source, 0) + row.visits
+        landings[row.landing] = landings.get(row.landing, 0) + row.visits
+        daily[row.day] = daily.get(row.day, 0) + row.visits
+
+    has_list = {mid for (mid,) in db.session.query(Digest.master_id).distinct()}
+    sources = {}
+    recent = []
+    for m in Master.query.filter(Master.created_at >= since).order_by(Master.created_at.desc()).all():
+        src = m.signup_source or "before tracking"
+        fwd = m.forwarding is not None and m.forwarding.last_received_at is not None
+        set_up = fwd or any(not a.needs_reauth for a in m.email_accounts)
+        got_list = m.id in has_list
+        row = sources.setdefault(src, {"signups": 0, "set_up": 0, "got_list": 0, "paying": 0, "free": 0})
+        row["signups"] += 1
+        row["set_up"] += set_up
+        row["got_list"] += got_list
+        row["paying"] += bool(m.subscribed)
+        row["free"] += bool(m.comped and not m.subscribed)
+        recent.append({"m": m, "source": src, "set_up": set_up, "got_list": got_list})
+
+    names = sorted(set(visits) | set(sources),
+                   key=lambda n: (-(sources.get(n, {}).get("signups", 0)), -visits.get(n, 0), n))
+    table = [{"source": n, "visitors": visits.get(n, 0),
+              **sources.get(n, {"signups": 0, "set_up": 0, "got_list": 0, "paying": 0, "free": 0})}
+             for n in names]
+    totals = {k: sum(r[k] for r in table) for k in ("visitors", "signups", "set_up", "got_list", "paying", "free")}
+
+    today = datetime.now(timezone.utc).date()
+    span = min(days, 90)
+    series = [(today - timedelta(days=i), daily.get(today - timedelta(days=i), 0)) for i in range(span - 1, -1, -1)]
+    return render_template(
+        "admin_analytics.html", days=days, windows=_ANALYTICS_WINDOWS, table=table, totals=totals,
+        recent=recent[:25], series=series, peak=max([v for _, v in series] + [1]),
+        landings=sorted(landings.items(), key=lambda kv: -kv[1])[:8],
+    )
 
 
 @app.route("/admin/codes/<int:code_id>/toggle", methods=["POST"])

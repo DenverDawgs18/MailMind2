@@ -380,23 +380,43 @@ def _convert_to_24hour(time_str: str) -> Optional[str]:
     return None
 
 
-def _is_time_match(user_time: str, current_time: datetime, timezone_str: str) -> bool:
+# A list is sent at the first tick at or after its delivery time. Ticks can
+# arrive late (the trigger is an external cron that wakes the app), so a list
+# still goes out if it's up to this late; one that's older is skipped.
+CATCH_UP_SECONDS = 2 * 3600
+# Ticks may fire a little before the quarter-hour.
+EARLY_SECONDS = 60
+
+
+def _due_slot(user_time: str, now: datetime, timezone_str: str) -> Optional[datetime]:
+    """The most recent occurrence of `user_time` that's due now, in UTC, or None."""
+    parsed = _convert_to_24hour(user_time)
+    if not parsed:
+        return None
     try:
-        user_tz = pytz.timezone(timezone_str)
-        current_local = current_time.astimezone(user_tz)
-        parsed = _convert_to_24hour(user_time)
-        if not parsed:
-            return False
-        hour, minute = map(int, parsed.split(':'))
-        target = current_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        return abs((current_local - target).total_seconds()) <= 450
-    except Exception as exc:
-        logger.error("time match failed for %s / %s: %s", user_time, timezone_str, exc)
-        return False
+        tz = pytz.timezone(timezone_str)
+    except Exception:
+        return None
+    hour, minute = map(int, parsed.split(':'))
+    local_now = now.astimezone(tz)
+    for days_back in (0, 1):
+        day = (local_now - timedelta(days=days_back)).date()
+        slot = tz.localize(datetime(day.year, day.month, day.day, hour, minute))
+        lateness = (now - slot).total_seconds()
+        if -EARLY_SECONDS <= lateness <= CATCH_UP_SECONDS:
+            return slot.astimezone(pytz.UTC)
+    return None
 
 
-def _users_to_process() -> List[Master]:
-    now = datetime.now(pytz.UTC)
+def _sent_since(user_id: int, slot: datetime) -> bool:
+    since = slot - timedelta(seconds=EARLY_SECONDS)
+    return db.session.query(Digest.id).filter(Digest.master_id == user_id,
+                                              Digest.created_at >= since).first() is not None
+
+
+def _users_to_process(now: Optional[datetime] = None) -> List[tuple]:
+    """(user, slot) for everyone with a delivery time that's due and not yet sent."""
+    now = now or datetime.now(pytz.UTC)
     users = Master.query.filter(
         and_(
             Master.timezone.isnot(None),
@@ -409,11 +429,13 @@ def _users_to_process() -> List[Master]:
     for user in users:
         if not user.timezone or not user.time:
             continue
-        for user_time in _parse_user_times(user.time):
-            if _is_time_match(user_time, now, user.timezone):
-                result.append(user)
-                logger.info("User %s queued for %s (%s)", user.id, user_time, user.timezone)
-                break
+        slots = [s for s in (_due_slot(t, now, user.timezone) for t in _parse_user_times(user.time)) if s]
+        if not slots:
+            continue
+        slot = max(slots)
+        if not _sent_since(user.id, slot):
+            result.append((user, slot))
+            logger.info("User %s due for %s (%s)", user.id, slot.isoformat(), user.timezone)
     return result
 
 
@@ -442,11 +464,14 @@ def _store_digest(user: Master, groups: List[dict]) -> Digest:
     return digest
 
 
-def send_email_summary_for_user(user: Master, site_url: str) -> Dict[str, Any]:
+def send_email_summary_for_user(user: Master, site_url: str, slot: Optional[datetime] = None) -> Dict[str, Any]:
     if not _acquire_send_lock(user.id):
         return {"success": True, "message": "lock held", "user": user.id}
 
     try:
+        if slot is not None and _sent_since(user.id, slot):
+            # Another tick got here first.
+            return {"success": True, "message": "already sent", "user": user.id}
         tokens: Dict[int, str] = {}
         groups: List[dict] = []
         notices: List[str] = []
@@ -574,16 +599,18 @@ def process_inbound_queue(batch: int = 300) -> int:
     return processed
 
 
-def check_and_send_emails():
-    """Called by the cron trigger every 15 minutes."""
+def check_and_send_emails(app_override=None):
+    """One tick: read queued forwarded mail, then send every list that's due.
+    Runs every 15 minutes, from POST /cron/tick (production) or APScheduler (dev)."""
     import os
     site_url = os.getenv("DOMAIN", "https://mailmind.dev").rstrip("/")
 
-    if not flask_app:
+    target = app_override or flask_app
+    if not target:
         logger.error("Flask app not available")
         return
 
-    with flask_app.app_context():
+    with target.app_context():
         try:
             processed = process_inbound_queue()
             if processed:
@@ -598,9 +625,9 @@ def check_and_send_emails():
                 logger.info("No users to process this tick")
                 return
             logger.info("Processing %d users", len(users))
-            for user in users:
+            for user, slot in users:
                 try:
-                    result = send_email_summary_for_user(user, site_url)
+                    result = send_email_summary_for_user(user, site_url, slot)
                     logger.info("%s: %s", "OK" if result["success"] else "FAIL", result)
                 except Exception as exc:
                     logger.exception("Error processing user %s: %s", user.id, exc)

@@ -34,7 +34,7 @@
                 <button type="submit" class="nav-cta ghost">Log out</button>
             </form>
         {% else %}
-            <a class="nav-cta" href="{{ url_for('request_access') }}">Join the beta</a>
+            <a class="nav-cta" href="{{ url_for('login') }}">Start free trial</a>
         {% endif %}
         {% endblock %}
     </div>
@@ -60,7 +60,7 @@
     <footer>
         <a href="{{ url_for('index') }}" class="foot-brand">MailMind</a>
         <span class="foot-links">
-            {% if not current_user.is_authenticated %}<a href="{{ url_for('request_access') }}">Join the beta</a>{% endif %}
+            {% if not current_user.is_authenticated %}<a href="{{ url_for('login') }}">Start free trial</a>{% endif %}
             <a href="{{ url_for('contact') }}">Contact</a>
             <a href="{{ url_for('terms_and_privacy') }}">Terms &amp; Privacy</a>
         </span>

@@ -55,9 +55,8 @@ def test_public_pages_render(client, path):
 
 def test_landing_ctas(client):
     resp = client.get("/")
-    assert b"Join the beta" in resp.data
-    assert b'href="/request_access"' in resp.data
-    assert b'href="/login"' in resp.data
+    assert b"Start your free week" in resp.data
+    assert b'href="/login"' in resp.data and b'href="/request_access"' not in resp.data
 
 
 def test_login_page_offers_both_providers(client):
@@ -175,7 +174,7 @@ def test_finish_oauth_creates_master(app):
 
     with anon(app):
         resp = _finish_oauth("google", "sub-1", "new-user@example.com", "refresh-1")
-        assert resp.status_code == 302 and resp.headers["Location"].endswith("/code")
+        assert resp.status_code == 302 and resp.headers["Location"].endswith("/subscribe")
 
         master = Master.query.filter_by(primary_email="new-user@example.com").one()
         assert master.subscribed is False
@@ -805,12 +804,39 @@ def test_calendar_deep_link_provider_split():
     assert "outlook.live.com" in m and "subject=Meet%20Sarah%20Tuesday" in m
 
 
-def test_scheduler_time_match_boundaries():
+def test_due_slot_catches_up_on_late_ticks():
     from datetime import datetime, timezone
-    from functions.scheduler import _is_time_match
-    now = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
-    assert _is_time_match("7:00 AM", now, "America/New_York") is True
-    assert _is_time_match("9:00 AM", now, "America/New_York") is False
+    from functions.scheduler import _due_slot
+    ny = "America/New_York"  # 7:00 AM EST = 12:00 UTC on Jan 15
+    seven = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
+    at = lambda h, m: datetime(2026, 1, 15, h, m, tzinfo=timezone.utc)
+    assert _due_slot("7:00 AM", at(12, 0), ny) == seven      # on time
+    assert _due_slot("7:00 AM", at(11, 59), ny) == seven     # a tick a few seconds early
+    assert _due_slot("7:00 AM", at(13, 40), ny) == seven     # a late tick still delivers
+    assert _due_slot("7:00 AM", at(14, 1), ny) is None       # more than 2h late: skipped
+    assert _due_slot("9:00 AM", at(12, 0), ny) is None       # not yet
+    # 11:45 PM yesterday is still due just after midnight.
+    assert _due_slot("11:45 PM", datetime(2026, 1, 16, 5, 30, tzinfo=timezone.utc), ny) == \
+        datetime(2026, 1, 16, 4, 45, tzinfo=timezone.utc)
+
+
+def test_each_delivery_slot_is_sent_once(app):
+    from datetime import datetime, timedelta, timezone
+    from app import db as _db
+    from functions.scheduler import _users_to_process
+    from models import Digest, Master
+    m = Master(primary_email="slot@x.com", subscribed=True, timezone="UTC", time="7:00 AM,5:00 PM")
+    _db.session.add(m)
+    _db.session.commit()
+    seven = datetime.now(timezone.utc).replace(hour=7, minute=0, second=0, microsecond=0)
+
+    due = _users_to_process(seven + timedelta(minutes=20))
+    assert [(u.id, s) for u, s in due] == [(m.id, seven)]
+
+    _db.session.add(Digest(master_id=m.id, created_at=seven + timedelta(minutes=21)))
+    _db.session.commit()
+    assert _users_to_process(seven + timedelta(minutes=35)) == []           # already sent
+    assert _users_to_process(seven + timedelta(hours=10, minutes=1))[0][0].id == m.id  # 5 PM is new
 
 
 # ---------------------------------------------------------------------------
@@ -854,3 +880,158 @@ def test_microsoft_sign_in_can_be_parked(app, client, monkeypatch):
     _login_as(app, client, primary_email="ms@x.com")
     assert client.get("/microsoft/login").headers["Location"].endswith("/settings#forwarding")
     assert b"Outlook: coming soon" in client.get("/settings").data
+
+
+# ---------------------------------------------------------------------------
+# Analytics
+# ---------------------------------------------------------------------------
+
+def test_first_visit_is_counted_once_and_sticks_to_the_account(app, client):
+    from models import Master, SourceVisit
+    client.get("/?ref=HN!", headers={"User-Agent": "Mozilla/5.0"})
+    client.get("/login?ref=reddit", headers={"User-Agent": "Mozilla/5.0"})  # first touch wins
+    client.get("/", headers={"User-Agent": "Mozilla/5.0"})
+    rows = SourceVisit.query.all()
+    assert [(r.source, r.landing, r.visits) for r in rows] == [("hn", "/", 1)]
+
+    import app as app_module
+    with app.test_request_context("/", headers={"Cookie": client.get_cookie("mm_src").value and
+                                                f"mm_src={client.get_cookie('mm_src').value}"}):
+        m = app_module._new_account("new@x.com")
+    m = Master.query.filter_by(primary_email="new@x.com").one()
+    assert m.signup_source == "hn" and m.signup_landing == "/"
+
+
+def test_referrer_and_direct_sources(app, client):
+    from models import SourceVisit
+    ua = {"User-Agent": "Mozilla/5.0"}
+    client.get("/", headers={**ua, "Referer": "https://www.reddit.com/r/productivity/"})
+    app.test_client().get("/request_access", headers=ua)
+    app.test_client().get("/", headers={"User-Agent": "Googlebot/2.1"})
+    app.test_client().get("/static/universal.css", headers=ua)
+    app.test_client().post("/contact", headers=ua)
+    got = sorted((r.source, r.landing) for r in SourceVisit.query.all())
+    assert got == [("direct", "/request_access"), ("reddit.com", "/")]
+
+
+def test_tampered_source_cookie_is_ignored(app, client):
+    from models import SourceVisit
+    client.set_cookie("mm_src", "not-a-signed-value")
+    client.get("/?ref=x", headers={"User-Agent": "Mozilla/5.0"})
+    assert SourceVisit.query.one().source == "x"
+
+
+def test_new_people_go_to_the_trial_and_invitees_to_their_code(app, client):
+    import app as app_module
+    with app.test_request_context("/"):
+        assert app_module._no_access_redirect().headers["Location"].endswith("/subscribe")
+        from flask import session
+        session["invite_code"] = "ABC"
+        assert app_module._no_access_redirect().headers["Location"].endswith("/code")
+
+
+def test_landing_page_is_no_longer_private_beta(client):
+    page = client.get("/").data
+    assert b"private beta" not in page.lower() and b"Join the beta" not in page
+    assert b"Start your free week" in page
+
+
+def test_analytics_dashboard(app, client, monkeypatch):
+    from app import db as _db
+    from models import Master
+    monkeypatch.setenv("ADMIN_EMAILS", "boss@x.com")
+    app.test_client().get("/?ref=hn", headers={"User-Agent": "Mozilla/5.0"})
+    _db.session.add(Master(primary_email="lead@x.com", signup_source="hn"))
+    _db.session.commit()
+    _login_as(app, client, primary_email="someone@x.com")
+    assert client.get("/admin/analytics").status_code == 404
+    _login_as(app, client, primary_email="boss@x.com")
+    page = client.get("/admin/analytics?days=7").data
+    assert b"lead@x.com" in page and b"<th scope=\"row\">hn</th>" in page
+    assert client.get("/admin/analytics?days=999").status_code == 200
+
+
+def test_sample_list_renders_the_real_digest(client):
+    page = client.get("/sample").data
+    assert b"A sample MailMind email" in page and b"Pull the Q3 numbers" in page
+    assert b"Add to calendar" in page
+
+
+def test_landing_page_answers_trust_and_pricing(client):
+    page = client.get("/").data
+    for text in (b"No inbox access", b"Never used for training", b"/month", b"Which email works",
+                 b"What if it gets something wrong", b'href="/sample"'):
+        assert text in page, text
+
+
+def test_cron_tick_needs_the_secret_and_runs_a_tick(app, client, monkeypatch):
+    from functions import scheduler
+    calls = []
+    monkeypatch.setattr(scheduler, "check_and_send_emails", lambda a=None: calls.append(a))
+    monkeypatch.delenv("CRON_SECRET", raising=False)
+    assert client.post("/cron/tick", headers={"Authorization": "Bearer x"}).status_code == 404
+
+    monkeypatch.setenv("CRON_SECRET", "s3cret")
+    assert client.post("/cron/tick", headers={"Authorization": "Bearer wrong"}).status_code == 404
+    assert client.get("/cron/tick").status_code == 405
+    resp = client.post("/cron/tick", headers={"Authorization": "Bearer s3cret"})
+    assert resp.status_code == 200 and resp.get_data(as_text=True).strip() == "ok"
+    assert len(calls) == 1
+
+
+def test_cron_tick_skips_while_another_runs(app, client, monkeypatch):
+    import app as app_module
+    from functions import scheduler
+    monkeypatch.setattr(scheduler, "check_and_send_emails", lambda a=None: None)
+    monkeypatch.setenv("CRON_SECRET", "s3cret")
+    app_module._redis_client.set(app_module._TICK_LOCK, "1")
+    resp = client.post("/cron/tick", headers={"Authorization": "Bearer s3cret"})
+    assert resp.get_json() == {"status": "busy"}
+
+
+def test_tick_is_only_needed_when_someone_has_a_schedule(app):
+    from datetime import datetime, timedelta, timezone
+    from app import db as _db
+    from functions import tick_control
+    from models import InboundEmail, Master
+    assert tick_control.tick_needed() is False
+    m = Master(primary_email="t@x.com", subscribed=False, timezone="UTC", time="7:00 AM")
+    _db.session.add(m)
+    _db.session.commit()
+    assert tick_control.tick_needed() is False        # a schedule but no plan
+    m.comp_until = datetime.now(timezone.utc) + timedelta(days=3)
+    _db.session.commit()
+    assert tick_control.tick_needed() is True
+    m.comp_until, m.time = None, None
+    _db.session.add(InboundEmail(master_id=m.id, source_email="a@b.c", body="hi"))
+    _db.session.commit()
+    assert tick_control.tick_needed() is True         # forwarded mail waiting to be read
+
+
+def test_tick_reports_idle_only_when_it_can_be_resumed(app, client, monkeypatch):
+    from functions import scheduler
+    monkeypatch.setattr(scheduler, "check_and_send_emails", lambda a=None: None)
+    monkeypatch.setenv("CRON_SECRET", "s3cret")
+    hdrs = {"Authorization": "Bearer s3cret"}
+    monkeypatch.delenv("GITHUB_WORKFLOW_TOKEN", raising=False)
+    assert client.post("/cron/tick", headers=hdrs).get_data(as_text=True).strip() == "ok"
+    monkeypatch.setenv("GITHUB_WORKFLOW_TOKEN", "ghp_test")
+    assert client.post("/cron/tick", headers=hdrs).get_data(as_text=True).strip() == "ok idle"
+
+
+def test_saving_a_schedule_turns_the_tick_back_on(app, client, monkeypatch):
+    import threading
+    from functions import tick_control
+    calls = []
+    monkeypatch.setenv("GITHUB_WORKFLOW_TOKEN", "ghp_test")
+    monkeypatch.setattr(tick_control, "_enable", lambda: calls.append("enable"))
+    monkeypatch.setattr(tick_control, "RE_ENABLE_AFTER_SECONDS", 0)
+    monkeypatch.setattr(threading, "Thread", lambda target, daemon: type("T", (), {"start": lambda self: target()})())
+    _login_as(app, client, primary_email="sched@x.com")
+    client.post("/settings", data={"timezone": "UTC", "time": ["7:00 AM"]})
+    assert calls == ["enable", "enable"]
+
+    calls.clear()
+    monkeypatch.delenv("GITHUB_WORKFLOW_TOKEN")
+    client.post("/settings", data={"timezone": "UTC", "time": ["8:00 AM"]})
+    assert calls == []

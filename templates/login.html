@@ -17,7 +17,7 @@
     <div class="card auth-card rise" style="animation-delay:.12s">
         {{ provider_buttons() }}
         {% if forwarding_on %}<p class="fine">Signing in with Google only shares your name and email address. You'll forward mail to MailMind in the next step.</p>{% endif %}
-        {% if not invite %}<p class="fine">New here? MailMind is in private beta. <a href="{{ url_for('request_access') }}">Request access</a>.</p>{% endif %}
+        {% if not invite %}<p class="fine">New here? Sign in to start your 7-day free trial.</p>{% endif %}
         <p class="fine">By continuing you agree to the <a href="{{ url_for('terms_and_privacy') }}">Terms &amp; Privacy Policy</a>.</p>
     </div>
 </div>
