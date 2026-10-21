@@ -1,10 +1,11 @@
 """
 Entry point for the Fly `ticker` process: a small, always-on clock.
 
-At every quarter-hour it checks the database for work (someone with a delivery
-time and an active plan, or forwarded mail waiting to be read) and, only if
-there is some, calls POST /cron/tick, which wakes the app and sends what's due.
-The app machine itself can then stop whenever nobody's using it.
+At every quarter-hour it checks the database for work: a list that's due and
+not yet sent (same rules as the app, from functions/slots.py), or forwarded
+mail waiting to be read. Only then does it call POST /cron/tick, which wakes
+the app. So the app machine wakes a few times a day, around delivery times,
+and is stopped the rest of the time.
 
 Kept deliberately light (no Flask app import) so it fits a 256 MB machine.
 """
@@ -17,20 +18,21 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine, text
 
+from functions.slots import EARLY_SECONDS, latest_due_slot
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("ticker")
 
 TICK_URL = os.getenv("TICK_URL", os.getenv("DOMAIN", "https://mailmind.dev").rstrip("/") + "/cron/tick")
 ATTEMPTS = 3
 
-_NEEDED_SQL = text("""
-    SELECT 1 FROM inbound_email
-    UNION ALL
-    SELECT 1 FROM master
+_INBOUND_SQL = text("SELECT 1 FROM inbound_email LIMIT 1")
+_SCHEDULED_SQL = text("""
+    SELECT id, time, timezone FROM master
      WHERE time IS NOT NULL AND time <> '' AND timezone IS NOT NULL
        AND (subscribed = :yes OR comp_until > :now)
-    LIMIT 1
 """)
+_SENT_SINCE_SQL = text("SELECT 1 FROM digest WHERE master_id = :mid AND created_at >= :since LIMIT 1")
 
 
 def engine_from_env():
@@ -41,9 +43,22 @@ def engine_from_env():
 
 
 def work_waiting(engine, now=None) -> bool:
+    """True when a list is due and not yet sent, or forwarded mail is waiting."""
     now = now or datetime.now(timezone.utc)
     with engine.connect() as conn:
-        return conn.execute(_NEEDED_SQL, {"yes": True, "now": now}).first() is not None
+        if conn.execute(_INBOUND_SQL).first() is not None:
+            return True
+        naive = engine.dialect.name == "sqlite"  # SQLite stores UTC without an offset
+        for mid, times, tz in conn.execute(_SCHEDULED_SQL, {"yes": True, "now": now}).all():
+            slot = latest_due_slot(times, tz, now)
+            if slot is None:
+                continue
+            since = slot - timedelta(seconds=EARLY_SECONDS)
+            if naive:
+                since = since.replace(tzinfo=None)
+            if conn.execute(_SENT_SINCE_SQL, {"mid": mid, "since": since}).first() is None:
+                return True
+    return False
 
 
 def next_quarter_hour(now: datetime) -> datetime:

@@ -989,24 +989,32 @@ def test_cron_tick_skips_while_another_runs(app, client, monkeypatch):
     assert resp.get_json() == {"status": "busy"}
 
 
-def test_ticker_only_wakes_the_app_when_there_is_work(app):
+def test_ticker_only_wakes_the_app_when_a_list_is_due(app):
     from datetime import datetime, timedelta, timezone
     from app import db as _db
-    from models import InboundEmail, Master
+    from models import Digest, InboundEmail, Master
     import ticker
     engine = _db.engine
-    assert ticker.work_waiting(engine) is False
-    m = Master(primary_email="t@x.com", subscribed=False, timezone="UTC", time="7:00 AM")
+    seven = datetime.now(timezone.utc).replace(hour=7, minute=0, second=0, microsecond=0)
+    at = lambda **kw: seven + timedelta(**kw)
+
+    m = Master(primary_email="t@x.com", subscribed=False, timezone="UTC", time="7:00 AM,5:00 PM")
     _db.session.add(m)
     _db.session.commit()
-    assert ticker.work_waiting(engine) is False        # a schedule but no plan
+    assert ticker.work_waiting(engine, at(minutes=5)) is False      # due, but no plan
     m.comp_until = datetime.now(timezone.utc) + timedelta(days=3)
     _db.session.commit()
-    assert ticker.work_waiting(engine) is True
-    m.comp_until, m.time = None, None
+    assert ticker.work_waiting(engine, at(minutes=-30)) is False    # has a plan, nothing due yet
+    assert ticker.work_waiting(engine, at(minutes=5)) is True       # 7:00 is due
+    _db.session.add(Digest(master_id=m.id, created_at=at(minutes=6)))
+    _db.session.commit()
+    assert ticker.work_waiting(engine, at(minutes=20)) is False     # 7:00 already sent
+    assert ticker.work_waiting(engine, at(hours=4)) is False        # between slots: app stays asleep
+    assert ticker.work_waiting(engine, at(hours=10, minutes=1)) is True  # 5:00 PM is due
+
     _db.session.add(InboundEmail(master_id=m.id, source_email="a@b.c", body="hi"))
     _db.session.commit()
-    assert ticker.work_waiting(engine) is True          # forwarded mail waiting to be read
+    assert ticker.work_waiting(engine, at(hours=4)) is True         # forwarded mail waiting
 
 
 def test_ticker_wakes_on_the_quarter_hour():
