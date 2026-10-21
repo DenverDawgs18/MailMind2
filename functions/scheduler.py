@@ -43,6 +43,7 @@ from functions.get_emails import DIGEST_HEADER, DIGEST_SUBJECT_PREFIX, get_email
 from functions.get_one_action import get_an_action
 from functions.refresh_token import TokenRefreshError, refresh
 from functions.forwarding import outbound_enabled, send_digest_email
+from functions.slots import EARLY_SECONDS, convert_to_24hour, due_slot, latest_due_slot, parse_user_times
 from models import (
     DIGEST_RETENTION_DAYS, INBOUND_MAX_AGE_HOURS, Digest, DigestItem, InboundEmail, Master, PendingItem,
 )
@@ -364,48 +365,11 @@ def get_scheduler_status():
 # Time matching
 # ---------------------------------------------------------------------------
 
-def _parse_user_times(time_string: str) -> List[str]:
-    if not time_string:
-        return []
-    return [t.strip() for t in time_string.split(',') if t.strip()]
-
-
-def _convert_to_24hour(time_str: str) -> Optional[str]:
-    for fmt in ('%I:%M %p', '%I:%M%p'):
-        try:
-            return datetime.strptime(time_str, fmt).time().strftime('%H:%M')
-        except ValueError:
-            continue
-    logger.error("Could not parse time string: %s", time_str)
-    return None
-
-
-# A list is sent at the first tick at or after its delivery time. Ticks can
-# arrive late (the trigger is an external cron that wakes the app), so a list
-# still goes out if it's up to this late; one that's older is skipped.
-CATCH_UP_SECONDS = 2 * 3600
-# Ticks may fire a little before the quarter-hour.
-EARLY_SECONDS = 60
-
-
-def _due_slot(user_time: str, now: datetime, timezone_str: str) -> Optional[datetime]:
-    """The most recent occurrence of `user_time` that's due now, in UTC, or None."""
-    parsed = _convert_to_24hour(user_time)
-    if not parsed:
-        return None
-    try:
-        tz = pytz.timezone(timezone_str)
-    except Exception:
-        return None
-    hour, minute = map(int, parsed.split(':'))
-    local_now = now.astimezone(tz)
-    for days_back in (0, 1):
-        day = (local_now - timedelta(days=days_back)).date()
-        slot = tz.localize(datetime(day.year, day.month, day.day, hour, minute))
-        lateness = (now - slot).total_seconds()
-        if -EARLY_SECONDS <= lateness <= CATCH_UP_SECONDS:
-            return slot.astimezone(pytz.UTC)
-    return None
+# The delivery-time rules live in functions/slots.py so the lightweight ticker
+# process can use them without importing the app.
+_parse_user_times = parse_user_times
+_convert_to_24hour = convert_to_24hour
+_due_slot = due_slot
 
 
 def _sent_since(user_id: int, slot: datetime) -> bool:
@@ -429,10 +393,9 @@ def _users_to_process(now: Optional[datetime] = None) -> List[tuple]:
     for user in users:
         if not user.timezone or not user.time:
             continue
-        slots = [s for s in (_due_slot(t, now, user.timezone) for t in _parse_user_times(user.time)) if s]
-        if not slots:
+        slot = latest_due_slot(user.time, user.timezone, now)
+        if slot is None:
             continue
-        slot = max(slots)
         if not _sent_since(user.id, slot):
             result.append((user, slot))
             logger.info("User %s due for %s (%s)", user.id, slot.isoformat(), user.timezone)
