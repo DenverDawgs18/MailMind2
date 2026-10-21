@@ -195,7 +195,7 @@ from models import (  # noqa: E402
     FOREVER, AccessCode, Digest, DigestItem, EmailAccount, ForwardingAddress, Identity, InboundEmail,
     Master, SourceVisit,
 )
-from functions import analytics, tick_control  # noqa: E402
+from functions import analytics  # noqa: E402
 
 
 def _record_visit(day, source, landing):
@@ -837,8 +837,8 @@ def inbound_mailgun():
 def _read_inbound_soon():
     """
     Read queued forwarded mail now, after the response goes back to Mailgun,
-    rather than waiting for the next tick (which may be paused). Anything that
-    fails stays queued, and the tick is turned back on to retry it.
+    rather than waiting for the next tick. Anything that fails stays queued
+    for the tick to retry.
     """
     import threading
     from functions.scheduler import process_inbound_queue
@@ -850,8 +850,6 @@ def _read_inbound_soon():
             except Exception:
                 logger.exception("Reading forwarded mail failed; leaving it for the tick")
                 db.session.rollback()
-            if InboundEmail.query.first() is not None:
-                tick_control.ensure_running()
 
     if app.config.get("TESTING"):
         return  # tests drive the queue directly
@@ -869,8 +867,8 @@ _TICK_LOCK = "mailmind:tick-lock"
 @csrf.exempt
 def cron_tick():
     """
-    The 15-minute tick (read forwarded mail, send due lists), called by an
-    external cron so no machine has to stay running. Needs
+    The 15-minute tick (read forwarded mail, send due lists), called by the
+    small `ticker` process (ticker.py) so the app machine can stop when idle. Needs
     `Authorization: Bearer <CRON_SECRET>`. Streams a heartbeat byte while it
     works so the request (and the machine) stays alive until it's done.
     """
@@ -894,14 +892,9 @@ def cron_tick():
     done = threading.Event()
     failed = []
 
-    idle = []
-
     def work():
         try:
             check_and_send_emails(app)
-            with app.app_context():
-                if tick_control.can_resume() and not tick_control.tick_needed():
-                    idle.append(True)
         except Exception:
             logger.exception("Cron tick failed")
             failed.append(True)
@@ -918,7 +911,7 @@ def cron_tick():
     def stream():
         while not done.wait(15):
             yield " "
-        yield "error\n" if failed else ("ok idle\n" if idle else "ok\n")
+        yield "error\n" if failed else "ok\n"
 
     return app.response_class(stream(), mimetype="text/plain")
 
@@ -1126,7 +1119,6 @@ def settings():
             current_user.timezone = tz
             current_user.time = ",".join(times[:MAX_DELIVERY_TIMES])
             db.session.commit()
-            tick_control.ensure_running()
             flash("Delivery schedule saved.", "success")
         return redirect(url_for('settings'))
 
@@ -1300,8 +1292,6 @@ def webhook_received():
         elif event_type == 'customer.subscription.deleted':
             user.subscribed = False
         db.session.commit()
-        if user.subscribed:
-            tick_control.ensure_running()
 
     return jsonify({'status': 'success'})
 
@@ -1375,7 +1365,6 @@ def redeem_access_code(master, raw):
     code.uses += 1
     db.session.commit()
     logger.info("Access code %s redeemed by master %s", code.id, master.id)
-    tick_control.ensure_running()
     return True, "You're in. Pick when you'd like your list delivered."
 
 
