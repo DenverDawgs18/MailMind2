@@ -27,7 +27,7 @@ jobs:
     steps:
       - name: Run the tick
         env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET || secrets.CRON_TOKEN }}
           GH_TOKEN: ${{ github.token }}
         run: |
           for attempt in 1 2 3; do

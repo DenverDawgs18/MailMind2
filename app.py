@@ -877,6 +877,8 @@ def cron_tick():
     secret = os.getenv("CRON_SECRET", "")
     supplied = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     if not secret or not hmac.compare_digest(supplied, secret):
+        # Length only, never the value: tells a missing secret (0) from a mismatch.
+        logger.warning("Rejected /cron/tick: credential length %d, expected %d", len(supplied), len(secret))
         return "Not found", 404
 
     if _redis_client is not None:

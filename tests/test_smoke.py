@@ -968,6 +968,7 @@ def test_cron_tick_needs_the_secret_and_runs_a_tick(app, client, monkeypatch):
     from functions import scheduler
     calls = []
     monkeypatch.setattr(scheduler, "check_and_send_emails", lambda a=None: calls.append(a))
+    monkeypatch.delenv("GITHUB_WORKFLOW_TOKEN", raising=False)
     monkeypatch.delenv("CRON_SECRET", raising=False)
     assert client.post("/cron/tick", headers={"Authorization": "Bearer x"}).status_code == 404
 
