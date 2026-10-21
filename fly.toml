@@ -37,8 +37,10 @@ primary_region = "ord"
 [processes]
   # --timeout covers /cron/tick, which streams while it works.
   app = "gunicorn --bind 0.0.0.0:8080 --workers 2 --threads 4 --worker-class gthread --timeout 900 --keep-alive 65 app:app"
-  # No always-on scheduler: .github/workflows/tick.yml calls POST /cron/tick
-  # every 15 minutes, which wakes the app (scheduler_run.py is for local dev).
+  # A tiny always-on clock. Every 15 minutes it checks the database and, only
+  # when someone has a delivery time (or forwarded mail is waiting), calls
+  # POST /cron/tick, which wakes the app. scheduler_run.py is for local dev.
+  ticker = "python ticker.py"
 
 [http_service.concurrency]
   type = "connections"
@@ -49,3 +51,10 @@ primary_region = "ord"
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
+  processes = ['app']
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1
+  processes = ['ticker']
