@@ -623,6 +623,21 @@ def test_scheduler_retries_when_model_is_out_of_credits(app, monkeypatch):
     assert sent == [1]
 
 
+def test_out_of_credits_emails_admins_once(app, monkeypatch):
+    from functions import alerts, forwarding
+
+    monkeypatch.setenv("ADMIN_EMAILS", "owner@x.com, ops@x.com")
+    mails = []
+    monkeypatch.setattr(forwarding, "send_digest_email",
+                        lambda to, subject, body, header: mails.append((to, subject)) or True)
+    err = Exception("Error code: 429 - {'type': 'insufficient_quota', 'code': 'credit_balance_exhausted'}")
+
+    alerts.model_unavailable(err)
+    alerts.model_unavailable(err)  # same outage, next tick: no repeat
+    assert mails == [("owner@x.com", "[MailMind alert] OpenAI is out of credits"),
+                     ("ops@x.com", "[MailMind alert] OpenAI is out of credits")]
+
+
 # ---------------------------------------------------------------------------
 # Beta code & billing
 # ---------------------------------------------------------------------------

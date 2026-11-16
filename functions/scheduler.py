@@ -43,6 +43,7 @@ from app import app, db
 from functions.get_emails import DIGEST_HEADER, DIGEST_SUBJECT_PREFIX, get_emails
 from functions.get_one_action import get_an_action
 from functions.refresh_token import TokenRefreshError, refresh
+from functions import alerts
 from functions.forwarding import outbound_enabled, send_digest_email
 from functions.slots import EARLY_SECONDS, convert_to_24hour, due_slot, latest_due_slot, parse_user_times
 from models import (
@@ -538,6 +539,7 @@ def send_email_summary_for_user(user: Master, site_url: str, slot: Optional[date
         # (within the catch-up window) tries again.
         db.session.rollback()
         logger.error("Action model unavailable; list for user %s not sent, will retry: %s", user.id, exc)
+        alerts.model_unavailable(exc.__cause__ or exc)
         return {"success": False, "message": "action model unavailable", "user": user.id}
     except Exception as exc:
         logger.exception("digest failed for user %s: %s", user.id, exc)
@@ -560,6 +562,8 @@ def process_inbound_queue(batch: int = 300) -> int:
         try:
             actions = _split_actions(get_an_action(row.body))
         except Exception as exc:
+            if isinstance(exc, _MODEL_DOWN_ERRORS):
+                alerts.model_unavailable(exc)
             if received < cutoff:
                 logger.warning("Dropping inbound email %s after repeated failures", row.id)
                 db.session.delete(row)
