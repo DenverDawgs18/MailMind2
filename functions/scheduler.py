@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional
 
 import pytz
 import requests
+import openai
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -42,6 +43,7 @@ from app import app, db
 from functions.get_emails import DIGEST_HEADER, DIGEST_SUBJECT_PREFIX, get_emails
 from functions.get_one_action import get_an_action
 from functions.refresh_token import TokenRefreshError, refresh
+from functions import alerts
 from functions.forwarding import outbound_enabled, send_digest_email
 from functions.slots import EARLY_SECONDS, convert_to_24hour, due_slot, latest_due_slot, parse_user_times
 from models import (
@@ -49,6 +51,19 @@ from models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Errors that mean the model itself is unavailable (out of credits, bad key,
+# outage), not that one email was bad. A list built while the model is down
+# would be empty, so the run is abandoned and retried at the next tick.
+_MODEL_DOWN_ERRORS = (
+    openai.AuthenticationError, openai.PermissionDeniedError, openai.RateLimitError,
+    openai.APIConnectionError, openai.InternalServerError,
+)
+
+
+class ModelUnavailable(Exception):
+    pass
+
 
 scheduler = None
 flask_app = app
@@ -460,6 +475,8 @@ def send_email_summary_for_user(user: Master, site_url: str, slot: Optional[date
                     continue
                 try:
                     actions = _split_actions(get_an_action(body))
+                except _MODEL_DOWN_ERRORS as exc:
+                    raise ModelUnavailable(str(exc)) from exc
                 except Exception as exc:
                     logger.exception("get_an_action failed: %s", exc)
                     continue
@@ -517,6 +534,13 @@ def send_email_summary_for_user(user: Master, site_url: str, slot: Optional[date
             db.session.commit()
             return {"success": True, "message": f"sent {count} items", "user": user.id}
         return {"success": False, "message": "send failed", "user": user.id}
+    except ModelUnavailable as exc:
+        # Nothing has been stored, so the slot stays open and the next tick
+        # (within the catch-up window) tries again.
+        db.session.rollback()
+        logger.error("Action model unavailable; list for user %s not sent, will retry: %s", user.id, exc)
+        alerts.model_unavailable(exc.__cause__ or exc)
+        return {"success": False, "message": "action model unavailable", "user": user.id}
     except Exception as exc:
         logger.exception("digest failed for user %s: %s", user.id, exc)
         return {"success": False, "message": "unexpected error", "user": user.id}
@@ -538,6 +562,8 @@ def process_inbound_queue(batch: int = 300) -> int:
         try:
             actions = _split_actions(get_an_action(row.body))
         except Exception as exc:
+            if isinstance(exc, _MODEL_DOWN_ERRORS):
+                alerts.model_unavailable(exc)
             if received < cutoff:
                 logger.warning("Dropping inbound email %s after repeated failures", row.id)
                 db.session.delete(row)
