@@ -583,6 +583,46 @@ def test_scheduler_stores_list_and_purges_old(app, monkeypatch):
     assert [i.action for i in digests[0].items] == ["Send Sam the deck"]
 
 
+def test_scheduler_retries_when_model_is_out_of_credits(app, monkeypatch):
+    """An OpenAI outage must not record an empty list, or the slot is lost."""
+    import httpx
+    import openai
+    from datetime import datetime, timezone
+    from app import db as _db
+    from functions import scheduler
+    from functions.encryption import encrypt_token
+    from models import Digest, EmailAccount, Master
+
+    m = Master(primary_email="q@x.com", subscribed=True, temp=False, timezone="UTC", time="7:00 AM")
+    _db.session.add(m)
+    _db.session.commit()
+    _db.session.add(EmailAccount(email="q@x.com", oauth_token=encrypt_token("rt"), provider="google", master=m))
+    _db.session.commit()
+
+    def no_credits(body):
+        req = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+        raise openai.RateLimitError("no credits", response=httpx.Response(429, request=req), body=None)
+
+    sent = []
+    monkeypatch.setattr(scheduler, "refresh", lambda a: "at")
+    monkeypatch.setattr(scheduler, "get_emails", lambda *a, **k: [
+        {"from": "Sam <sam@x.com>", "subject": "Deck", "body": "Please send the deck"}])
+    monkeypatch.setattr(scheduler, "get_an_action", no_credits)
+    monkeypatch.setattr(scheduler, "_send_html_email", lambda *a, **k: sent.append(1) or True)
+
+    slot = datetime.now(timezone.utc)
+    result = scheduler.send_email_summary_for_user(m, "https://mailmind.test", slot)
+    assert not result["success"] and result["message"] == "action model unavailable"
+    assert Digest.query.filter_by(master_id=m.id).count() == 0
+    assert not scheduler._sent_since(m.id, slot)  # the next tick will try again
+    assert sent == []
+
+    # Once the model is back, the next tick sends the list.
+    monkeypatch.setattr(scheduler, "get_an_action", lambda body: "- Send Sam the deck")
+    assert scheduler.send_email_summary_for_user(m, "https://mailmind.test", slot)["success"]
+    assert sent == [1]
+
+
 # ---------------------------------------------------------------------------
 # Beta code & billing
 # ---------------------------------------------------------------------------
